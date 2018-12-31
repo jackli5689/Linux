@@ -7,8 +7,10 @@ zabbix-agent:
     - template: jinja
     - defaults:
         Zabbix_Server: {{ pillar['Zabbix_Server'] }}
+        fqdn: {{ grains['fqdn'] }}
     - require:
       - pkg: zabbix-agent
+    - backup: minion
   service.running:
     - enable: True
     - watch:
