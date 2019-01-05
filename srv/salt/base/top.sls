@@ -2,10 +2,14 @@ base:
   '*':
     - init.init
 prod:
-  'Linux-node*':
+  'Linux-node3*':
     - cluster.haproxy-outside
-  'SaltstackServer*':
     - cluster.haproxy-outside-keepalived
-
-  'linux-node1*':
     - bbs.memcached
+    - bbs.web
+
+  'Linux-node4*':
+    - cluster.haproxy-outside
+    - cluster.haproxy-outside-keepalived
+    - bbs.memcached
+    - bbs.web
