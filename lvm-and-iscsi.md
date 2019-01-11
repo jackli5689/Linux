@@ -315,3 +315,138 @@ Do you really want to reduce myvg/mylv? [y/n]: y
 
 
 #iscsi
+<pre>
+#服务端（target）：
+1. [root@salt-server ~]# yum install targetd targetcli -y
+2. [root@salt-server ~]# systemctl start target
+3. [root@salt-server ~]# systemctl enable target
+4. 配置防火墙，放行3260端口
+5. 执行targetcli工具：[root@salt-server ~]# targetcli
+6. 输入help进行查看帮助：/> help
+7. 基本思路：先把准备共享的块做出来，创建一个target，在target上创建lun，一个lun连接一个块
+8. /> ls
+o- / ............................................................................................................. [...]
+  o- backstores .................................................................................................. [...]
+  | o- block ...................................................................................... [Storage Objects: 0]
+  | o- fileio ..................................................................................... [Storage Objects: 0]
+  | o- pscsi ...................................................................................... [Storage Objects: 0]
+  | o- ramdisk .................................................................................... [Storage Objects: 0]
+  o- iscsi ................................................................................................ [Targets: 0]
+  o- loopback .....
+9. /> /backstores/block create salt.disk2 /dev/myvg/mylv2
+Created block storage object salt.disk2 using /dev/myvg/mylv2.
+/> /backstores/block/ create salt.disk3 /dev/myvg/mylv3
+Created block storage object salt.disk3 using /dev/myvg/mylv3.
+注：给/dev/myvg/mylv2逻辑卷起个名字叫salt.disk2;给/dev/myvg/mylv3逻辑卷起个名字叫salt.disk3
+10. 创建 iqn 名字即创建ISCSI对象
+11. /> /iscsi create iqn.2019-01.com.jack:disk2
+Created target iqn.2019-01.com.jack:disk2.
+Created TPG 1.
+Global pref auto_add_default_portal=true
+Created default portal listening on all IPs (0.0.0.0), port 3260.
+12. /> /iscsi create iqn.2019-01.com.jack:disk3
+Created target iqn.2019-01.com.jack:disk3.
+Created TPG 1.
+Global pref auto_add_default_portal=true
+Created default portal listening on all IPs (0.0.0.0), port 3260.
+13. 设置ACL即将ISCSI对象与客户端IP或主机名绑定
+14. /> /iscsi/iqn.2019-01.com.jack:disk2/tpg1/acls create iqn.2019-01.com.jack:client2
+Created Node ACL for iqn.2019-01.com.jack:client2
+/> /iscsi/iqn.2019-01.com.jack:disk3/tpg1/acls create iqn.2019-01.com.jack:client3
+Created Node ACL for iqn.2019-01.com.jack:client3
+15. 注意：iqn.2019-01.com.jack:client2是 initiator 的名字，需要在客户端中设置的。
+16. 创建LUN并绑定块
+17. /> /iscsi/iqn.2019-01.com.jack:disk2/tpg1/luns create /backstores/block/salt.disk2
+Created LUN 0.
+Created LUN 0->0 mapping in node ACL iqn.2019-01.com.jack:client2
+/> /iscsi/iqn.2019-01.com.jack:disk3/tpg1/luns create /backstores/block/salt.disk3
+Created LUN 0.
+Created LUN 0->0 mapping in node ACL iqn.2019-01.com.jack:client3
+18. 一个ISCSI对象可以创建多个LUN（LUN0、LUN1……）。执行ls查看
+19. /> ls
+o- / ............................................................................................................. [...]
+  o- backstores .................................................................................................. [...]
+  | o- block ...................................................................................... [Storage Objects: 2]
+  | | o- salt.disk2 ................................................... [/dev/myvg/mylv2 (50.0GiB) write-thru activated]
+  | | | o- alua ....................................................................................... [ALUA Groups: 1]
+  | | |   o- default_tg_pt_gp ........................................................... [ALUA state: Active/optimized]
+  | | o- salt.disk3 ................................................... [/dev/myvg/mylv3 (70.0GiB) write-thru activated]
+  | |   o- alua ....................................................................................... [ALUA Groups: 1]
+  | |     o- default_tg_pt_gp ........................................................... [ALUA state: Active/optimized]
+  | o- fileio ..................................................................................... [Storage Objects: 0]
+  | o- pscsi ...................................................................................... [Storage Objects: 0]
+  | o- ramdisk .................................................................................... [Storage Objects: 0]
+  o- iscsi ................................................................................................ [Targets: 2]
+  | o- iqn.2019-01.com.jack:disk2 ............................................................................ [TPGs: 1]
+  | | o- tpg1 ................................................................................... [no-gen-acls, no-auth]
+  | |   o- acls .............................................................................................. [ACLs: 1]
+  | |   | o- iqn.2019-01.com.jack:client2 ............................................................. [Mapped LUNs: 1]
+  | |   |   o- mapped_lun0 ................................................................ [lun0 block/salt.disk2 (rw)]
+  | |   o- luns .............................................................................................. [LUNs: 1]
+  | |   | o- lun0 .............................................. [block/salt.disk2 (/dev/myvg/mylv2) (default_tg_pt_gp)]
+  | |   o- portals ........................................................................................ [Portals: 1]
+  | |     o- 0.0.0.0:3260 ......................................................................................... [OK]
+  | o- iqn.2019-01.com.jack:disk3 ............................................................................ [TPGs: 1]
+  |   o- tpg1 ................................................................................... [no-gen-acls, no-auth]
+  |     o- acls .............................................................................................. [ACLs: 1]
+  |     | o- iqn.2019-01.com.jack:client3 ............................................................. [Mapped LUNs: 1]
+  |     |   o- mapped_lun0 ................................................................ [lun0 block/salt.disk3 (rw)]
+  |     o- luns .............................................................................................. [LUNs: 1]
+  |     | o- lun0 .............................................. [block/salt.disk3 (/dev/myvg/mylv3) (default_tg_pt_gp)]
+  |     o- portals ........................................................................................ [Portals: 1]
+  |       o- 0.0.0.0:3260 ......................................................................................... [OK]
+  o- loopback .........................................
+20. 启动监听程序
+21. /> /iscsi/iqn.2019-01.com.jack:disk3/tpg1/portals/ create 192.168.1.235 ip_port=3260
+Created network portal 192.168.1.235:3206.
+/> /iscsi/iqn.2019-01.com.jack:disk2/tpg1/portals/ create 192.168.1.235 ip_port=3260
+Created network portal 192.168.1.235:3206.
+22. 注：192.168.1.235是ISCSI服务端网卡IP
+23. 可以查看/etc/target/saveconfig.json配置文件，该配置文件保存着ISCSI的配置。/> exit
+Global pref auto_save_on_exit=true
+Configuration saved to /etc/target/saveconfig.json
+
+#客户端(initiator端)
+1. [root@salt-server ~]# yum install -y iscsi-initiator-utils
+2. [root@salt-server ~]# cat /etc/iscsi/initiatorname.iscsi
+InitiatorName=iqn.2019-01.com.jack:client2
+3. [root@salt-server ~]# systemctl start iscsi
+4. [root@salt-server ~]# systemctl enable iscsi
+5. 发现存储：
+[root@salt-server ~]# iscsiadm -m discovery -t st -p 192.168.1.235
+192.168.1.235:3260,1 iqn.2019-01.com.jack:disk3
+192.168.1.235:3206,1 iqn.2019-01.com.jack:disk3
+192.168.1.235:3260,1 iqn.2019-01.com.jack:disk2
+192.168.1.235:3206,1 iqn.2019-01.com.jack:disk2
+7. 登录存储：
+[root@salt-server ~]# iscsiadm -m node -T iqn.2019-01.com.jack:disk2 -p 192.168.1.235 -l
+Logging in to [iface: default, target: iqn.2019-01.com.jack:disk2, portal: 192.168.1.235,3260] (multiple)
+Login to [iface: default, target: iqn.2019-01.com.jack:disk2, portal: 192.168.1.235,3260] successful.
+8. 查看scsi:
+[root@salt-server ~]# lsscsi
+[0:0:0:0]    disk    VMware   Virtual disk     1.0   /dev/sda
+[0:0:1:0]    disk    VMware   Virtual disk     1.0   /dev/sdb
+[0:0:2:0]    disk    VMware   Virtual disk     1.0   /dev/sdc
+[2:0:0:0]    cd/dvd  NECVMWar VMware IDE CDR10 1.00  /dev/sr0
+[3:0:0:0]    disk    LIO-ORG  salt.disk2       4.0   /dev/sdd
+9. 跟本地磁盘一样，不需要格式化，直接挂载：[root@salt-server ~]# mount /dev/sdd /d
+10. 查看挂载情况：
+[root@salt-server /]# df -h
+Filesystem             Size  Used Avail Use% Mounted on
+/dev/sda2               99G  2.1G   97G   3% /
+devtmpfs               1.9G     0  1.9G   0% /dev
+tmpfs                  1.9G   28K  1.9G   1% /dev/shm
+tmpfs                  1.9G  128M  1.8G   7% /run
+tmpfs                  1.9G     0  1.9G   0% /sys/fs/cgroup
+/dev/sda1             1014M  140M  875M  14% /boot
+/dev/mapper/myvg-mylv   29G   45M   28G   1% /lvm
+tmpfs                  380M     0  380M   0% /run/user/0
+/dev/sdd                50G   53M   47G   1% /d
+[root@salt-server /]# iscsiadm -m node -p 192.168.1.235 -u
+--断开连接iscsi
+注：-l表示连接ISCSI目标；-u表示断开和ISCSI目标的连接，isaci不支持多连接
+
+
+
+
+</pre>
