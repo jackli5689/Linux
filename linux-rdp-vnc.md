@@ -61,6 +61,8 @@ PIDFile=/root/.vnc/%H%i.pid
 5. 重载配置文件：[root@Linux-node6-slave-mysql ~]# systemctl daemon-reload
 6. [root@Linux-node6-slave-mysql system]# systemctl start vncserver@:1
 7. [root@Linux-node6-slave-mysql system]# systemctl enable vncserver@:1
+8. xvnc服务端口默认为5900，如果使用vncserver@:1则默认端口加1为5091
+
 #x11vnc:vnc协议服务端，需手动安装
 启动vnc服务端：x11vnc -password PASSWORD -dikplay :d forever (开启端口默认为5900，forever为始终开启)
 
