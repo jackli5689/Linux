@@ -1,4 +1,5 @@
 ﻿#shadowsocks
+<pre>
 #CentOS:
 yum install python-setuptools && easy_install pip
 pip install shadowsocks
@@ -13,3 +14,4 @@ sudo ssserver -p 443 -k password -m rc4-md5 --user nobody -d start
 sudo ssserver -d stop
 检查日志：
 sudo less /var/log/shadowsocks.log
+</pre>
