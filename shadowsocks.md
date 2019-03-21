@@ -1,10 +1,7 @@
-<<<<<<< HEAD
 ﻿#shadowsocks
 <pre>
 =======
-#shadowsocks
 #安装shadowsocks:
->>>>>>> 5d7c7d33e8d77e3a6dff7ac5983e2ce5db2f550f
 #CentOS:
 yum install python-setuptools && easy_install pip
 pip install shadowsocks
@@ -19,10 +16,8 @@ sudo ssserver -p 443 -k password -m rc4-md5 --user nobody -d start
 sudo ssserver -d stop
 检查日志：
 sudo less /var/log/shadowsocks.log
-<<<<<<< HEAD
-</pre>
-=======
 
+=======
 #配置BBR加速：
 TCP BBR是谷歌出品的TCP拥塞控制算法。BBR目的是要尽量跑满带宽，并且尽量不要有排队的情况。BBR可以起到单边加速TCP连接的效果。
 BBR解决了两个问题：
@@ -65,4 +60,4 @@ net.ipv4.tcp_available_congestion_control = reno cubic bbr
 tcp_bbr                20480  30
 输出内容如上，则表示bbr已经成功开启。
 
->>>>>>> 5d7c7d33e8d77e3a6dff7ac5983e2ce5db2f550f
+</pre>

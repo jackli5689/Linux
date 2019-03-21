@@ -131,6 +131,417 @@ sudo yum-config-manager --enable mysql57-community
 Linux下MySQL的数据文件存放位置：
  show variables like '%dir%';
 
+#jobs:
+jobs -l 
+jobs -kill -9 %id
+bg %1
+fg %1
 
+#nohup:
+nohup curl -T ec_new.tar.gz ftp://jackli:jackli123@180.168.251.179:8021/ >tmp.log 2>&1 
+
+#zip:
+压缩：
+zip -r zip.name target/*
+解压：
+unzip -o passwd.linux.zip -d ./passwd.linux.tmp #-d是输出到哪个目录
+
+
+#rsync
+-a 归档递归方式传输（相当于rtopgDl）
+-v 显示详细模式
+-z传输时进行压缩（如同传输图片时进行压缩大小提高传输速度）
+-P显示传输进度信息
+--exclude传输时排除指定的文件或目录
+远程备份命令：
+rsync -avzP -e "ssh -p 22" 192.168.1.37:/etc/hostname /tmp/hostname1
+#Linux系统rsync实战操作:
+备份服务器（master-nginx）：
+-------------------
+[root@master-nginx tmp]# egrep -v "#|^$" /etc/rsyncd.conf
+ uid = rsync
+ gid = rsync
+ use chroot = no
+ max connections = 200   #最大连接数（并发）
+ timeout = 100        #超时时间默认S单位
+ pid file = /var/run/rsyncd.pid
+ lock file = /var/run/rsyncd.lock
+ log file = /var/log/rsyncd.log
+ [backup]     #模块名称可自定义任意名称
+ path = /backup/   #备份数据的路径
+ ignore errors   #忽略错误
+ read only = false
+ list = false
+ hosts allow = 192.168.1.0/24
+ hosts deny = 0.0.0.0/32
+ auth users = rsync_backup    #虚拟的用户用于连接认证
+ secrets file = /etc/rsync.password  #认证的密码配置文件路径
+-------------------
+[root@BK-S ~]#dos2unix /etc/rsync.conf   #格式化配置文件（系统自带不用格式化，自己新建格式化下）
+[root@master-nginx tmp]# useradd -M -s /sbin/nologin rsync  #添加用户
+[root@master-nginx tmp]# mkdir /backup -p
+[root@master-nginx tmp]# chown -R rsync:rsync /backup
+[root@master-nginx /]# chmod -R 770 /backup/
+[root@master-nginx /]# echo "rsync_backup:rsync.conf" > /etc/rsync.password
+[root@master-nginx /]# cat /etc/rsync.password
+rsync_backup:rsync.conf       #认证用户：认证密码
+[root@master-nginx /]# ll -d /etc/rsync.password  #由于是明文密码，设置root可管理
+[root@master-nginx /]#  rsync --daemon   #启动rsync daemon服务
+[root@master-nginx /]# netstat -tunlp | grep rsync  #查看是否启动成功
+tcp        0      0 0.0.0.0:873             0.0.0.0:*               LISTEN      16598/rsync
+tcp6       0      0 :::873                  :::*                    LISTEN      16598/rsync
+客户端（slave-nginx）：
+[root@slave-nginx tmp]# echo "rsync.conf" > /etc/rsync.password
+[root@slave-nginx tmp]# cat /etc/rsync.password
+rsync.conf
+[root@slave-nginx tmp]# chmod 600 /etc/rsync.password
+[root@slave-nginx tmp]# ll /etc/rsync.password
+-rw------- 1 root root 11 Mar  6 09:57 /etc/rsync.password
+数据备份：
+[root@slave-nginx src]# rsync -avzP ./pcre-8.43.tar.gz rsync_backup@192.168.1.31::backup --password-file=/et
+c/rsync.password
+sending incremental file list
+pcre-8.43.tar.gz
+      2,085,854 100%   24.47MB/s    0:00:00 (xfr#1, to-chk=0/1)
+rsync: chgrp ".pcre-8.43.tar.gz.Cd7JBS" (in backup) failed: Operation not permitted (1)
+sent 2,079,579 bytes  received 135 bytes  4,159,428.00 bytes/sec
+total size is 2,085,854  speedup is 1.00
+rsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1178) [sender=3.1.2]
+上面在报错了，找了好久，是因为rsync --daemon中缺少一行配置fake super = yes。应加上，如：
+------------------------------
+uid = rsync
+gid = rsync
+use chroot = no
+max connections = 200
+timeout = 100
+pid file = /var/run/rsyncd.pid
+lock file = /var/run/rsyncd.lock
+log file = /var/log/rsyncd.log
+fake super = yes   #在版本6里面不需要，现在版本需要
+[backup]
+path = /backup/
+ignore errors
+read only = false
+list = false
+hosts allow = 192.168.1.0/24
+hosts deny = 0.0.0.0/32
+auth users = rsync_backup
+secrets file = /etc/rsync.password
+------------------------------
+添加后重启rsync --daemon后即可。
+[root@slave-nginx src]# rsync -avzP ./nginx-1.10.1.tar.gz rsync_backup@192.168.1.31::backup --password-file=/etc/rsync.password
+sending incremental file list
+nginx-1.10.1.tar.gz
+        909,077 100%   21.99MB/s    0:00:00 (xfr#1, to-chk=0/1)
+sent 908,676 bytes  received 43 bytes  1,817,438.00 bytes/sec
+total size is 909,077  speedup is 1.00
+#--delete参数
+[root@slave-nginx tmp]# ls
+123.txt  456.aaa
+[root@master-nginx backup]# ls
+123.txt  nginx-1.10.1.tar.gz
+[root@slave-nginx tmp]# rsync -avzP /download/src/tmp/ --delete rsync_backup@192.168.1.31::backup --password-file=/etc/rsync.password
+[root@master-nginx backup]# ls
+123.txt  456.aaa
+最终结果显示delete参数的作用就是：客户端有什么，远端服务器就有什么，客户备份目录下没有的，远端服务器目录下其它文件或目录就会被删除，此参数相当危险，实际生产环境中要小心使用
+
+
+#Linux三剑客命令之Awk
+awk命令作用:对文本和数据进行处理
+详细说明:awk 是一种编程语言，用于在linux/unix下对文本和数据进行处理。数据可以来自标准输(stdin)、一个或多个文件，或其它命令的输出。它在命令行中使用，但更多是作为脚本来使用。awk有很多内建的功能，比如数组、函数等，这是它和C语言的相同之处，灵活性是awk最大的优势。
+语法格式:awk [options] 'scripts' var=value filename
+常用参数:
+-F 指定分隔符（可以是字符串或正则表达式）
+-f 从脚本文件中读取awk命令
+-v var=value 赋值变量，将外部变量传递给awk
+脚本基本结构:
+awk 'BEGIN{ print "start" } pattern{ commands } END{ print "end" }' filename
+一个awk脚本通常由BEGIN语句+模式匹配+END语句三部分组成,这三部分都是可选项
+实例：
+#不加print参数时默认只打印当前的行
+[root@master-nginx backup]# echo "hello " | awk 'BEGIN{ print "welcome" } END{ print "2017-08-08" }'
+welcome
+2017-08-08
+[root@master-nginx backup]# echo "hello " | awk 'BEGIN{ print "welcome" } {print} END{ print "2017-08-08" }'
+welcome
+hello
+2017-08-08
+#使用print以逗号分隔时，打印则是以空格分界
+[root@master-nginx backup]# echo | awk ‘{a="hello";b="nihao";c="minggongge";print a,b,c;}'  
+hello nihao minggongge
+#内置变量
+$0   #当前记录
+$1~$n #当前记录的第N个字段
+FS   #输入字段分隔符（-F相同作用）默认空格  Field Separator
+RS   #输入记录分割符，默认换行符  Record Separator
+NF   #字段个数,就是列  Number Field  
+NR   #记录数，就是行号，默认从1开始  Number Row
+OFS  #输出字段分隔符，默认空格  Output Field Separator
+ORS  #输出记录分割符，默认换行符  Output Record Separator
+#外部变量
+[root@master-nginx backup]# a=5
+[root@master-nginx backup]# b=5
+[root@master-nginx backup]# echo | awk '{ print v1*v2 }' v1=$a v2=$b
+25
+#Awk运算与判断
++ -  加减
+* / & 乘 除 求余
+^ *  求幂
+++ -- 增加或减少，作为前缀或后缀
+[root@master-nginx backup]# awk 'BEGIN{a="b";print a,a++,a--,++a;}'
+b 0 1 1   #a="b";print a时，a输出b;print a++时，由于a=b为英文参加运算，所以a等于0，所以输出为0,a再++等于1;print a--时，先输出a等于1，a再--等于0;print ++a时，上一个a为0，a先++等于1=a，输出为1
+#和其它编程语言一样，所有用作算术运算符进行操作，操作数自动转为数值，所有非数值都变为0
+[root@master-nginx backup]# awk 'BEGIN{a="0";print a,a++,a--,a--;}'
+0 0 1 0
+[root@master-nginx backup]# awk 'BEGIN{a="0";print a,a++,a--,--a;}'
+0 0 1 -1
+#注意：a++,a--是先输出a,最后再++和--给自身的。--a，++a是先--和++给自身的。最后再输出a的
+#赋值运算符:
+= += -= *= /= %= ^= **=
+正则运算符
+~ !~  匹配正则表达式/不匹配正则表达式
+逻辑运算符	 
+||  &&  逻辑或  逻辑与
+关系运算符
+< <= > >= != ==  
+其它运算符
+$   字段引用 
+空格 字符串链接符
+?:   三目运算符
+ln   数组中是否存在某键值
+#Awk正则:
+^    行首定位符
+$    行尾定位符
+.    匹配任意单个字符
+*    匹配0个或多个前导字符（包括回车）
++    匹配1个或多个前导字符
+?    匹配0个或1个前导字符   
+[]   匹配指定字符组内的任意一个字符/^[ab]
+[^]  匹配不在指定字符组内的任意一个字符
+()   子表达式
+|    或者
+\    转义符
+~,!~ 匹配或不匹配的条件语句
+x{m} x字符重复m次
+x{m,} x字符至少重复m次
+X{m,n} x字符至少重复m次但不起过n次（需指定参数-posix或--re-interval）
+
+基本语法：awk [options] 'pattern{action}' file
+实例：
+在没有options和pattern的情况下，使用命令awk
+类似cat：
+[root@master-nginx backup]# echo hello > 123.txt
+[root@master-nginx backup]# awk '{print}' 123.txt
+hello
+
+pattern包括两种特殊模式，分别是BEGIN和END：
+1.BEGIN模式，是指命令在处理文本之前执行
+2.END模式，是指命令在处理文本之后执行
+3.BEGIN模式和END模式同时存在时，其中，BEGIN与END之间的{}相当于一个循环体，对文件中的每一行进行处理
+[root@master-nginx backup]# cat 123.txt
+haaaaaaaaai     idjfaids      ello
+sdfasd      fasdfj     dfafds
+[root@master-nginx backup]# awk -F ' ' '{print $1,$2}' 123.txt  #以空格分隔符运行
+haaaaaaaaai idjfaids
+sdfasd fasdfj
+[root@master-nginx backup]# echo | awk -v v=10 '{print v}'  #echo 变量v
+10
+[root@master-nginx backup]# awk -v FS=' ' '{print $1,$2;}' 123.txt  #使用内置变量时要使用-v参数
+haaaaaaaaai idjfaids
+sdfasd fasdfj
+[root@master-nginx backup]# awk -v FS=' ' -v OFS='$' '{print $1,$2;}' 123.txt  #使用内置变量，以空格为分隔符截取字段，以$为分隔符输出。
+haaaaaaaaai$idjfaids
+sdfasd$fasdfj 
+[root@master-nginx backup]# cat 123.txt #编辑后的文本
+hi hello haha
+nihao hope happy
+fdsfs:fdsfs
+[root@master-nginx backup]# awk -v RS=' ' '{print NR,$1}' 123.txt   #以空格为记录分隔，使分隔的成为多行
+1 hi
+2 hello
+3 haha
+4 nihao
+5 hope
+6 happy 
+[root@master-nginx backup]# awk -v FS=' ' '{print NR,$1}' 123.txt  #以空格为字段分隔，使分隔的为多列
+1 hi
+2 nihao
+3 fdsfs:fdsfs
+[root@master-nginx backup]# awk -v FS=' ' '{print NF,$1}' 123.txt  #以空格为字段分隔，输出每行的字段个数
+3 hi
+3 nihao
+1 fdsfs:fdsfs
+[root@master-nginx backup]# last -n 5| awk '{print $1"\trow:"NR"\tcolumn:"NF"\t" $3}'
+root    row:1   column:10       192.168.2.27
+root    row:2   column:10       192.168.2.27
+root    row:3   column:10       192.168.2.27
+root    row:4   column:10       192.168.2.27
+root    row:5   column:10       192.168.2.27
+        row:6   column:0
+wtmp    row:7   column:7        Tue
+[root@master-nginx backup]# cat /etc/passwd | \
+> awk '{FS=":"} $3 < 100 && $3 >10 {print}'  #以':'号为分隔，$3小于100和$3小于10的全部打印
+operator:x:11:0:operator:/root:/sbin/nologin
+games:x:12:100:games:/usr/games:/sbin/nologin
+ftp:x:14:50:FTP User:/var/ftp:/sbin/nologin
+nobody:x:99:99:Nobody:/:/sbin/nologin
+dbus:x:81:81:System message bus:/:/sbin/nologin
+rpc:x:32:32:Rpcbind Daemon:/var/lib/rpcbind:/sbin/nologin
+ntp:x:38:38::/etc/ntp:/sbin/nologin
+sshd:x:74:74:Privilege-separated SSH:/var/empty/sshd:/sbin/nologin
+postfix:x:89:89::/var/spool/postfix:/sbin/nologin
+tcpdump:x:72:72::/:/sbin/nologin
+[root@master-nginx backup]# cat /etc/passwd | awk '{FS=":"} {OFS="#"} $3 < 100 && $3 >10 {print $1,$3,$4}' #以#号为输出分隔符输出$1,$3,$4
+operator#11#0
+games#12#100
+ftp#14#50
+nobody#99#99
+dbus#81#81
+rpc#32#32
+ntp#38#38
+sshd#74#74
+postfix#89#89
+tcpdump#72#72
+[root@master-nginx backup]# cat /etc/passwd | awk '{FS=":"} $3 < 10 {print $1 "\t"$3}'
+root:x:0:0:root:/root:/bin/bash  #这里第一行默认还是以空格为分隔符的
+bin     1
+daemon  2
+adm     3
+lp      4
+sync    5
+shutdown        6
+halt    7
+mail    8
+[root@master-nginx backup]# cat /etc/passwd | awk 'BEGIN {FS=":"} $3 < 10 {print $1 "\t"$3}'
+root    0   #因为最之前使用了BEGIN，所以后面全部生效
+bin     1
+daemon  2
+adm     3
+lp      4
+sync    5
+shutdown        6
+halt    7
+mail    8
+[root@master-nginx backup]# cat chenji | awk 'NR==1{printf"%10s %10s %10s %10s %10s\n",$1,$2,$3,$4,"Total"} NR>=2{total=$2+$3+$4;printf"%10s %10d %10d %10d %10.2f\n",$1,$2,$3,$4,total}' #awk的动作间隔用;或者在{}内敲Enter键
+      Name        1st        2nd        3th      Total
+    libiao         98         95         99     292.00
+ yincanhua         87         98         90     275.00
+zhanwangjun         80         87         75     242.00
+  xuyuying         75         64         61     200.00
+  xuyuying         75         64         61       0.00
+[root@master-nginx backup]# cat chenji | awk '{if(NR==1) printf "%10s %10s %10s %10s %10s\n",$1,$2,$3,$4,"Tobal"} NR>=2{total=$2+$3+$4; printf "%10s %10d %10d %10d %10.2f\n",$1,$2,$3,$4,total}' #只能用一个if
+      Name        1st        2nd        3th      Tobal
+    libiao         98         95         99     292.00
+ yincanhua         87         98         90     275.00
+zhanwangjun         80         87         75     242.00
+  xuyuying         75         64         61     200.00
+
+#echo
+echo -e "next\n" #意思是在引号内容中""引用回车键
+
+#Linux三剑客命令之sed
+[root@master-nginx backup]# sed -n '1,3p' passwd  #-n为安装模式，打开1到3行
+root:x:0:0:root:/root:/bin/bash
+bin:x:1:1:bin:/bin:/sbin/nologin
+daemon:x:2:2:daemon:/sbin:/sbin/nologin
+[root@master-nginx backup]# head -n 5 passwd | sed  '1a jack'  #在第一行后加入jack
+root:x:0:0:root:/root:/bin/bash
+jack
+bin:x:1:1:bin:/bin:/sbin/nologin
+daemon:x:2:2:daemon:/sbin:/sbin/nologin
+adm:x:3:4:adm:/var/adm:/sbin/nologin
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+[root@master-nginx backup]# head -n 5 passwd | sed  '1c jack'  #把第一行改成jack
+jack
+bin:x:1:1:bin:/bin:/sbin/nologin
+daemon:x:2:2:daemon:/sbin:/sbin/nologin
+adm:x:3:4:adm:/var/adm:/sbin/nologin
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+[root@master-nginx backup]# head -n 5 passwd | nl |sed '3d' #第3行被删除
+     1  root:x:0:0:root:/root:/bin/bash
+     2  bin:x:1:1:bin:/bin:/sbin/nologin
+     4  adm:x:3:4:adm:/var/adm:/sbin/nologin
+     5  lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+[root@master-nginx backup]# head -n 5 passwd | nl | sed 's/login/jack/g' #把全部源是login的换成目标jack
+     1  root:x:0:0:root:/root:/bin/bash
+     2  bin:x:1:1:bin:/bin:/sbin/nojack
+     3  daemon:x:2:2:daemon:/sbin:/sbin/nojack
+     4  adm:x:3:4:adm:/var/adm:/sbin/nojack
+     5  lp:x:4:7:lp:/var/spool/lpd:/sbin/nojack
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+[root@master-nginx backup]# cat test ; sed -i 's/login/jack/g' test ;cat test #使用i直接更改文件
+jack:x:0:0:jack:/jack:/bin/bash
+bin:x:1:1:bin:/bin:/sbin/nologin
+daemon:x:2:2:daemon:/sbin:/sbin/nologin
+adm:x:3:4:adm:/var/adm:/sbin/nologin
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+jack:x:0:0:jack:/jack:/bin/bash
+bin:x:1:1:bin:/bin:/sbin/nojack
+daemon:x:2:2:daemon:/sbin:/sbin/nojack
+adm:x:3:4:adm:/var/adm:/sbin/nojack
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nojack
+[root@master-nginx backup]# sed -i '$a add jack' test  #直接在最后一行添加信息add jack
+[root@master-nginx backup]# cat test 
+jack:x:0:0:jack:/jack:/bin/bash
+bin:x:1:1:bin:/bin:/sbin/nojack
+daemon:x:2:2:daemon:/sbin:/sbin/nojack
+adm:x:3:4:adm:/var/adm:/sbin/nojack
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nojack
+add jack
+
+#Linux三剑客命令之grep
+.  代表一定有一个任意字符
+*  代表0到无穷多次
+[:alnum:] 代表大小写字母及数字
+[:alpha:] 代表大小写字母
+[:upper:] 代表大写字母
+[:lower:] 代表小写字母
+[:digit:] 代表数字
+[root@master-nginx backup]# grep --color=auto root passwd  #--color=auto使查找到的突出颜色
+root:x:0:0:root:/root:/bin/bash
+operator:x:11:0:operator:/root:/sbin/nologin
+[root@master-nginx backup]# head -n 5 passwd | grep -i ROOT #-i忽略大小写
+root:x:0:0:root:/root:/bin/bash
+operator:x:11:0:operator:/root:/sbin/nologin
+[root@master-nginx backup]# head -n 5 passwd | grep -iv ROOT #-v取反
+bin:x:1:1:bin:/bin:/sbin/nologin
+daemon:x:2:2:daemon:/sbin:/sbin/nologin
+adm:x:3:4:adm:/var/adm:/sbin/nologin
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+[root@master-nginx backup]# head -n 5 passwd | grep '^root'  #查找开头是root的信息
+root:x:0:0:root:/root:/bin/bash
+[root@master-nginx backup]# head -n 5 passwd | grep '^[^root]' #查找开头是非root的信息
+bin:x:1:1:bin:/bin:/sbin/nologin
+daemon:x:2:2:daemon:/sbin:/sbin/nologin
+adm:x:3:4:adm:/var/adm:/sbin/nologin
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+[root@master-nginx backup]# head -n 5 passwd | grep '.*/var' #查找前面任意信息，包括/var的信息
+adm:x:3:4:adm:/var/adm:/sbin/nologin
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+[root@master-nginx backup]# head -n 5 passwd | grep 'bash$' #查找bash结尾的信息
+root:x:0:0:root:/root:/bin/bash
+[root@master-nginx backup]# head -n 10 passwd | grep '[78]' #查找包含7和8的信息
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+halt:x:7:0:halt:/sbin:/sbin/halt
+mail:x:8:12:mail:/var/spool/mail:/sbin/nologin
+[root@master-nginx backup]# echo -e "123abc \n Root" | grep '^[^0-9]' #查找开关不是数字的信息
+ Root
+[root@master-nginx backup]# echo -e "123abc \n Root \n rooooot" | grep -i 'ro\{3,5\}t'
+ rooooot #查找r开头，中间o有3到5个的，t结尾的信息
+[root@master-nginx backup]# cat test | grep -E 'lp|daemon' #使用-E为延伸型正则表达式
+daemon:x:2:2:daemon:/sbin:/sbin/nojack
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nojack
+[root@master-nginx backup]# cat test  | egrep 'spo+l' #查找一个以上的o信息
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nojack
+[root@master-nginx backup]# cat test  | egrep 'daemon|lp|add'  #或的意思
+daemon:x:2:2:daemon:/sbin:/sbin/nojack
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nojack
+add jack
+[root@master-nginx backup]# echo -e "glale \n goole \n goooole" | egrep 'g(la|oo)le'
+glale  #使用()和|来判断中间是la或oo的信息
+ goole 
+[root@master-nginx backup]# echo -e "gxyzc \n gxyzxyzc \n abcabc" | egrep 'g(xyz)+c' #查找中间是重复xyz的信息
+gxyzc 
+ gxyzxyzc 
 
 </pre>
