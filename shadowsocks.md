@@ -61,3 +61,54 @@ tcp_bbr                20480  30
 输出内容如上，则表示bbr已经成功开启。
 
 </pre>
+
+#Linux for Shadowsocks客户端
+<pre>
+yum install epel-release -y
+yum install python-pip
+pip install shadowsocks
+[root@salt-server /etc/shadowsocks]# cat /etc/shadowsocks/shadowsocks.json #连接服务器信息
+{
+  "server":"ip",
+  "server_port":1080,
+  "local_address":"127.0.0.1",
+  "local_post":1080,
+  "password":"password",
+  "timeout":600,
+  "method":"rc4-md5",
+  "fast_open":false,
+  "workers":1
+}
+
+[root@salt-server /etc/shadowsocks]# cat /etc/systemd/system/shadowsocks.service #设置服务启动
+[Unit]
+Description=Shadowsocks
+[Service]
+TimeoutStartSec=0
+ExecStart=/usr/bin/sslocal -c /etc/shadowsocks/shadowsocks.json
+[Install]
+WantedBy=multi-user.target
+
+systemctl start shadowsocks.service #启动服务
+systemctl status shadowsocks.service
+systemctl stop shadowsocks.service
+[root@salt-server /etc/shadowsocks]# curl --socks 127.0.0.1:1080 http://httpbin.org/ip #验证是否成功
+{
+  "origin": "66.42.64.231, 66.42.64.231"
+}
+
+#安装配置Privoxy
+Shadowsocks是一个 socket5 服务，我们需要使用 Privoxy 把流量转到 http／https 上。
+下载privoxy:wget http://download-ib01.fedoraproject.org/pub/epel/7/x86_64/Packages/p/privoxy-3.0.26-1.el7.x86_64.rpm
+安装privoxy：rpm -ivh privoxy-3.0.26-1.el7.x86_64.rpm
+编辑：vim /etc/privoxy/config
+listen-address  127.0.0.1:8118
+forward-socks5t   /               127.0.0.1:1080 .
+启动privoxy: systemctl start privoxy.service
+编辑/etc/profile:  vim /etc/profile
+export http_proxy="http://127.0.0.1:8118"
+export https_proxy="https://127.0.0.1:8118"
+使配置在当前环境生效： . /etc/profile
+
+测试是否可用：curl www.google.com
+</pre>
