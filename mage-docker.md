@@ -1,4 +1,4 @@
-﻿#马哥docker
+#马哥docker
 <pre>
 1.容器隔离什么：
 UTS:主机名和域名
@@ -278,6 +278,20 @@ harbor脚本执行是执行docker-compose create和docker-compose start的
 启动则是 docker-compose start 
 暂停是docker-compose pause  #unpause为恢复
 
+#docker的资源限制及验证
+在docker run时可以调OOM优先级
+
+限制内存：-m参数为限制ram物理内存，--memory-swap来设置虚拟内存，必须先设置ram后才能设置swap
+ram值为数值加b,k,m,G单位组成数值。
+当swap值为-1时，则容器swap值为物理机所有swap大小。当swap值为unset时，则容器的swap大小为容器ram内存的2倍。当swap值为0时等同于unset。当swap值为正值时，则可用的swap内存为swap内存减去ram所剩的内存大小
+
+限制CPU:--cpus=2为限制cpu核数
+lorel/docker-stress-ng这个镜像用来做资源测试
+--cpus=2
+--cpu-shares 1024 的 --cpu-shares 512 共用物理cpu大小，为2:1
+--oom-kill-disable 为关闭oom的kill功能，代表这个容器再怎么吃资源都不会被kill掉
+--oom-score-adj -1000 #值为-1000到1000,数值越低代表越不容易被kill掉
 
 
+注意：运行容器时使用普通用户，不要使用root用户运行。容器运行时尽量指定使用资源，以免代码导致的问题使系统资源被无尽占用。
 </pre>
