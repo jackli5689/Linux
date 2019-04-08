@@ -8,15 +8,15 @@ k8s的特性：
 1. 自动装箱、自我修复、水平扩展、服务发现和负载均衡、自动发布和回滚
 2. 密钥和配置管理、存储编排、批量处理执行
 k8s是有中心节点的集群系统
-1.API Server（接收并处理请求的）、2.Scheduler（调度容器创建的请求）、控制器（loop，监控容器的健康状态），3.控制器管理器（管理监控控制器的，可以做冗余，确保已建立的控制器为健康的状态）
+1.API Server（接收并处理请求的）、2.Scheduler（调度容器创建的请求），3. 控制器（loop，监控容器的健康状态），控制器管理器（管理监控控制器的，可以做冗余，确保已建立的控制器为健康的状态）
 在k8s中容器不叫容器了，叫pod,pod可以运行多个容器，共享网络和存储卷，一般pod只运行一个容器，pod是k8s中最小的原子单元
 k8s由多个master和多个node组成集群，一般master为3个，可做冗余高可用。node是工作节点（worker）
 无论是什么硬件，只要有cpu，内存，存储空间，网络等，而且可以装上k8s的群集代理程序，都可以成为node节点。
-pod有标签，laber selector(标签选择器，用来标识pod的，其他很多资源都能用)
+pod有标签，laber selector(标签选择器，用来选择pod标签的，其他很多资源都能用)
 #总结：
 master/node
 master:API Server、scheduler,Controller-Manager
-node:kubelet(k8s代理程序),docker(容器引擎)，
+node:kubelet(k8s代理程序),docker(容器引擎)，kube-proxy
 
 #第二节：kubernetes基础概念
 #Pod：Laber,Laber Selector
@@ -45,21 +45,21 @@ node:kubelet(k8s代理程序),docker(容器引擎)，
 #k8s不提供网络组件，所以需要借助第三方插件提供网络,只要是支持CNI标准的网络组件都支持k8s的网络
 1. flannel:提供网络配置，配置简单
 2. calico：提供网络配置和网络策略，但配置很难
-3. canel:前面第1和第2的结合，支持网络配置和网络策略（用flannel的网络配置和calico的网络策略）
+3. canel:前面第1和第2的结合，支持网络配置和网络策略（用flannel的网络配置和calico的网络策略）,这种配置简单功能强大 
 4. .......
 
 master:API Server、Scheduler、Controller-manager
 node:kuberlet、docker、kube-proxy
 
 #第三节：kubeadm初始化Kubernetes集群
-#kubeadm：把k8s都运行为pod
+#kubeadm：可以把k8s都运行为pod
 #k8s架构：
 master:API-Server、Controller-Manager、scheduler、etcd、flanner
 nodes:kubelet、docker、kube-proxy、flanner
 #架构流程：
-1. master,nodes:先安装kubelet,kubeadmin,docker
-2. master:运行kubeadm init初始化为master，预检、解决先决条件、证书、私钥、生成配置文件、生成每一个静态pod的清单文件并完成部署，解下来部署addon
-3. nodes:kubeadm join加入集群，预检、解决先决条件、基于bodstip、基于预共享的令牌认证方式、来完成认证到master节点并完成本地的pod自有安装包和以addon部署kube-proxy、去部署dns
+1. master,nodes:先安装kubelet,kubeadmin,docker,kubectl（kubectl客户端管理工具仅master安装即可）
+2. master:运行kubeadm init初始化为master，预检、解决先决条件、证书、私钥、生成配置文件、生成每一个静态pod的清单文件并完成部署，接下来部署addon
+3. nodes:kubeadm join加入集群，预检、解决先决条件、基于bodstip、基于预共享的令牌认证方式、来完成认证到master节点并完成本地的pod自有安装包和以addon部署kube-proxy、部署dns
 参考文档：https://github.com/kubernetes/kubeadm/blob/master/docs/design/design_v1.10.md
 
 master:192.168.1.238
@@ -79,7 +79,6 @@ gpgcheck=1
 ---------------
 [root@k8s-master yum.repos.d]# yum repolist #查看配置的yum源是否有效
 2. 安装docker和k8s相关组件：
-wget https://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg && import rpm-package-key.gpg #先安装gpg
 [root@k8s-master yum.repos.d]# yum install docker-ce kubelet kubeadm kubectl #kubectl为API-Serverr的客户端，kubelet为node节点的代理程序，kubeadm为快速部署k8s配置工具
  docker-ce.x86_64 3:18.09.4-3.el7           kubeadm.x86_64 0:1.14.0-0          
   kubectl.x86_64 0:1.14.0-0                  kubelet.x86_64 0:1.14.0-0    #为安装的包
@@ -113,6 +112,7 @@ KUBELET_EXTRA_ARGS="--fail-swap-on=false" #设置swap为on时不重新启动
 [root@k8s-master systemd]# kubeadm init --kubernetes-version=v1.14.0 --pod-network-cidr=10.244.0.0/16 --service-cidr=10.96.0.0/12 --ignore-preflight-errors=Swap #kubeadm初始化，并指定k8s版本，pod之间的网络，kube-proxy和service之间的网络，并忽略允许使用swap
 由于当前使用http://www.ik8s.io:10080代理下载时显示不可用，所以我临时搭建了tinyproxy服务器。地址为：Environment="HTTPS_PROXY=http://66.42.64.231:10080"
 ---------------
+tinyproxy搭建方法：
 yum install -y epel-release
 yum install tinyproxy
 vim /etc/tinyproxy/tinyproxy.conf
@@ -129,7 +129,7 @@ Your Kubernetes control-plane has initialized successfully!
 
 To start using your cluster, you need to run the following as a regular user:
 
-  mkdir -p $HOME/.kube
+  mkdir -p $HOME/.kube         #这3个操作是需要操作的
   sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
   sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
@@ -171,6 +171,7 @@ kube-system       Active   56m  #系统级的pod都在这个名称空间中
 #master:安装flanner网络组件
 参考地址：https://github.com/coreos/flannel
 对于Kubernetes v1.7 + kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml  #k8s版本为1.7+以上可以直接执行这个命令安装
+[root@k8s-master ~]# kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml #安装flanner
 [root@k8s-master ~]# docker image ls
 REPOSITORY                           TAG                 IMAGE ID            CREATED             SIZE
 k8s.gcr.io/kube-proxy                v1.14.0             5cd54e388aba        11 days ago         82.1MB
@@ -181,7 +182,7 @@ quay.io/coreos/flannel               v0.11.0-amd64       ff281650a721        2 m
 k8s.gcr.io/coredns                   1.3.1               eb516548c180        2 months ago        40.3MB
 k8s.gcr.io/etcd                      3.3.10              2c4adeb21b4f        4 months ago        258MB
 k8s.gcr.io/pause                     3.1                 da86e6ba6ca1        15 months ago       742kB
-[root@k8s-master ~]# kubectl get pod -n kube-system
+[root@k8s-master ~]# kubectl get pod -n kube-system  #k8s集群系统的pod在kube-system名称空间当中
 NAME                                 READY   STATUS    RESTARTS   AGE
 coredns-fb8b8dccf-2zlk6              1/1     Running   0          60m
 coredns-fb8b8dccf-brx94              1/1     Running   0          60m
@@ -206,7 +207,7 @@ kubelet                                       100%   42    38.2KB/s   00:00
 [root@master-nginx yum.repos.d]# systemctl start docker  #启动docker
 [root@master-nginx yum.repos.d]# systemctl enable docker kubelet #设置docker和kubelet开机自启动
 #node1加入k8s集群:
-[root@master-nginx yum.repos.d]# kubeadm join 192.168.1.238:6443 --token 0waj98.to1dyo9i8vn9omms     --discovery-token-ca-cert-hash sha256:e832244b85a4aca36b24173d4c8bf1fc29bacef7db956cdc7d95a9f4dca53048 --ignore-preflight-errors=Swap #token一串信息是master成功初始化后生成的，--ignore-preflight-errors=Swap为后面自己添加的，意为忽略swap
+[root@master-nginx yum.repos.d]# kubeadm join 192.168.1.238:6443 --token 0waj98.to1dyo9i8vn9omms     --discovery-token-ca-cert-hash sha256:e832244b85a4aca36b24173d4c8bf1fc29bacef7db956cdc7d95a9f4dca53048 --ignore-preflight-errors=Swap #token一串信息是master成功初始化后生成的，复制上面的goken即可  --ignore-preflight-errors=Swap为后面自己添加的，意为忽略swap
 [root@master-nginx yum.repos.d]# docker image ls  #下面的3个镜像为node自己下载并且后面要运行起来的
 REPOSITORY               TAG                 IMAGE ID            CREATED             SIZE
 k8s.gcr.io/kube-proxy    v1.14.0             5cd54e388aba        11 days ago         82.1MB
@@ -227,7 +228,7 @@ kube-scheduler-k8s-master            1/1     Running   0          76m     192.16
 [root@k8s-master ~]# kubectl get nodes
 NAME         STATUS   ROLES    AGE     VERSION
 k8s-master   Ready    master   79m     v1.14.0
-k8s.node1    Ready    <none>   6m41s   v1.14.0 #node1不是master状态，说明可以运行为其他pod资源了
+k8s.node1    Ready    <none>   6m41s   v1.14.0 #node1不是master角色，说明可以运行为其他pod资源了
 #node2：跟node1一样安装配置
 [root@k8s-master ~]# kubectl get nodes #node2节点也已成功加入k8s集群
 NAME         STATUS   ROLES    AGE   VERSION
@@ -276,7 +277,7 @@ service/nginx exposed
 NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
 kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP   3h56m
 nginx        ClusterIP   10.98.100.175   <none>        80/TCP    74m
-[root@k8s-master ~]# kubectl get svc -n kube-system #查看kube-system 中的dns service
+[root@k8s-master ~]# kubectl get svc -n kube-system #查看kube-system 中的dns service，
 NAME       TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                  AGE
 kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   4h3m  #dns地址为10.96.0.10
 #新建一个pod客户端查看coreDNS
@@ -425,7 +426,7 @@ pod "pod-demo" deleted
 [root@k8s-master manifests]# kubectl logs test2-fbf68778f-z4fkx -c container-name #查看容器的log
 
 #第六节：Pod控制器应用进阶1
-alpha,beta,stable
+一般发布版本：alpha,beta,stable
 注：docker:entrypoint,cmd相对于k8s的command,args
 1. 当k8s没有传入command和args时，则使用docker的entrypoint和cmd。
 2. 如果k8s只传入了command，则使用command和cmd组合使用
@@ -467,9 +468,6 @@ pod-demo   2/2     Running   0          6m3s   app=myapp,release=stable,tier=fro
 [root@k8s-master ~]# kubectl get pods -l release --show-labels
 NAME                    READY   STATUS    RESTARTS   AGE   LABELS
 pod-demo                2/2     Running   0          11m   app=myapp,release=stable,tier=frontend
-test2-fbf68778f-z4fkx   1/1     Running   0          19h   pod-template-hash=fbf68778f,release=canary,run=test2
-[root@k8s-master ~]# kubectl get pods -l release=canary --show-labels
-NAME                    READY   STATUS    RESTARTS   AGE   LABELS
 test2-fbf68778f-z4fkx   1/1     Running   0          19h   pod-template-hash=fbf68778f,release=canary,run=test2
 [root@k8s-master ~]# kubectl get pods -l release=canary --show-labels #精确查找，多个标签时为and关系
 NAME                    READY   STATUS    RESTARTS   AGE   LABELS
@@ -546,7 +544,7 @@ metadata:
   labels:
     app: myapp
     tier: frontend
-  annotations:   #元数据注解
+  annotations:   #元数据注解，仅只有注释作用，无字符长度限制
     magedu.com/created-by: "cluster admin"
 -------------
 [root@k8s-master manifests]# kubectl describe pods pod-demo
@@ -586,7 +584,7 @@ spec:
       exec:
         command: ["test","-e","/tmp/healthy"]  #以执行命令来测试是否存活
       initialDelaySeconds: 1 #容器启动延迟1秒后开始检测
-      periodSeconds: 3  #隔3秒钟检测一次，3次为一个周期，如果不能访问则表示不存活
+      periodSeconds: 3  #间隔3秒钟检测一次，3次为一个周期，如果不能访问则表示不存活
 ----------------
 [root@k8s-master manifests]# cat liveness-httpget.yaml  #以httpget来存活性检测
 apiVersion: v1
@@ -650,6 +648,13 @@ spec:
     command: ["/bin/sh","-c","/usr/sbin/nginx"]  #这个命令为容器启动第一时间执行的命令
     args: ["-f","-h","/usr"] #这个为第一时间执行的命令参数
 注：这个声明清单没有执行成功，但逻辑命令都正确
+
+
+
+
+
+
+
 
 
 </pre>
