@@ -6,6 +6,7 @@
 1、安装openvpn 和easy-rsa（该包用来制作ca证书）
 （1）安装epel 仓库源
 wget https://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm
+rpm -Uvh epel-release-6-8.noarch.rpm
 （2）安装openvpn
 yum install openvpn -y
 （3）在github 上，下载最新的easy-rsa
@@ -135,7 +136,10 @@ net.ipv4.ip_forward = 1
 [root@localhost easyrsa3]# openvpn /etc/openvpn/server.conf  & #开启服务
 [root@localhost easyrsa3]# ss -tnlu | grep 1194  #检查服务是否启动
 tcp    LISTEN     0      1                      *:1194                  *:*
-
+加入开机自启动：
+1.在/etc/rc.local下添加执行脚本
+2.用chkconfig添加开机脚本
+##注：本人两种方法用尽后还是不生效，最后找到是selinux的原因，关掉selinux后开机自启动成功
 
 三、客户端连接openvpn
 1、下载openvpn客户端安装
