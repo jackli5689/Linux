@@ -1,5 +1,8 @@
 ﻿#OpenVPN
 <pre>
+环境是centos6.9
+参考链接：https://www.cnblogs.com/along21/p/8339955.html
+
 1、安装openvpn 和easy-rsa（该包用来制作ca证书）
 （1）安装epel 仓库源
 wget https://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm
@@ -158,7 +161,7 @@ verb 3
 ca.crt along.crt along.key #这三个文件，在/root/client/目录下有这三个文件，并把along.crt和along.key改名为client.crt和client.key，因为你的openvpn客户端配置文件已经注明公私钥名称
 4、启动客户端
 （1）启动，注意启动需以管理员权限启动
-（2）输入自己设置的密码
+（2）输入自己设置的密码，这个密码是在服务器端设置客户端证书时设置的密码，这里为666666
 5、测试是否成功
 （1）在client 查询ip，确实是openvpn 给定的ip
 （2）网页查询ip，确认是否是公司的ip
