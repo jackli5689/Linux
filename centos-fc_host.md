@@ -96,15 +96,13 @@ systool -v -c fc_host|grep 'port_name'
 
 # 我们一般需要提供给存储工程师或者网络工程师类似MAC地址格式的字符串
 systool -v -c fc_host|\
-awk -F'"|0x' '{if($1~/\<port_name/)print $3}'|\
-sed 's/\w/& /g'|\
+awk -F'"|0x' '{if($1~/\<port_name/)print $3}'|sed 's/\w/& /g'|
 awk '{for(i=1;i<=NF;i++)
-       {     if(i==NF) {print $i}
-        else if(i%2==0){printf $i":"}
-        else           {printf $i}
+  {     if(i==NF) {print $i}
+   else if(i%2==0){printf $i":"}
+     else           {printf $i}
        }
      }'
-
 
 #linux服务器挂载FC-SAN
 存储端：

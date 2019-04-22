@@ -1,13 +1,11 @@
 ﻿#OpenVPN
 <pre>
 环境是centos6.9
-软件版本：openvpn-2.4.7-1.el6.x86_64
-搭建参考链接：https://www.cnblogs.com/along21/p/8339955.html
-用户认证参考链接：http://www.89cool.com/811.html
+参考链接：https://www.cnblogs.com/along21/p/8339955.html
+
 1、安装openvpn 和easy-rsa（该包用来制作ca证书）
 （1）安装epel 仓库源
 wget https://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm
-rpm -Uvh epel-release-6-8.noarch.rpm
 （2）安装openvpn
 yum install openvpn -y
 （3）在github 上，下载最新的easy-rsa
@@ -137,10 +135,7 @@ net.ipv4.ip_forward = 1
 [root@localhost easyrsa3]# openvpn /etc/openvpn/server.conf  & #开启服务
 [root@localhost easyrsa3]# ss -tnlu | grep 1194  #检查服务是否启动
 tcp    LISTEN     0      1                      *:1194                  *:*
-加入开机自启动：
-1.在/etc/rc.local下添加执行脚本
-2.用chkconfig添加开机脚本
-##注：本人两种方法用尽后还是不生效，最后找到是selinux的原因，关掉selinux后开机自启动成功
+
 
 三、客户端连接openvpn
 1、下载openvpn客户端安装
@@ -162,7 +157,6 @@ key client.key
 comp-lzo
 verb 3
 -------------
-#注：在服务端openvpn安装包中有/usr/share/doc/openvpn-2.4.7/sample/sample-config-files/client.conf文件，此文件也是客户端配置文件，把他配置好改名为client.ovpn即可
 3、把服务器端的证书文件复制到C:\Program Files\OpenVPN\config目录下
 ca.crt along.crt along.key #这三个文件，在/root/client/目录下有这三个文件，并把along.crt和along.key改名为client.crt和client.key，因为你的openvpn客户端配置文件已经注明公私钥名称
 4、启动客户端
@@ -172,99 +166,13 @@ ca.crt along.crt along.key #这三个文件，在/root/client/目录下有这三
 （1）在client 查询ip，确实是openvpn 给定的ip
 （2）网页查询ip，确认是否是公司的ip
 
-##设置用户名及密码登录
-[root@openssl openvpn]# cat checkpsw.sh  #这个脚本放到/etc/openvpn/目录下，并设定755权限，openvpn为owner
----------------------------------------------------
-#!/bin/sh
-###########################################################
-# checkpsw.sh (C) 2004 Mathias Sundman <mathias@openvpn.se>
-#
-# This script will authenticate OpenVPN users against
-# a plain text file. The passfile should simply contain
-# one row per user with the username first followed by
-# one or more space(s) or tab(s) and then the password.
-PASSFILE="/etc/openvpn/psw-file"
-LOG_FILE="/etc/openvpn/openvpn-password.log"
-TIME_STAMP=`date "+%Y-%m-%d %T"`
-###########################################################
-if [ ! -r "${PASSFILE}" ]; then
-echo "${TIME_STAMP}: Could not open password file \"${PASSFILE}\" for reading." >> ${LOG_FILE}
-exit 1
-fi
-CORRECT_PASSWORD=`awk '!/^;/&&!/^#/&&$1=="'${username}'"{print $2;exit}' ${PASSFILE}`
-if [ "${CORRECT_PASSWORD}" = "" ]; then
-echo "${TIME_STAMP}: User does not exist: username=\"${username}\", password=\"${password}\"." >> ${LOG_FILE}
-exit 1
-fi
-if [ "${password}" = "${CORRECT_PASSWORD}" ]; then
-echo "${TIME_STAMP}: Successful authentication: username=\"${username}\"." >> ${LOG_FILE}
-exit 0
-fi
-echo "${TIME_STAMP}: Incorrect password: username=\"${username}\", password=\"${password}\"." >> ${LOG_FILE}
-exit 1
----------------------------------------------------
-[root@openssl openvpn]# grep '^[^#|;]' server.conf
----------------------------------------------------
-local 0.0.0.0
-port 1194
-proto tcp
-dev tun
-ca /etc/openvpn/ca.crt
-cert /etc/openvpn/server.crt
-key /etc/openvpn/server.key  # This file should be kept secret
-dh /etc/openvpn/dh.pem
-server 172.31.254.0 255.255.255.0
-ifconfig-pool-persist ipp.txt
-push "redirect-gateway def1 bypass-dhcp"
-push "dhcp-option DNS 8.8.8.8"
-push "dhcp-option DNS 114.114.114.114"
-client-to-client
-keepalive 10 120
-comp-lzo
-max-clients 100
-user openvpn
-group openvpn
-persist-key
-persist-tun
-status /var/log/openvpn/openvpn-status.log
-log         /var/log/openvpn/openvpn.log
-verb 3
-script-security 3   #在最后面加上此4行可以实现用户名及密码认证
-auth-user-pass-verify /etc/openvpn/checkpsw.sh via-env
-username-as-common-name
-verify-client-cert none
----------------------------------------------------
-[root@openssl openvpn]# grep '^[^#|;]' client.ovpn  #这个是使用帐户密码认证的用户端配置
---------------------------------------------------
-client
-dev tun
-proto tcp
-remote 180.168.251.182 1194
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-ca ca.crt
-auth-user-pass  #加入此行，而且注释掉用户公钥和私钥，但是客户端ca证书还是要的
-comp-lzo
-verb 3
---------------------------------------------------
-[root@openssl openvpn]# grep '^[^#|;]' client.ovpn #这个是使用证书认证的用户端配置
---------------------------------------------------
-client
-dev tun
-proto tcp
-remote 180.168.251.182 1194
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-ca ca.crt
-cert client.crt #使用公私钥认证
-key client.key
-comp-lzo
-verb 3
---------------------------------------------------
-
+吊销客户端证书：
+cd /etc/openvpn/easy-rsa/easyrsa3/ 
+ ./easyrsa revoke tt
+ ./easyrsa gen-crl #生成吊销列表，使服务端验证
+ ln -s /etc/openvpn/easy-rsa/easyrsa3/pki/crl.pem crl.pem #在/etc/openvpn目录下建立吊销列表
+vim /etc/openvpn/crl.pem
+crl-verify crl.pem   #添加这行即可
+openvpn --config /etc/openvpn/server.conf  #重启openvpn
 
 </pre>

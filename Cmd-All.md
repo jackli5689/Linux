@@ -544,4 +544,57 @@ glale  #使用()和|来判断中间是la或oo的信息
 gxyzc 
  gxyzxyzc 
 
+#iptables防火墙
+iptables表：
+filter（过滤）,nat（地址软的）,mangle（对包拆开，封装，修改）,raw（只看不做任何修改）
+规则链：
+PREROUTING
+POSTROUTING
+INPUT
+OUTPUT
+FORWARD
+iptables最大处理连接数：
+[root@smb-server ~]# cat /proc/sys/net/nf_conntrack_max
+65536  #这个是nf_conntrack的最大选择连接数
+管理链：
+-F（清空指定规则）,-P（设定链的默认策略）,-N（自定义一个空链）,-X（删除自定义的空链）,-Z（置零指定链中的计数器）,-E(重命名自定义的链)
+filter表默认策略：
+iptables -P INPUT DROP  
+iptables -P OUTPUT DROP
+iptables -P FORWARD DROP
+查看类：
+-L(显示指定表中的规则)，-n（以数字显示主机地址和端口号）,-v(显示链及规则的详细信息)，-vv（更加详细），-x(显示计数器的精确值)，--line--numbers(显示规则号码)
+动作：
+ACCEPT（放行）,DROP（丢弃）,REJECT（拒绝）,LOG（日志）,DNAT（目标地址转换）,SNAT（源地址转换）,REDIRECT（端口重定向）,MASQUERADE（地址伪装）,LOG（日志）,MARK（打标记）
+扩展模块：
+-m state --state RELATED,ESTABLISHED,NEW,INVALID  #指定状态
+-m multiport --source-ports 21,22,80 | -m multiport --destination-ports 8080,53 | -m multiport --ports 31,100,23 #指定多端口 
+-m iprange --src-range 172.16.100.1-172.168.100.100  #ip范围指定
+-m connlimit --connlimit-above 2  #连接数限定,一般使用ACCEPT时跟取反(!)一起使用
+-m limit --limit 3/minute --limit-burst 5 -p icmp --icmp-type 8  #先保持5个连接，而后根据速率来限定每分钟响应连接的次数为3次，协议为INPUT的icmp
+-m string --algo kmp --string "h7n9" #指定INPUT链中请求报文中有n7n9的，给予匹配，用的是kmp算法，也可用bm算法
+-m state --state LOG --log-prefix "firewall all for icmp" -p icmp --icmp-type 8 #对icmp协议进行进行日志记录，并给日志加入前缀好让自己识别
+iptables -I INPUT -p tcp --dport 22 -m state --state NEW -m recent --set --name SSH -j DROP #设置新的请求到22端口上时，启用recent模块并新建名叫SSH，达到简单防御dos攻击的功能
+iptables -I INPUT -p tcp --dport 22 -m state --state NEW -m recent --update --seconds 300 --hitcount 3 --name SSH -j DROP #更新recent，设置SSH的recent连接在300秒内达到3次时，让请求的用户冻结300秒，
+
+filter表规则:
+iptables -A INPUT -d 192.168.1.19 -p tcp --dport 22 -j ACCEPT #添加在INPUT链的末尾
+iptables -I INPUT -d 192.168.1.19 -p tcp --dport 22 -j ACCEPT #默认插入在INPUT链第一条，可以在INPUT后面加要插入的位置
+iptables -D INPUT 1 # 删除指定链中的第几条规则
+iptables -R INPUT 1 -d 192.168.1.19 -p tcp --dport 22 -j ACCEPT #替换指定链中的第几条规则
+iptables -I INPUT 9 -d 192.168.1.19 -p tcp --dport 21 -m connlimit ! --connlimit-above 2 -j ACCEPT #限定ftp最大连接数为2，超过则不予连接
+
+nat表规则
+SNAT:（源地址转换，用于局域网访问互联网）
+iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -j SNAT --to-source 180.1.1.1  #用于固定外网ip的时候，内网用户可上网，仅限内网用户主动发起
+iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -j MASAUERADE  #用于外网ip不是固定的时候，内网用户可上网，仅限内网用户主动发起
+iptables -t nat -A FORWARD -s 192.168.0.0/24 -p icmp -j REJECT #拒绝icmp的所有协议，其他协议允许通过 
+iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT #开启转发ftp数据服务，RELATED就是打开数据服务的   #ip_nat_ftp 和ip_conntrack_ftp两个模块必须安装
+iptables -A FORWARD -s 192.168.1.0/24 -p tcp --dport 21 -m state --state NEW -j ACCEPT #开启转发ftp命令服务
+DNAT:（目标地址转换，用于互联网访问局域网服务器）
+iptables -t nat -A PREROUTING -d 180.1.1.1 -p tcp --dport 80 -j DNAT --to-destination 192.168.1.1 #目标地址转换，用于互联网访问局域网的服务器的，外网地址为180.1.1.1:80，内网地址为192.168.1.1:80
+iptables -t nat -R PREROUTING -d 180.1.1.1 -p tcp --dport 80 -j DNAT --to-destination 192.168.1.1:8080  #目标地址转换，PAT,用于互联网访问局域网的服务器的，外网地址为180.1.1.1:80，内网地址为192.168.1.1:8080,
+iptables -A FORWARD -m string --algo kmp --string "h7n9" -j DROP #丢弃带"h7n9"信息的请求
+
+
 </pre>
