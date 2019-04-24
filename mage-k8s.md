@@ -1,4 +1,4 @@
-﻿#K8S----容器编排
+#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -11,7 +11,7 @@ k8s是有中心节点的集群系统
 1.API Server（接收并处理请求的）、2.Scheduler（调度容器创建的请求），3. 控制器（loop，监控容器的健康状态），控制器管理器（管理监控控制器的，可以做冗余，确保已建立的控制器为健康的状态）
 在k8s中容器不叫容器了，叫pod,pod可以运行多个容器，共享网络和存储卷，一般pod只运行一个容器，pod是k8s中最小的原子单元
 k8s由多个master和多个node组成集群，一般master为3个，可做冗余高可用。node是工作节点（worker）
-无论是什么硬件，只要有cpu，内存，存储空间，网络等，而且可以装上k8s的群集代理程序，都可以成为node节点。
+无论是什么硬件，只要有cpu，内存，存储空间，网络等，而且可以装上k8s的集群代理程序，都可以成为node节点。
 pod有标签，laber selector(标签选择器，用来选择pod标签的，其他很多资源都能用)
 #总结：
 master/node
@@ -40,8 +40,9 @@ node:kubelet(k8s代理程序),docker(容器引擎)，kube-proxy
 #证书：
 1. etcd之间需要一套CA证书
 2. etcd与API-Server之间需要一套CA证书
-3. API-Server与node之间需要一套CA证书
-4. API-Server与外部(局域网)访问之间需要一套CA证书
+3. API-Server与etcd之间需要一套CA证书
+4. API-Server与node之间需要一套CA证书
+5. API-Server与外部(局域网)访问之间需要一套CA证书
 #k8s不提供网络组件，所以需要借助第三方插件提供网络,只要是支持CNI标准的网络组件都支持k8s的网络
 1. flannel:提供网络配置，配置简单
 2. calico：提供网络配置和网络策略，但配置很难
@@ -83,7 +84,7 @@ gpgcheck=1
  docker-ce.x86_64 3:18.09.4-3.el7           kubeadm.x86_64 0:1.14.0-0          
   kubectl.x86_64 0:1.14.0-0                  kubelet.x86_64 0:1.14.0-0    #为安装的包
 3. 编辑docker启动脚本并启动docker服务
-[root@k8s-master systemd]# vim /usr/lib/systemd/system/docker.service 
+[root@k8s-master systemd]# vim /usr/lib/systemd/system/docker.service #在最前面加两行
 Environment="HTTPS_PROXY=http://www.ik8s.io:10080"  #设置https代理到http://www.ik8s.io:10080这里下载，因为如果不使用代理，docker仓库中有些包下载不下来，所以使用https代理
 Environment="NO_PROXY=127.0.0.0/8,192.168.0.0/16"  #设置127.0.0.0/8,192.168.0.0/16网段地址不使用代理
 [root@k8s-master systemd]# systemctl daemon-reload  #因为你的unit文件发生改变了，必须重新读取
