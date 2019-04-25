@@ -1,4 +1,4 @@
-#K8S----容器编排
+﻿#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -208,7 +208,7 @@ kubelet                                       100%   42    38.2KB/s   00:00
 [root@master-nginx yum.repos.d]# systemctl start docker  #启动docker
 [root@master-nginx yum.repos.d]# systemctl enable docker kubelet #设置docker和kubelet开机自启动
 #node1加入k8s集群:
-[root@master-nginx yum.repos.d]# kubeadm join 192.168.1.238:6443 --token 0waj98.to1dyo9i8vn9omms     --discovery-token-ca-cert-hash sha256:e832244b85a4aca36b24173d4c8bf1fc29bacef7db956cdc7d95a9f4dca53048 --ignore-preflight-errors=Swap #token一串信息是master成功初始化后生成的，复制上面的goken即可  --ignore-preflight-errors=Swap为后面自己添加的，意为忽略swap
+[root@master-nginx yum.repos.d]# kubeadm join 192.168.1.238:6443 --token 0waj98.to1dyo9i8vn9omms     --discovery-token-ca-cert-hash sha256:e832244b85a4aca36b24173d4c8bf1fc29bacef7db956cdc7d95a9f4dca53048 --ignore-preflight-errors=Swap #token一串信息是master成功初始化后生成的，复制上面的token即可  --ignore-preflight-errors=Swap为后面自己添加的，意为忽略swap
 [root@master-nginx yum.repos.d]# docker image ls  #下面的3个镜像为node自己下载并且后面要运行起来的
 REPOSITORY               TAG                 IMAGE ID            CREATED             SIZE
 k8s.gcr.io/kube-proxy    v1.14.0             5cd54e388aba        11 days ago         82.1MB
@@ -340,6 +340,7 @@ deployment "test2" successfully rolled out
 #如何使用集群外地址访问集群内服务
 [root@k8s-master ~]# kubectl edit svc test2 #编辑最外面的service，使其类型为NodePort
   type: NodePort
+##将type: ClusterIP改为type: NodePort即可使集群内service变成对外的service
 [root@k8s-master ~]# kubectl get svc
 NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
 kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP        5h26m
@@ -359,7 +360,7 @@ RESTful:
 		DownwardAPI
 	集群级资源
 		Namespace,Node,Role,ClusterRole,RoleBinding,ClusterRoleBinding
-	元数据弄资源
+	元数据资源
 		HPA,PodTemplate,LimitRange
 	
 
@@ -428,7 +429,7 @@ pod "pod-demo" deleted
 
 #第六节：Pod控制器应用进阶1
 一般发布版本：alpha,beta,stable
-注：docker:entrypoint,cmd相对于k8s的command,args
+###注：docker的entrypoint,cmd相对于k8s的command,args
 1. 当k8s没有传入command和args时，则使用docker的entrypoint和cmd。
 2. 如果k8s只传入了command，则使用command和cmd组合使用
 3. 如果k8s只传入了args,则使用entrypoint和args组合使用
@@ -585,7 +586,7 @@ spec:
       exec:
         command: ["test","-e","/tmp/healthy"]  #以执行命令来测试是否存活
       initialDelaySeconds: 1 #容器启动延迟1秒后开始检测
-      periodSeconds: 3  #间隔3秒钟检测一次，3次为一个周期，如果不能访问则表示不存活
+      periodSeconds: 3  #间隔3秒钟检测一次，failureThreshold默认值为3次一个周期，如果不能访问则表示不存活
 ----------------
 [root@k8s-master manifests]# cat liveness-httpget.yaml  #以httpget来存活性检测
 apiVersion: v1
@@ -604,7 +605,7 @@ spec:
     livenessProbe:
       httpGet:
         port: http  #http解析为80端口，上面有写到
-        path: /index.html  #检测web主页
+        path: /index.html  #检测web主页，路径从web网站的根目录开始
       initialDelaySeconds: 1 #容器启动延迟1秒后开始检测
       periodSeconds: 3  #隔3秒钟检测一次，3次为一个周期，如果不能访问则表示不存活
 [root@k8s-master manifests]# cat readiness-httpget.yaml #以httpget来就绪性检测
