@@ -567,7 +567,7 @@ Always（永远重启）,OnFailure(失败时重启),Never（从不重启）, Def
 #第七节：Pod控制器应用进阶2
 #探针：liveness（存活性检测）,readiness（就绪性检测）
 #启动后勾子
-探针有三种类型：1. ExecAction 2. TCPSocketAction 3. HTTPGetAction
+探针有三种类型：1. ExecAction(执行动作) 2. TCPSocketAction(测试指定端口) 3. HTTPGetAction(测试http服务)
 [root@k8s-master manifests]# kubectl explain  pods.spec.containers #查看容器的探针说明 
 ----------------
 [root@k8s-master manifests]# cat liveness-exec.yaml  #以执行命令来存活性检测
@@ -629,7 +629,7 @@ spec:
       initialDelaySeconds: 1 #容器启动延迟1秒后开始检测
       periodSeconds: 3  #隔3秒钟检测一次，3次为一个周期，如果不能访问则表示不存活
       
-#启动后勾子
+#启动后勾子，启动后做动作或结束前做动作，启动后为postStart,结束前为preStop
 [root@k8s-master manifests]# kubectl explain pods.spec.containers.lifecycle.postStart  #在pod开始后执行事件帮助文档
 [root@k8s-master manifests]# kubectl explain pods.spec.containers.lifecycle.preStop  #在pod结束前执行事件帮助文档
 [root@k8s-master manifests]# cat poststart-pod.yaml  #
@@ -650,6 +650,285 @@ spec:
     command: ["/bin/sh","-c","/usr/sbin/nginx"]  #这个命令为容器启动第一时间执行的命令
     args: ["-f","-h","/usr"] #这个为第一时间执行的命令参数
 注：这个声明清单没有执行成功，但逻辑命令都正确
+
+
+#第八节：Pod控制器
+#回顾：
+配置式清单：apiVersion,kind,metadata,spec(只读，系统自动生成的)
+spec:
+	containers:
+	nodeSelector:
+	nodeName:
+	restartPolicy:
+		Always,Never,OnFailure
+
+containers:
+	name
+	image
+	imagePullPolicy: Always,Never,IfNotPresent
+	ports:
+		name
+		containerPort
+	livenessProbe
+	readinessProbe
+	lifecycle
+livenessProbe和readinessProbe三种内嵌相关应用：
+ExecAction: exec
+TCPSocketAction: tcpSocket
+HTTPGetAction: httpGet
+lifecycle两种内嵌相关应用：
+postStart
+preStop
+
+###pod控制器
+自主式pod：不是由控制器管理的pod,不可能rebuild
+控制器pod：是被控制器管理的pod，可以rebuild
+#####pod控制器类型：
+	ReplicationController
+	ReplicaSet:代用户创建指定数量的pod副本，并确定副本一直满足用户的期望数量状态，多退少补，并且支持扩缩容机制，被称为新一代的ReplicationController，主要核心三点：1.用户期望的副本数。2.标签选择器，以便选定由自己管理和控制的pod副本。3.pod资源模板来完成pod资源的新建
+	Deployment:Deployment工作在ReplicaSet上的，是通过控制ReplicaSet来控制pod的。支持ReplicaSet的所有功能，并支持滚动更新回滚等更多强大的功能。，无状态最重要的控制器
+	DaemonSet:用于确保集群中的节点只运行一个特定的pod副本，实现所谓的系统级的后台任务。新节点加入集群自动加一个特定的pod副本到新的节点。可能是全部节点运行一个特定的副本pod,也可能在部分节点运行一个特定的副本pod。无状态
+	Job:可以启动多个pod，job是执行一次性的作业，是否重构取决于是否完成任务。
+	Cronjob:周期性运行，不需要持续后台运行，只能运行无状态应用
+	Statefulset:有状态应用，
+	Operator:比Statefulset好得多
+Helm:类似linux的yum工具，在k8s里面的工具，
+
+###编写ReplicaSet的yaml
+[root@k8s-master manifests]# cat rs-demo.yaml 
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: myapp2
+  namespace: default
+spec: 
+  replicas: 2
+  selector:
+    matchLabels:
+      app: myapp2
+      release: canary
+  template:
+    metadata:
+      name: myap2-pod  #pod的名称其实没用，k8s会随机生成一个pod名
+      labels:
+        app: myapp2
+        release: canary
+    spec:
+      containers:
+      - name: myapp2-container
+        image: ikubernetes/myapp:v1
+        ports: 
+        - name: http
+          containerPort: 80
+如何自动扩缩容
+	1.可以编辑yaml文件来实现，kubectl edit replicaset myapp2来修改副本数量
+	2.也可能使用scale来实现,kubectl scale --replicas=1 ReplicaSet myapp2
+如何自动升级容器软件版本：
+	使用kubectl edit replicaset myapp2来修改容器镜像版本，然后手动删除pod，才会重新建立新pod的版本为新版本。
+	建议：蓝绿发布，重新建立一个ReplicSet的yaml为myapp3,此时有myapp2和myapp3了，我们使myapp3符合service接口的laber,这样可以对外开放，但myapp3的laber不能满足myapp2的匹配规则。所以myapp2和myapp3的label不能完全一样，但对于service来说有共同一样的label。再删除老的myapp2，完全用新的myapp3版本
+	or 直接改service的label，使service匹配myapp3，不匹配myapp2。来升级新版本。
+灰度、蓝绿，金丝雀(canary)
+
+#第九节：Pod控制器2
+strategy：更新策略
+	type:Recreate、RollingUpdate
+    如果type为RollingUpdate则可以指定滚动更新策略rollingUpdate{maxSurge(最多超出你指定的副本数有几个，可以指定数量或百分比),maxUnavailable(最大几个不可用)}
+revisionHistoryLimit:在滚动更新最多在历史当中保存多少个，默认是10个
+rollbackTo:指定更新到什么版本
+paused:启动暂停。一般启动不暂停
+###编写Deployment的yaml
+[root@k8s-master manifests]# cat deploy-demo.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deploy
+  namespace: default
+spec:
+  replicas: 2
+  selector: 
+    matchLabels: 
+      app: myapp
+      release: canary
+  template: 
+    metadata:
+      labels: 
+        app: myapp
+        release: canary
+    spec:
+      containers:
+      - name: myapp
+        image: ikubernetes/myapp:v1
+        ports: 
+        - name: http
+          containerPort: 80
+[root@k8s-master manifests]# kubectl get deployment #查看deployment的pod
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+myapp          2/2     2            2           19d
+myapp-deploy   2/2     2            2           97s
+nginx-deploy   1/1     1            1           19d
+qq             1/1     1            1           25h
+test           0/2     2            0           19d
+test2          1/1     1            1           19d
+tt             1/1     1            1           19d
+[root@k8s-master manifests]# kubectl get rs #查看replicaSet的pod
+NAME                     DESIRED   CURRENT   READY   AGE
+myapp-5bc569c47d         2         2         2       19d
+myapp-deploy-67b6dfcd8   2         2         2       113s #myapp-deploy-67b6dfcd8前面一段是deployment的名称，后面是模板的哈希值
+nginx-deploy-55d8d67cf   1         1         1       19d
+qq-5c969f76f9            1         1         1       25h
+test-9896c97fb           2         2         0       19d
+test2-fbf68778f          1         1         1       19d
+tt-896b9fc4c             1         1         1       19d
+[root@k8s-master manifests]# kubectl get pods
+NAME                           READY   STATUS             RESTARTS   AGE
+client                         0/1     Completed          0          24h
+myapp-5bc569c47d-8jbqp         1/1     Running            1          18d
+myapp-5bc569c47d-hqjbr         1/1     Running            1          18d
+myapp-deploy-67b6dfcd8-r4dbb   1/1     Running            0          4m #myapp-deploy-67b6dfcd8是replicaSet的名称，r4dbb是随机生成的名称
+myapp-deploy-67b6dfcd8-tltlg   1/1     Running            0          4m
+nginx-deploy-55d8d67cf-t4wbj   1/1     Running            1          19d
+qq-5c969f76f9-dfxnq            1/1     Running            0          25h
+test-9896c97fb-2bbjs           0/1     CrashLoopBackOff   289        24h
+test-9896c97fb-brgc2           0/1     CrashLoopBackOff   4990       18d
+test2-fbf68778f-z4fkx          1/1     Running            1          19d
+tt-896b9fc4c-gq678             1/1     Running            0          70m
+
+[root@k8s-master manifests]# vim deploy-demo.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deploy
+  namespace: default
+spec:
+  replicas: 3 #更改副本为3个
+  selector:
+    matchLabels:
+      app: myapp
+      release: canary
+  template:
+    metadata:
+      labels:
+        app: myapp
+        release: canary
+    spec:
+      containers:
+      - name: myapp
+        image: ikubernetes/myapp:v1
+        ports:
+        - name: http
+          containerPort: 80
+[root@k8s-master manifests]# kubectl apply -f deploy-demo.yaml   #apply命令可以执行多次，而create只能执行一次
+deployment.apps/myapp-deploy configured  
+[root@k8s-master manifests]# kubectl get pods
+NAME                           READY   STATUS             RESTARTS   AGE
+client                         0/1     Completed          0          24h
+myapp-5bc569c47d-8jbqp         1/1     Running            1          18d
+myapp-5bc569c47d-hqjbr         1/1     Running            1          18d
+myapp-deploy-67b6dfcd8-r4dbb   1/1     Running            0          7m
+myapp-deploy-67b6dfcd8-tltlg   1/1     Running            0          7m
+myapp-deploy-67b6dfcd8-xtsdk   1/1     Running            0          10s #新添加了一个pod副本
+nginx-deploy-55d8d67cf-t4wbj   1/1     Running            1          19d
+qq-5c969f76f9-dfxnq            1/1     Running            0          25h
+test-9896c97fb-2bbjs           0/1     CrashLoopBackOff   289        24h
+test-9896c97fb-brgc2           0/1     Completed          4991       18d
+test2-fbf68778f-z4fkx          1/1     Running            1          19d
+tt-896b9fc4c-gq678             1/1     Running            0          73m
+##滚动更新：
+[root@k8s-master manifests]# vim deploy-demo.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deploy
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+      release: canary
+  template:
+    metadata:
+      labels:
+        app: myapp
+        release: canary
+    spec:
+      containers:
+      - name: myapp
+        image: ikubernetes/myapp:v2 #把版本设置为v2
+        ports:
+        - name: http
+          containerPort: 80
+~
+
+[root@k8s-master manifests]# kubectl apply -f deploy-demo.yaml  #更新配置清单
+deployment.apps/myapp-deploy configured
+[root@k8s-master manifests]# kubectl get rs -o wide
+NAME                      DESIRED   CURRENT   READY   AGE    CONTAINERS     IMAGES                 SELECTOR
+myapp-5bc569c47d          2         2         2       19d    myapp          ikubernetes/myapp:v1   pod-template-hash=5bc569c47d,run=myapp
+myapp-deploy-675558bfc5   3         3         3       3m5s   myapp          ikubernetes/myapp:v2   app=myapp,pod-template-hash=675558bfc5,release=canary #这个是滚动更新后的版本
+myapp-deploy-67b6dfcd8    0         0         0       16m    myapp          ikubernetes/myapp:v1   app=myapp,pod-template-hash=67b6dfcd8,release=canary #这个保留的老版本
+nginx-deploy-55d8d67cf    1         1         1       19d    nginx-deploy   nginx:1.14-alpine      pod-template-hash=55d8d67cf,run=nginx-deploy
+qq-5c969f76f9             1         1         1       25h    qq             nginx:1.14-alpine      pod-template-hash=5c969f76f9,run=qq
+test-9896c97fb            2         2         0       19d    test           busybox                pod-template-hash=9896c97fb,run=test
+test2-fbf68778f           1         1         1       19d    test2          nginx:1.14-alpine      pod-template-hash=fbf68778f,run=test2
+tt-896b9fc4c              1         1         1       19d    tt             nginx:1.14-alpine      pod-template-hash=896b9fc4c,run=tt
+[root@k8s-master manifests]# kubectl rollout history deployment myapp-deploy #查看pod控制器的滚动更新历史
+deployment.extensions/myapp-deploy 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         <none>
+ kubectl rollout undo deployment myapp-deploy #回滚操作至上一个版本
+###[root@k8s-master manifests]# kubectl patch deployment myapp-deploy -p '{"spec":{"replicas":5}}' #以打补丁的方式更新pod控制器
+deployment.extensions/myapp-deploy patched
+更改maxSurge和maxUnavailable
+[root@k8s-master manifests]# kubectl patch deployment myapp-deploy -p '{"spec":{"strategy":{"rollingUpdate":{"maxSurge":1,"maxUnavailable":0}}}}' #打补丁设置myapp-deploy的pod最多可以有1个多的，最少不能少1个
+deployment.extensions/myapp-deploy patched 
+[root@k8s-master manifests]# kubectl describe deployment myapp-deploy
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  0 max unavailable, 1 max surge
+[root@k8s-master manifests]# kubectl get pods -l app -w #先监控
+NAME                            READY   STATUS    RESTARTS   AGE
+myapp-deploy-675558bfc5-4pr5r   1/1     Running   0          22m
+myapp-deploy-675558bfc5-6gjcl   1/1     Running   0          22m
+myapp-deploy-675558bfc5-btkj8   1/1     Running   0          32m
+myapp-deploy-675558bfc5-cqckp   1/1     Running   0          32m
+myapp-deploy-675558bfc5-nzb9g   1/1     Running   0          32m
+[root@k8s-master manifests]# kubectl set image deployment myapp-deploy myapp=ikubernetes/myapp:v3 &&  kubectl rollout pause deployment myapp-deploy #版本更新并设置新添加的一个pod开启后不关闭老的pod 
+deployment.extensions/myapp-deploy image updated
+deployment.extensions/myapp-deploy paused
+[root@k8s-master manifests]# kubectl rollout status deployment myapp-deploy #这个命令可查看更新状态
+Waiting for deployment "myapp-deploy" rollout to finish: 1 out of 3 new replicas have been updated... 
+[root@k8s-master manifests]# kubectl rollout resume deployment myapp-deploy #恢复运行
+deployment.extensions/myapp-deploy resumed
+[root@k8s-master manifests]# kubectl rollout status deployment myapp-deploy
+deployment "myapp-deploy" successfully rolled out #此时已经成功更新完成 
+[root@k8s-master manifests]# kubectl get pods -l app -o wide 
+NAME                            READY   STATUS    RESTARTS   AGE     IP            NODE        NOMINATED NODE   READINESS GATES
+myapp-deploy-5d64b5ffd9-bh4vc   1/1     Running   0          3m18s   10.244.2.36   k8s.node2   <none>           <none>
+myapp-deploy-5d64b5ffd9-f4xh5   1/1     Running   0          8m9s    10.244.1.48   k8s.node1   <none>           <none>
+myapp-deploy-5d64b5ffd9-vndp7   1/1     Running   0          3m11s   10.244.1.49   k8s.node1   <none>           <none>
+[root@k8s-master manifests]# curl 10.244.1.48
+Hello MyApp | Version: v4 | <a href="hostname.html">Pod Name</a> #已经更新到v4版本
+[root@k8s-master manifests]# kubectl rollout history deployment myapp-deploy
+deployment.extensions/myapp-deploy 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         <none>
+3         <none>
+4         <none>
+root@k8s-master manifests]# kubectl rollout undo deployment myapp-deploy --to-revision 1 #回滚到版本1
+deployment.extensions/myapp-deploy rolled back
+[root@k8s-master manifests]# kubectl rollout history deployment myapp-deploy
+deployment.extensions/myapp-deploy  #版本1变成5发，前面一个为4
+REVISION  CHANGE-CAUSE
+2         <none>
+3         <none>
+4         <none>
+5         <none>
+
+###编写DaemonSet的yaml
+
 
 
 
