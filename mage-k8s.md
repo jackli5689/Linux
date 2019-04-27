@@ -1,4 +1,4 @@
-﻿#K8S----容器编排
+#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -684,14 +684,14 @@ preStop
 自主式pod：不是由控制器管理的pod,不可能rebuild
 控制器pod：是被控制器管理的pod，可以rebuild
 #####pod控制器类型：
-	ReplicationController
-	ReplicaSet:代用户创建指定数量的pod副本，并确定副本一直满足用户的期望数量状态，多退少补，并且支持扩缩容机制，被称为新一代的ReplicationController，主要核心三点：1.用户期望的副本数。2.标签选择器，以便选定由自己管理和控制的pod副本。3.pod资源模板来完成pod资源的新建
-	Deployment:Deployment工作在ReplicaSet上的，是通过控制ReplicaSet来控制pod的。支持ReplicaSet的所有功能，并支持滚动更新回滚等更多强大的功能。，无状态最重要的控制器
-	DaemonSet:用于确保集群中的节点只运行一个特定的pod副本，实现所谓的系统级的后台任务。新节点加入集群自动加一个特定的pod副本到新的节点。可能是全部节点运行一个特定的副本pod,也可能在部分节点运行一个特定的副本pod。无状态
-	Job:可以启动多个pod，job是执行一次性的作业，是否重构取决于是否完成任务。
-	Cronjob:周期性运行，不需要持续后台运行，只能运行无状态应用
-	Statefulset:有状态应用，
-	Operator:比Statefulset好得多
+	1. ReplicationController
+	2. ReplicaSet:代用户创建指定数量的pod副本，并确定副本一直满足用户的期望数量状态，多退少补，并且支持扩缩容机制，被称为新一代的ReplicationController，主要核心三点：1.用户期望的副本数。2.标签选择器，以便选定由自己管理和控制的pod副本。3.pod资源模板来完成pod资源的新建
+	3. Deployment:Deployment工作在ReplicaSet上的，是通过控制ReplicaSet来控制pod的。支持ReplicaSet的所有功能，并支持滚动更新回滚等更多强大的功能。，无状态最重要的控制器
+	4. DaemonSet:用于确保集群中的节点只运行一个特定的pod副本，实现所谓的系统级的后台任务。新节点加入集群自动加一个特定的pod副本到新的节点。可能是全部节点运行一个特定的副本pod,也可能在部分节点运行一个特定的副本pod。无状态
+	5. Job:可以启动多个pod，job是执行一次性的作业，是否重构取决于是否完成任务。
+	6. Cronjob:周期性运行，不需要持续后台运行，只能运行无状态应用
+	7. Statefulset:有状态应用，
+	8. Operator:比Statefulset好得多
 Helm:类似linux的yum工具，在k8s里面的工具，
 
 ###编写ReplicaSet的yaml
@@ -928,13 +928,714 @@ REVISION  CHANGE-CAUSE
 5         <none>
 
 ###编写DaemonSet的yaml
+DaemonSet每个节点只有一个pod，不允许多个pod。DaemonSet默认是不部署在master上的，因为它不容忍master的污点，只有手动指定才可以运行在master中
+[root@k8s-master manifests]# cat daemon.yaml 
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: myapp-daemon
+  namespace: default
+spec:
+  selector: 
+    matchLabels: 
+      app: filebeat
+      release: stable
+  template: 
+    metadata:
+      labels: 
+        app: filebeat
+        release: stable
+    spec:
+      containers:
+      - name: filebeat
+        image: ikubernetes/filebeat:5.6.5-alpine
+        env:
+        - name: REDIS_HOST
+          value: redis.default.svc.cluster.local
+        - name: REDIS_LOG_LEVEL
+          value: info
+[root@k8s-master manifests]# kubectl apply -f daemon.yaml 
+daemonset.apps/myapp-daemon created
+[root@k8s-master manifests]# kubectl get pods
+NAME                           READY   STATUS             RESTARTS   AGE
+client                         0/1     Completed          0          42h
+myapp-5bc569c47d-8jbqp         1/1     Running            1          18d
+myapp-5bc569c47d-hqjbr         1/1     Running            1          18d
+myapp-daemon-l78l5             1/1     Running            0          22s #新添加的两个
+myapp-daemon-lg8hr             1/1     Running            0          22s
+myapp-deploy-67b6dfcd8-f6p4q   1/1     Running            0          16h
+myapp-deploy-67b6dfcd8-qpp25   1/1     Running            0          16h
+myapp-deploy-67b6dfcd8-wrdp7   1/1     Running            0          16h
+nginx-deploy-55d8d67cf-t4wbj   1/1     Running            1          20d
+qq-5c969f76f9-dfxnq            1/1     Running            0          42h
+test-9896c97fb-2bbjs           0/1     CrashLoopBackOff   494        42h
+test-9896c97fb-brgc2           0/1     CrashLoopBackOff   5194       18d
+test2-fbf68778f-z4fkx          1/1     Running            1          20d
+tt-896b9fc4c-gq678             1/1     Running            0          18h
+
+[root@k8s-master manifests]# kubectl delete -f daemon.yaml 
+[root@k8s-master manifests]# cat daemon.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+      role: logstor
+  template:
+    metadata:
+      labels:
+        app: redis
+        role: logstor
+    spec:
+      containers:
+      - name: redis
+        image: redis:4.0-alpine
+        ports:
+        - name: redis
+          containerPort: 6379
+---     #两个pod控制器类型可以写在同一个文件上，用---分开 
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: filebeat-ds
+  namespace: default
+spec:
+  selector: 
+    matchLabels: 
+      app: filebeat
+      release: stable
+  template: 
+    metadata:
+      labels: 
+        app: filebeat
+        release: stable
+    spec:
+      containers:
+      - name: filebeat
+        image: ikubernetes/filebeat:5.6.5-alpine
+        env:
+        - name: REDIS_HOST
+          value: redis.default.svc.cluster.local #指定redis主机的地址为redes接口
+        - name: REDIS_LOG_LEVEL
+          value: info
+
+[root@k8s-master manifests]# kubectl apply -f daemon.yaml 
+[root@k8s-master ~]# kubectl get pods -l app=filebeat -o wide
+NAME                READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+filebeat-ds-j7fgc   1/1     Running   0          12m   10.244.2.39   k8s.node2   <none>           <none>
+filebeat-ds-s9dhc   1/1     Running   0          12m   10.244.1.54   k8s.node1   <none>           <none>
+[root@k8s-master manifests]# kubectl expose deployment redis --port=6379
+service/redis exposed   #暴露svervice接口
+[root@k8s-master manifests]# kubectl get svc
+NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
+kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP        20d
+nginx        ClusterIP   10.98.100.175   <none>        80/TCP         20d
+qq           NodePort    10.106.125.38   <none>        80:30684/TCP   43h
+redis        ClusterIP   10.106.1.89     <none>        6379/TCP       26s
+注：DaemonSet也支持滚动更新。[root@k8s-master manifests]# kubectl explain ds.spec.updateStrategy
+[root@k8s-master manifests]# kubectl set image daemonset filebeat-ds filebeat=ikubernetes/filebeat:5.6.6-alpine  #滚动更新
+[root@k8s-master manifests]# kubectl get pods -l app=filebeat -o wide -w
+NAME                READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+filebeat-ds-j7fgc   1/1     Running   1          57m   10.244.2.39   k8s.node2   <none>           <none>
+filebeat-ds-s9dhc   1/1     Running   0          57m   10.244.1.54   k8s.node1   <none>           <none>
+filebeat-ds-s9dhc   1/1     Terminating   0          57m   10.244.1.54   k8s.node1   <none>           <none>
+filebeat-ds-s9dhc   0/1     Terminating   0          57m   10.244.1.54   k8s.node1   <none>           <none>
+filebeat-ds-s9dhc   0/1     Terminating   0          57m   10.244.1.54   k8s.node1   <none>           <none>
+filebeat-ds-s9dhc   0/1     Terminating   0          57m   10.244.1.54   k8s.node1   <none>           <none>
+filebeat-ds-s9dhc   0/1     Terminating   0          57m   10.244.1.54   k8s.node1   <none>           <none>
+filebeat-ds-6v8wl   0/1     Pending       0          0s    <none>        <none>      <none>           <none>
+filebeat-ds-6v8wl   0/1     Pending       0          0s    <none>        k8s.node1   <none>           <none>
+filebeat-ds-6v8wl   0/1     ContainerCreating   0          0s    <none>        k8s.node1   <none>           <none>
+filebeat-ds-6v8wl   1/1     Running             0          15s   10.244.1.55   k8s.node1   <none>           <none>
+filebeat-ds-j7fgc   1/1     Terminating         1          58m   10.244.2.39   k8s.node2   <none>           <none>
+filebeat-ds-j7fgc   0/1     Terminating         1          58m   10.244.2.39   k8s.node2   <none>           <none>
+filebeat-ds-j7fgc   0/1     Terminating         1          58m   10.244.2.39   k8s.node2   <none>           <none>
+filebeat-ds-j7fgc   0/1     Terminating         1          58m   10.244.2.39   k8s.node2   <none>           <none>
+filebeat-ds-mcxkz   0/1     Pending             0          0s    <none>        <none>      <none>           <none>
+filebeat-ds-mcxkz   0/1     Pending             0          1s    <none>        k8s.node2   <none>           <none>
+filebeat-ds-mcxkz   0/1     ContainerCreating   0          1s    <none>        k8s.node2   <none>           <none>
+filebeat-ds-mcxkz   1/1     Running             0          15s   10.244.2.40   k8s.node2   <none>           <none>
+注：因为DaemonSet的滚动更新策略maxUnavailable默认值是1，没
+有maxSurge，因为每个节点只允许运行1个pod
+## Job,Cronjob这两个控制器自己去操作。Statefulset现在的知识无法应用到，后面会有范例
 
 
+#第十节:Services资源
+service需要CoreDNS,或者kubeDNS
+service3种网络：Pod Network,Node Network,Cluster Network(Service Network)
+Pod Network和Node Network的ip是实在的ip，而Cluster Network是虚拟的ip，叫Virtual IP
+service网络的三种代理模式：
+	1. user space（k8s1.1版本及以前用，1.1-）
+	2. iptables(k8s1.10版本及以前用，1.10-)
+	3. ipvs(k8s1.11版本，1.11+)
+注：用户创建service时会把信息传递给apiServer存储在etcd数据库当中，此时节点的kube-proxy Watch到apiServer接收到的service信息，kube-proxy会生成iptables规则或ipvs规则，这个操作是同步完成的，会非常快。
+ipvs没有激活默认会降级到iptables
+类型：ExternalName, ClusterIP, NodePort, LoadBalancer
+[root@k8s-master manifests]# kubectl explain svc.spec #查看svc的帮助 
 
+[root@k8s-master manifests]# kubectl get svc
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   20d #这个service是面向集群内部的，让pod与apiserver联系的apserver ip地址
+##创建ClusterIP类型的service
+[root@k8s-master manifests]# cat redis-svc.yaml 
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: default
+spec:
+  selector:
+    app: redis
+    role: logstor
+  clusterIP: 10.97.97.97  #实际操作中不要固定写，应不写这行
+  type: ClusterIP
+  ports:
+  - port: 6379
+    targetPort: 6379
+[root@k8s-master manifests]# kubectl apply -f redis-svc.yaml 
+service/redis created
+[root@k8s-master manifests]# kubectl get svc
+NAME         TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)    AGE
+kubernetes   ClusterIP   10.96.0.1     <none>        443/TCP    20d
+redis        ClusterIP   10.97.97.97   <none>        6379/TCP   3s
+资源记录：
+	SVC_NAME.NS_NAME.DOMAIN.LTD.
+	svc.cluster.local.
+	redis.default.svc.cluster.local.  #yaml创建的service就是这个域名解析名
 
+##创建NodePort类型的service
+[root@k8s-master manifests]# cat myapp-svc.yaml 
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp
+  namespace: default
+spec:
+  selector:
+    app: myapp
+    release: canary
+  clusterIP: 10.99.99.99 #ip建议自动获取
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80 
+    nodePort: 30080 #端口也可以自动获取得到，但是建议手动固定设置
+[root@k8s-master manifests]# kubectl get svc
+NAME         TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)        AGE
+kubernetes   ClusterIP   10.96.0.1     <none>        443/TCP        20d
+myapp        NodePort    10.99.99.99   <none>        80:30080/TCP   3s  #NodePort
+redis        ClusterIP   10.97.97.97   <none>        6379/TCP       9m37s #ClusterIP
+###LoadBalancer接口类型：
+k8s支持lbaas的云计算环境，可以使用LoadBalancer service类型。类似在阿里云中有4个节点，使用LoadBalancer接口类型暴露了3个端口后，会调用lbaas的云计算API生成一个软件的负载均衡器。
+###ExternalName接口类型：
+当k8s集群中的pod想访问k8s集群外的服务时，去的流程是这样的：pod-->ClusterIP:servicePort-->nodeIP:nodePort-->out_target_IP:port,回来的流程是这样的：out_target-->nodeIP:nodePort-->ClusterIP:servicePort-->podIP:containerPort
+##例如访问外部的域名时，这个外部的域名首先在集群中的kubeDNS或者CoreDNS上有CNAME记录指向自己，而集群内访问时使用的是内部DNS设定的新的CNAME名称，从而达到访问外部的服务。
+[root@k8s-master manifests]# kubectl explain svc.spec.sessionAffinity #sessionAffinity可支持会话绑定，绑定一个用户访问时获取到的第一个pod，可以支持打补丁的方式进行绑定也可以支持edit yaml文件的方式。
+[root@k8s-master manifests]# kubectl patch svc myapp -p '{"spec":{"sessionAffinity":"ClientIP"}}' #这个为绑定会话联系sessionAffinity
+service/myapp patched
+[root@k8s-master manifests]# while true; do curl http://192.168.1.31:30080/hostname.html; sleep 1 ;done
+myapp-deploy-7f577979c8-m58mz
+myapp-deploy-7f577979c8-m58mz
+myapp-deploy-7f577979c8-b9ktd
+myapp-deploy-7f577979c8-m58mz
+myapp-deploy-7f577979c8-g6nq9  #开始绑定了
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+myapp-deploy-7f577979c8-g6nq9
+[root@k8s-master manifests]# kubectl patch svc myapp -p '{"spec":{"sessionAffinity":"None"}}' #这个为不绑定会话联系sessionAffinity
 
+#headless接口类型，无头serice,就是没有service ip的service,service名称直接指向podIp 
+[root@k8s-master manifests]# vim headless.yaml 
+apiVersion: v1
+kind: Service
+metadata:
+  name: headless
+  namespace: default
+spec:
+  selector:
+    app: myapp
+    release: canary
+  clusterIP: None
+  ports:
+  - port: 80
+    targetPort: 80
+"headless.yaml" 15L, 196C written                                                     
+[root@k8s-master manifests]# kubectl apply -f headless.yaml 
+service/headless created
+[root@k8s-master manifests]# kubectl get svc
+NAME         TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)    AGE
+headless     ClusterIP   None          <none>        80/TCP     6s #无头ip的service
+kubernetes   ClusterIP   10.96.0.1     <none>        443/TCP    20d
+redis        ClusterIP   10.97.97.97   <none>        6379/TCP   59m
+[root@k8s-master manifests]# dig -t A headless.default.svc.cluster.local. @10.96.0.10
 
+; <<>> DiG 9.9.4-RedHat-9.9.4-61.el7 <<>> -t A headless.default.svc.cluster.local. @10.96.0.10
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 12803
+;; flags: qr aa rd; QUERY: 1, ANSWER: 3, AUTHORITY: 0, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
 
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;headless.default.svc.cluster.local. IN A
+
+;; ANSWER SECTION:
+headless.default.svc.cluster.local. 5 IN A      10.244.2.41  #无头service直接指向3个pod的ip
+headless.default.svc.cluster.local. 5 IN A      10.244.1.56
+headless.default.svc.cluster.local. 5 IN A      10.244.2.42
+[root@k8s-master manifests]# kubectl get pod -l release=canary -o wide
+NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+myapp-deploy-7f577979c8-b9ktd   1/1     Running   0          47m   10.244.2.42     k8s.node2   <none>           <none>  #IP正好对应pod的ip
+myapp-deploy-7f577979c8-g6nq9   1/1     Running   0          47m   10.244.1.56   k8s.node1   <none>           <none>
+myapp-deploy-7f577979c8-m58mz   1/1     Running   0          47m   10.244.2.41   k8s.node2   <none>           <none>
+[root@k8s-master manifests]# dig -t A redis.default.svc.cluster.local. @10.96.0.10
+
+; <<>> DiG 9.9.4-RedHat-9.9.4-61.el7 <<>> -t A redis.default.svc.cluster.local. @10.96.0.10
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 59325
+;; flags: qr aa rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;redis.default.svc.cluster.local. IN    A
+
+;; ANSWER SECTION:
+redis.default.svc.cluster.local. 5 IN   A       10.97.97.97 #这个是有头的service，所以指向serviceIP
+
+;; Query time: 0 msec
+;; SERVER: 10.96.0.10#53(10.96.0.10)
+;; WHEN: Sat Apr 27 13:17:29 CST 2019
+;; MSG SIZE  rcvd: 107
+[root@k8s-master manifests]# kubectl get svc -n kube-system  #可以查看k8s集群的dns
+NAME       TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                  AGE
+kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   20d
+
+#第十一节：ingress及Ingress Controller
+#如何启用ipvs：
+1. 需要在/etc/sysconfig/kubelet的配置文件上添加一行KUBE_PROXY_MODE=ipvs
+2. 写脚本使node主机启动时自动装载ipvs模块。ip_vs,ip_vs_rr,ip_vs_wrr,ip_vs_sh,nf_conntrack_ipv4几个模块
+3. 初始化安装kublet就可以安装ipvs了。只能在刚开始装的时候开启。
+Ingress Controller：来实现节点的污点，从而使DaemonSet在特定的节点上部署一个pod,使部署上的每个pod共享节点的网络空间，这个共享节点网络空间的pod是Ingress Controller，指向Ingress七层负载均衡器(k8s上有Nginx,Traefik,Envoy,Haproxy[最不受待见])，直接指向后端的http pod，他们之间是明文传输的，而最外层是对外提供https的负载均衡器，从而实现网站的https部署。后端的pod会变化，所以要建一个service，这个service来分类pod,而ingress会watch收集service的pod信息，并且会注入到pod的配置文件当中,实现负载均衡器的动态扩展。
+注：1.要么是虚拟主机的。2.要么是url路径映射的。
+
+##操作：
+#参考链接：https://github.com/kubernetes/ingress-nginx
+#参考链接https://kubernetes.github.io/ingress-nginx/deploy/
+命令创建名称空间：kubectl create namespace dev  #kubectl delete ns/dev
+1. [root@k8s-master ingress-nginx]# for i in configmap.yaml namespace.yaml rbac.yaml with-rbac.yaml  ;do wget https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/$i;done
+----------------
+[root@k8s-master ingress-nginx]# cat namespace.yaml 
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+----------------
+[root@k8s-master ingress-nginx]# cat configmap.yaml 
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: nginx-configuration
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: tcp-services
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: udp-services
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+----------------
+[root@k8s-master ingress-nginx]# cat rbac.yaml 
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nginx-ingress-serviceaccount
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: nginx-ingress-clusterrole
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - endpoints
+      - nodes
+      - pods
+      - secrets
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "extensions"
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - "extensions"
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata:
+  name: nginx-ingress-role
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - pods
+      - secrets
+      - namespaces
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    resourceNames:
+      # Defaults to "<election-id>-<ingress-class>"
+      # Here: "<ingress-controller-leader>-<nginx>"
+      # This has to be adapted if you change either parameter
+      # when launching the nginx-ingress-controller.
+      - "ingress-controller-leader-nginx"
+    verbs:
+      - get
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - endpoints
+    verbs:
+      - get
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  name: nginx-ingress-role-nisa-binding
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nginx-ingress-role
+subjects:
+  - kind: ServiceAccount
+    name: nginx-ingress-serviceaccount
+    namespace: ingress-nginx
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: nginx-ingress-clusterrole-nisa-binding
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nginx-ingress-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: nginx-ingress-serviceaccount
+    namespace: ingress-nginx
+
+----------------
+[root@k8s-master ingress-nginx]# cat with-rbac.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-ingress-controller
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+      app.kubernetes.io/part-of: ingress-nginx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ingress-nginx
+        app.kubernetes.io/part-of: ingress-nginx
+      annotations:
+        prometheus.io/port: "10254"
+        prometheus.io/scrape: "true"
+    spec:
+      serviceAccountName: nginx-ingress-serviceaccount
+      containers:
+        - name: nginx-ingress-controller
+          image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.24.1
+          args:
+            - /nginx-ingress-controller
+            - --configmap=$(POD_NAMESPACE)/nginx-configuration
+            - --tcp-services-configmap=$(POD_NAMESPACE)/tcp-services
+            - --udp-services-configmap=$(POD_NAMESPACE)/udp-services
+            - --publish-service=$(POD_NAMESPACE)/ingress-nginx
+            - --annotations-prefix=nginx.ingress.kubernetes.io
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_BIND_SERVICE
+            # www-data -> 33
+            runAsUser: 33
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: http
+              containerPort: 80
+            - name: https
+              containerPort: 443
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 10
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 10
+----------------
+2. 创建tcp-services-configmap.yaml和udp-services-configmap.yaml
+----------------
+[root@k8s-master ingress-nginx]# cat tcp-services-configmap.yaml 
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tcp-services
+  namespace: ingress-nginx
+[root@k8s-master ingress-nginx]# cat udp-services-configmap.yaml 
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: udp-services
+  namespace: ingress-nginx
+----------------
+3. [root@k8s-master ingress-nginx]# kubectl apply -f namespace.yaml  #先创建名称空间
+namespace/ingress-nginx created
+[root@k8s-master ingress-nginx]# kubectl get ns 
+NAME              STATUS   AGE
+default           Active   21d
+ingress-nginx     Active   9s
+kube-node-lease   Active   21d
+kube-public       Active   21d
+kube-system       Active   21d
+4. [root@k8s-master ingress-nginx]# ls
+configmap.yaml  rbac.yaml                    udp-services-configmap.yaml
+namespace.yaml  tcp-services-configmap.yaml  with-rbac.yaml
+[root@k8s-master ingress-nginx]# kubectl apply -f ./ #创建当前目录下的所有yaml文件
+configmap/nginx-configuration created
+configmap/tcp-services created
+configmap/udp-services created
+namespace/ingress-nginx unchanged
+serviceaccount/nginx-ingress-serviceaccount created
+clusterrole.rbac.authorization.k8s.io/nginx-ingress-clusterrole created
+role.rbac.authorization.k8s.io/nginx-ingress-role created
+rolebinding.rbac.authorization.k8s.io/nginx-ingress-role-nisa-binding created
+clusterrolebinding.rbac.authorization.k8s.io/nginx-ingress-clusterrole-nisa-binding created
+configmap/tcp-services configured
+configmap/udp-services configured
+deployment.apps/nginx-ingress-controller created
+##注：如果想简单部署，可以下载部署这个yaml文件即可【https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/mandatory.yaml】，这个yaml文件包括了上面几个文
+
+5. [root@k8s-master ingress-nginx]# cat deployment.yaml #创建nginx后端pod
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp 
+  namespace: default 
+spec:
+  selector:
+    name: myapp
+    release: canary
+  ports:
+  - name: http
+    targetPort: 80
+    port: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deploy
+  namespace: default
+spec:
+  replicas: 3
+  selector: 
+    matchLabels: 
+      app: myapp
+      release: canary
+  template: 
+    metadata:
+      labels: 
+        app: myapp
+        release: canary
+    spec:
+      containers:
+      - name: myapp
+        image: ikubernetes/myapp:v2
+        ports: 
+        - name: http
+          containerPort: 80
+[root@k8s-master ingress-nginx]# kubectl get pods -l app
+NAME                            READY   STATUS    RESTARTS   AGE
+myapp-deploy-675558bfc5-9ms5m   1/1     Running   0          10s
+myapp-deploy-675558bfc5-mbkt8   1/1     Running   0          10s
+myapp-deploy-675558bfc5-shhtf   1/1     Running   0          10s
+[root@k8s-master ingress-nginx]# kubectl get svc
+NAME         TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.96.0.1        <none>        443/TCP   21d
+myapp        ClusterIP   10.106.152.155   <none>        80/TCP    17s
+
+6. [root@k8s-master ingress-nginx]# wget https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/provider/baremetal/service-nodeport.yaml
+7. [root@k8s-master ingress-nginx]# ls
+configmap.yaml  rbac.yaml              tcp-services-configmap.yaml  with-rbac.yaml
+namespace.yaml  service-nodeport.yaml  udp-services-configmap.yaml
+8. [root@k8s-master ingress-nginx]# cat service-nodeport.yaml 
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-nginx
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: 30080
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      nodePort: 30443
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+9. [root@k8s-master ingress-nginx]# kubectl apply  -f service-nodeport.yaml 
+service/ingress-nginx created
+10. [root@k8s-master ingress-nginx]# kubectl get svc -n ingress-nginx
+NAME            TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
+ingress-nginx   NodePort   10.97.189.167   <none>        80:30080/TCP,443:30443/TCP   2m13s
+11. 写规则映射
 
 
 
