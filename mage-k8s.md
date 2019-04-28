@@ -1,4 +1,4 @@
-#K8S----容器编排
+﻿#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -928,7 +928,7 @@ REVISION  CHANGE-CAUSE
 5         <none>
 
 ###编写DaemonSet的yaml
-DaemonSet每个节点只有一个pod，不允许多个pod。DaemonSet默认是不部署在master上的，因为它不容忍master的污点，只有手动指定才可以运行在master中
+DaemonSet每个节点只有一个pod，不允许多个pod。DaemonSet默认是不部署在master上的，因为它不容忍master的污点，只有手动指定才可以运行在污点中
 [root@k8s-master manifests]# cat daemon.yaml 
 apiVersion: apps/v1
 kind: DaemonSet
@@ -1238,16 +1238,24 @@ kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   20d
 1. 需要在/etc/sysconfig/kubelet的配置文件上添加一行KUBE_PROXY_MODE=ipvs
 2. 写脚本使node主机启动时自动装载ipvs模块。ip_vs,ip_vs_rr,ip_vs_wrr,ip_vs_sh,nf_conntrack_ipv4几个模块
 3. 初始化安装kublet就可以安装ipvs了。只能在刚开始装的时候开启。
-Ingress Controller：来实现节点的污点，从而使DaemonSet在特定的节点上部署一个pod,使部署上的每个pod共享节点的网络空间，这个共享节点网络空间的pod是Ingress Controller，指向Ingress七层负载均衡器(k8s上有Nginx,Traefik,Envoy,Haproxy[最不受待见])，直接指向后端的http pod，他们之间是明文传输的，而最外层是对外提供https的负载均衡器，从而实现网站的https部署。后端的pod会变化，所以要建一个service，这个service来分类pod,而ingress会watch收集service的pod信息，并且会注入到pod的配置文件当中,实现负载均衡器的动态扩展。
-注：1.要么是虚拟主机的。2.要么是url路径映射的。
 
+##k8s组成：
+master组件:APIServer,Scheduler,Controll Manager 【ReplicaSet,Deployment,DaemonSet】
+node组件:kubelet,docker,kube-proxy
+四个核心附件：DNS,Dashboard(K8S集群的全部功能都要基于Web的UI，来管理集群中的应用和集群自身。),Heapster(容器和节点的性能监控与分析系统，它收集并解析多种指标数据，如资源利用率、生命周期时间，在最新的版本当中，其主要功能逐渐由Prometheus结合其他的组件进行代替。),Ingress Controller
+##Ingress Controll自己独立运行的一个或一组pod资源，拥有七层代理能力和调度能力的应用程序，在做微服务的：Nginx,Traefik,Envoy
+
+##流程：用户访问最外层的四层负载均衡LVS的VIP,然后LVS代理到集群部分节点的DaemonSet类型的pod，被代理的pod实现污点，使DaemonSet能容忍污点从而部署DaemonSet类型的pod,且每个pod共享节点的网络空间，这个共享节点网络空间的pod是Ingress Controller，是七层负载均衡器(k8s上有Nginx,Traefik,Envoy,Haproxy[最不受待见])，Ingress Controller指向Ingress,Ingress直接指向后端的http pod，他们之间是明文传输的，而对集群外提供的Ingress Controller七层负载均衡器是https协议的，可以卸载ssl会话和重载ssl会话，从而实现大量http网站的https部署。因为后端的pod随时会变化，所以要建一个service，这个service会从APIServer上实时收集变动的信息来重新分类pod,而ingress会watch收集service的pod信息，并且会注入到uptream的配置文件当中并且传输给Ingress Controller,Ingress Controller从而实现配置文件的动态扩展。
+
+注：怎么定义Ingress,有两种方法：1.基于虚拟主机名访问。2.基于url路径访问。
 ##操作：
 #参考链接：https://github.com/kubernetes/ingress-nginx
 #参考链接https://kubernetes.github.io/ingress-nginx/deploy/
 命令创建名称空间：kubectl create namespace dev  #kubectl delete ns/dev
+#部署ingress Controller
 1. [root@k8s-master ingress-nginx]# for i in configmap.yaml namespace.yaml rbac.yaml with-rbac.yaml  ;do wget https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/$i;done
 ----------------
-[root@k8s-master ingress-nginx]# cat namespace.yaml 
+[root@k8s-master ingress-nginx]# cat namespace.yaml #先创建名称空间
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -1256,7 +1264,7 @@ metadata:
     app.kubernetes.io/name: ingress-nginx
     app.kubernetes.io/part-of: ingress-nginx
 ----------------
-[root@k8s-master ingress-nginx]# cat configmap.yaml 
+[root@k8s-master ingress-nginx]# cat configmap.yaml #为nginx注入配置的
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -1286,7 +1294,7 @@ metadata:
     app.kubernetes.io/name: ingress-nginx
     app.kubernetes.io/part-of: ingress-nginx
 ----------------
-[root@k8s-master ingress-nginx]# cat rbac.yaml 
+[root@k8s-master ingress-nginx]# cat rbac.yaml #定义clster role，必要让Ingress Controll拥有它本来到达不了的名称空间权限，角色绑定，kubeadm默认rbac是启用的
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -1433,7 +1441,7 @@ subjects:
     namespace: ingress-nginx
 
 ----------------
-[root@k8s-master ingress-nginx]# cat with-rbac.yaml 
+[root@k8s-master ingress-nginx]# cat with-rbac.yaml  #使ingress controller部署时带上rbac部署
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1526,7 +1534,7 @@ metadata:
   name: udp-services
   namespace: ingress-nginx
 ----------------
-3. [root@k8s-master ingress-nginx]# kubectl apply -f namespace.yaml  #先创建名称空间
+3. [root@k8s-master ingress-nginx]# kubectl apply -f namespace.yaml  #先创建名称空间，后面操作是基于这个操作的
 namespace/ingress-nginx created
 [root@k8s-master ingress-nginx]# kubectl get ns 
 NAME              STATUS   AGE
@@ -1551,8 +1559,10 @@ clusterrolebinding.rbac.authorization.k8s.io/nginx-ingress-clusterrole-nisa-bind
 configmap/tcp-services configured
 configmap/udp-services configured
 deployment.apps/nginx-ingress-controller created
-##注：如果想简单部署，可以下载部署这个yaml文件即可【https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/mandatory.yaml】，这个yaml文件包括了上面几个文
+##注：通用部署：如果想简单部署，可以下载部署这个yaml文件即可【https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/mandatory.yaml】，这个yaml文件包括了上面几个文件
 
+#创建ingress:
+#为了ingress能显现真正的效果来，我们先做前提准备，部署后端应用：
 5. [root@k8s-master ingress-nginx]# cat deployment.yaml #创建nginx后端pod
 apiVersion: v1
 kind: Service
@@ -1561,7 +1571,7 @@ metadata:
   namespace: default 
 spec:
   selector:
-    name: myapp
+    app: myapp
     release: canary
   ports:
   - name: http
@@ -1600,7 +1610,7 @@ myapp-deploy-675558bfc5-shhtf   1/1     Running   0          10s
 NAME         TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
 kubernetes   ClusterIP   10.96.0.1        <none>        443/TCP   21d
 myapp        ClusterIP   10.106.152.155   <none>        80/TCP    17s
-
+#现在定义NodePort Service，使Ingress Controller可使集群外的用户访问
 6. [root@k8s-master ingress-nginx]# wget https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/provider/baremetal/service-nodeport.yaml
 7. [root@k8s-master ingress-nginx]# ls
 configmap.yaml  rbac.yaml              tcp-services-configmap.yaml  with-rbac.yaml
@@ -1635,7 +1645,38 @@ service/ingress-nginx created
 10. [root@k8s-master ingress-nginx]# kubectl get svc -n ingress-nginx
 NAME            TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
 ingress-nginx   NodePort   10.97.189.167   <none>        80:30080/TCP,443:30443/TCP   2m13s
-11. 写规则映射
+#定义Ingress:
+11. [root@k8s-master ingress-nginx]# cat ingress-nginx.yaml 
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-myapp
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: "nginx" #这项很重要，说明是nginx还是envoy,traefik
+spec:
+  rules:
+  - host: myapp.magedu.com
+    http:
+      paths: 
+      - path: 
+        backend:
+          serviceName: myapp
+          servicePort: 80
+[root@k8s-master ingress-nginx]# kubectl apply -f ingress-nginx.yaml 
+ingress.extensions/ingress-myapp created
+12. root@k8s-master ingress-nginx]# kubectl exec -it -n ingress-nginx nginx-ingress-controller-5694ccb578-cmb7h -- /bin/sh  #进入ingress controller查看配置文件是否被ingress的规则匹配到
+#注：删除多余的pod始终删不掉，自己会重构时，查看pod的控制器类型，删除符合的控制器即可[root@k8s-master manifests]# kubectl delete deploy qq
+deployment.extensions "qq" deleted
+13. 编辑C:\Windows\System32\drivers\etc,添加hosts记录
+192.168.1.31 myapp.magedu.com 
+#部署tomcat
+14. [root@k8s-master ingress-nginx]# kubectl apply -f tomcat-deploy.yaml 
+service/tomcat created
+[root@k8s-master ingress-nginx]# kubectl apply -f tomcat-ingress.yaml 
+ingress.extensions/ingress-myapp configured
+
+
 
 
 
