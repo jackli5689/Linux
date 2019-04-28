@@ -1,4 +1,4 @@
-﻿#K8S----容器编排
+#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -1243,9 +1243,9 @@ kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   20d
 master组件:APIServer,Scheduler,Controll Manager 【ReplicaSet,Deployment,DaemonSet】
 node组件:kubelet,docker,kube-proxy
 四个核心附件：DNS,Dashboard(K8S集群的全部功能都要基于Web的UI，来管理集群中的应用和集群自身。),Heapster(容器和节点的性能监控与分析系统，它收集并解析多种指标数据，如资源利用率、生命周期时间，在最新的版本当中，其主要功能逐渐由Prometheus结合其他的组件进行代替。),Ingress Controller
-##Ingress Controll自己独立运行的一个或一组pod资源，拥有七层代理能力和调度能力的应用程序，在做微服务的：Nginx,Traefik,Envoy
+##Ingress Controll自己独立运行的一个或一组pod资源，拥有七层代理能力和调度能力的应用程序，在做微服务的有三种：Nginx,Traefik,Envoy
 
-##流程：用户访问最外层的四层负载均衡LVS的VIP,然后LVS代理到集群部分节点的DaemonSet类型的pod，被代理的pod实现污点，使DaemonSet能容忍污点从而部署DaemonSet类型的pod,且每个pod共享节点的网络空间，这个共享节点网络空间的pod是Ingress Controller，是七层负载均衡器(k8s上有Nginx,Traefik,Envoy,Haproxy[最不受待见])，Ingress Controller指向Ingress,Ingress直接指向后端的http pod，他们之间是明文传输的，而对集群外提供的Ingress Controller七层负载均衡器是https协议的，可以卸载ssl会话和重载ssl会话，从而实现大量http网站的https部署。因为后端的pod随时会变化，所以要建一个service，这个service会从APIServer上实时收集变动的信息来重新分类pod,而ingress会watch收集service的pod信息，并且会注入到uptream的配置文件当中并且传输给Ingress Controller,Ingress Controller从而实现配置文件的动态扩展。
+##流程：用户访问最外层的四层负载均衡LVS的VIP,然后LVS代理到集群部分节点的DaemonSet类型的pod，被代理的pod实现污点，使DaemonSet能容忍污点从而部署DaemonSet类型的pod,且每个pod共享节点的网络空间，这个共享节点网络空间的pod是Ingress Controller，是七层负载均衡器(有Nginx,Traefik,Envoy,Haproxy[最不受待见])，Ingress Controller指向后端的http pod，他们之间是明文传输的，而对集群外提供的Ingress Controller七层负载均衡器是https协议的，可以卸载用户ssl会话和重载pod的ssl会话，从而实现大量http网站的https部署。因为后端的pod随时会变化，所以要建一个service，这个service会从APIServer上实时收集变动的信息来重新分类pod,而ingress会watch收集service的pod信息，并且会注入到ingress-nginx的配置文件当中,从而实现配置文件的动态扩展。
 
 注：怎么定义Ingress,有两种方法：1.基于虚拟主机名访问。2.基于url路径访问。
 ##操作：
@@ -1264,7 +1264,7 @@ metadata:
     app.kubernetes.io/name: ingress-nginx
     app.kubernetes.io/part-of: ingress-nginx
 ----------------
-[root@k8s-master ingress-nginx]# cat configmap.yaml #为nginx注入配置的
+[root@k8s-master ingress-nginx]# cat configmap.yaml #为ingress-nginx注入配置的
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -1294,7 +1294,7 @@ metadata:
     app.kubernetes.io/name: ingress-nginx
     app.kubernetes.io/part-of: ingress-nginx
 ----------------
-[root@k8s-master ingress-nginx]# cat rbac.yaml #定义clster role，必要让Ingress Controll拥有它本来到达不了的名称空间权限，角色绑定，kubeadm默认rbac是启用的
+[root@k8s-master ingress-nginx]# cat rbac.yaml #定义clster role，让Ingress Controll拥有它本来到达不了的名称空间权限，角色绑定，kubeadm默认rbac是启用的
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -1441,7 +1441,7 @@ subjects:
     namespace: ingress-nginx
 
 ----------------
-[root@k8s-master ingress-nginx]# cat with-rbac.yaml  #使ingress controller部署时带上rbac部署
+[root@k8s-master ingress-nginx]# cat with-rbac.yaml  #部署ingress controller并且带上rbac部署
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1519,7 +1519,7 @@ spec:
             successThreshold: 1
             timeoutSeconds: 10
 ----------------
-2. 创建tcp-services-configmap.yaml和udp-services-configmap.yaml
+2. 创建tcp-services-configmap.yaml和udp-services-configmap.yaml，configmap.yaml这个文件中有，所有可以不用写这两个文件了
 ----------------
 [root@k8s-master ingress-nginx]# cat tcp-services-configmap.yaml 
 apiVersion: v1
@@ -1666,17 +1666,128 @@ spec:
 [root@k8s-master ingress-nginx]# kubectl apply -f ingress-nginx.yaml 
 ingress.extensions/ingress-myapp created
 12. root@k8s-master ingress-nginx]# kubectl exec -it -n ingress-nginx nginx-ingress-controller-5694ccb578-cmb7h -- /bin/sh  #进入ingress controller查看配置文件是否被ingress的规则匹配到
-#注：删除多余的pod始终删不掉，自己会重构时，查看pod的控制器类型，删除符合的控制器即可[root@k8s-master manifests]# kubectl delete deploy qq
+#注：删除多余的pod始终删不掉，自己会重构，此时可查看pod的控制器类型，删除符合的控制器即可[root@k8s-master manifests]# kubectl delete deploy qq
 deployment.extensions "qq" deleted
 13. 编辑C:\Windows\System32\drivers\etc,添加hosts记录
 192.168.1.31 myapp.magedu.com 
 #部署tomcat
+[root@k8s-master ingress-nginx]# cat tomcat-deploy.yaml 
+apiVersion: v1
+kind: Service
+metadata:
+  name: tomcat 
+  namespace: default 
+spec:
+  selector:
+    app: tomcat
+    release: canary
+  ports:
+  - name: http
+    targetPort: 8080
+    port: 8080
+  - name: ajp
+    targetPort: 8009
+    port: 8009
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tomcat-deploy
+  namespace: default
+spec:
+  replicas: 3
+  selector: 
+    matchLabels: 
+      app: tomcat
+      release: canary
+  template: 
+    metadata:
+      labels: 
+        app: tomcat
+        release: canary
+    spec:
+      containers:
+      - name: tomcat
+        image: tomcat:8.5.32-jre8-alpine
+        ports: 
+        - name: http
+          containerPort: 8080
+        - name: ajp
+          containerPort: 8009
+
+[root@k8s-master ingress-nginx]# cat tomcat-ingress.yaml 
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-tomcat
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+  - host: tomcat.magedu.com
+    http:
+      paths: 
+      - path: 
+        backend:
+          serviceName: tomcat
+          servicePort: 8080
 14. [root@k8s-master ingress-nginx]# kubectl apply -f tomcat-deploy.yaml 
 service/tomcat created
 [root@k8s-master ingress-nginx]# kubectl apply -f tomcat-ingress.yaml 
 ingress.extensions/ingress-myapp configured
+##配置Ingress Controller为https的主机，把证书和私钥做成secret，就是打包成secret
+15. [root@k8s-master ingress-nginx]# openssl genrsa -out tls.key 2048 #生成私钥
+16. [root@k8s-master ingress-nginx]# openssl req -new -x509 -key tls.key -out tls.crt -subj /C=CN/ST=Shanghai/L=Shanghai/O=DevOps/CN=tomcat.magedu.com #生成公钥
+17. [root@k8s-master ingress-nginx]# kubectl create secret tls tomcat-ingress-secret --cert=tls.crt --key=tls.key #创建secret，类型为tls，名字为tomcat-ingress-secret，指定证书和私钥
+secret/tomcat-ingress-secret created
+18. [root@k8s-master ingress-nginx]# kubectl get secret
+NAME                    TYPE                                  DATA   AGE
+default-token-lw499     kubernetes.io/service-account-token   3      22d
+tomcat-ingress-secret   kubernetes.io/tls                     2      58s
+19. [root@k8s-master ingress-nginx]# kubectl describe secret tomcat-ingress-secret 
+Name:         tomcat-ingress-secret
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
 
+Type:  kubernetes.io/tls
 
+Data
+====
+tls.crt:  1302 bytes
+tls.key:  1679 bytes
+20. [root@k8s-master ingress-nginx]# cat tomcat-ingress-tls.yaml  #编写ingress-tomcat-tls Ingress,使tomcat.magedu.com虚拟主机访问时加密访问的，实现https
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-tomcat-tls
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  tls:
+  - hosts:
+    - tomcat.magedu.com
+    secretName: tomcat-ingress-secret
+  rules:
+  - host: tomcat.magedu.com
+    http:
+      paths: 
+      - path: 
+        backend:
+          serviceName: tomcat
+          servicePort: 8080
+21. [root@k8s-master ingress-nginx]# kubectl apply -f tomcat-ingress-tls.yaml #应用ingress
+22. [root@k8s-master ingress-nginx]# kubectl get ingresses
+NAME                 HOSTS               ADDRESS   PORTS     AGE
+ingress-tomcat       tomcat.magedu.com             80, 443   3h17m
+ingress-tomcat-tls   tomcat.magedu.com             80, 443   5m52s
+23. 浏览器访问https://tomcat.magedu.com:30443/即可实现https访问。而后端跟Ingress Controller是明文传输的。
+
+##Ingress Controller总结：Ingress Controller通常是实现https的，通常Ingress Controller有nginx,envoy,traefik三种，上面演示的是ingress-nginx，而ingress则是生成规则，匹配对应的service，使service下的pod为目标主机，pod的改变会被service知道，而ingress一直在监视service，从而pod的变化ingress也是第一时间知道，所以ingress是用来固定pod的目标主机ip的，而且会把信息生成配置注入到Ingress Controller当中，实现Ingress-nginx的动态反向代理。pod也是用户真正访问到的站点，而Ingress Controller和pod之间是明文传输的，用户与Ingress Controller是密文传输的，当用户请求到达Ingress Controller时把tls卸载，使Ingress Controller和pod之间是明文交互，当pod到达Ingress Controller后，Ingress Controller则加载tls，最后实现密文传输给用户。最终实现用户与站点的https交互。
+
+#第十二节：存储卷
 
 
 
