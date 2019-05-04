@@ -1,4 +1,4 @@
-#K8S----容器编排
+﻿#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -29,7 +29,7 @@ node:kubelet(k8s代理程序),docker(容器引擎)，kube-proxy
 	Deployment
 	StatefulSet
 	DaemonSet
-	Job,Ctonjob
+	Job,Cronjob
 #k8s的基础设施部份：DNS（用于内部pod之间的解析）
 #pod之间的通信：
 1. 同一个pod内的多个容器间通信：通过lo接口通信
@@ -60,7 +60,7 @@ nodes:kubelet、docker、kube-proxy、flanner
 #架构流程：
 1. master,nodes:先安装kubelet,kubeadmin,docker,kubectl（kubectl客户端管理工具仅master安装即可）
 2. master:运行kubeadm init初始化为master，预检、解决先决条件、证书、私钥、生成配置文件、生成每一个静态pod的清单文件并完成部署，接下来部署addon
-3. nodes:kubeadm join加入集群，预检、解决先决条件、基于bodstip、基于预共享的令牌认证方式、来完成认证到master节点并完成本地的pod自有安装包和以addon部署kube-proxy、部署dns
+3. nodes:kubeadm join加入集群，预检、解决先决条件、基于bodstip、基于预共享的令牌认证方式、来完成认证到master节点并完成本地的pod自有安装和以addon部署kube-proxy、部署dns
 参考文档：https://github.com/kubernetes/kubeadm/blob/master/docs/design/design_v1.10.md
 
 master:192.168.1.238
@@ -1788,6 +1788,1040 @@ ingress-tomcat-tls   tomcat.magedu.com             80, 443   5m52s
 ##Ingress Controller总结：Ingress Controller通常是实现https的，通常Ingress Controller有nginx,envoy,traefik三种，上面演示的是ingress-nginx，而ingress则是生成规则，匹配对应的service，使service下的pod为目标主机，pod的改变会被service知道，而ingress一直在监视service，从而pod的变化ingress也是第一时间知道，所以ingress是用来固定pod的目标主机ip的，而且会把信息生成配置注入到Ingress Controller当中，实现Ingress-nginx的动态反向代理。pod也是用户真正访问到的站点，而Ingress Controller和pod之间是明文传输的，用户与Ingress Controller是密文传输的，当用户请求到达Ingress Controller时把tls卸载，使Ingress Controller和pod之间是明文交互，当pod到达Ingress Controller后，Ingress Controller则加载tls，最后实现密文传输给用户。最终实现用户与站点的https交互。
 
 #第十二节：存储卷
+SAN:iSCSI,FC
+NAS:nfs,cifs,http
+分布式存储：glusterfs,ceph:rdb和cephfs
+云存储：EBS(亚马逊),Azure Disk(微软)，阿里巴巴和谷歌都有
+kubectl explain pods.spec.volume #查看pod支持哪些存储卷
+1. emptyDir:空目录，随着pod的消失目录而消失
+2. hostPath:宿主机目录挂载，pod的消失而宿主机目录不消失
+3. gitRepo:同步git仓库的资源到本地容器当中，是基于emptyDir的
+构建存储卷步骤：
+1. 在pod上创建pvc并关联到物理存储系统
+2. 在容器上使用volumemounts挂载到pod上的pvc
+
+##emptyDir：
+-------------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-demo
+  namespace: default
+  labels:
+    app: myapp
+    tier: frontend
+  annotations:
+    magedu.com/created-by: "cluster admin"
+spec:
+  containers:
+  - name: myapp
+    image: ikubernetes/myapp:v1
+    imagePullPolicy: IfNotPresent
+    ports:
+    - name: http
+      containerPort: 80
+    volumeMounts:
+    - name: html
+      mountPath: /usr/share/nginx/html/
+  - name: busybox
+    image: busybox:latest
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+    - name: html
+      mountPath: /data/
+    command: ['/bin/sh','-c','while true;do echo $(date) >> /data/index.html;sleep 2;done']
+  volumes:
+  - name: html
+    emptyDir: {}   #表示使用默认值
+
+##结论：在两个容器当中他们是共享html挂载点的，但是一但这个上pod挂掉之后，则这个挂载目录的数据会全部丢失。
+-------------------------------
+#hostPath: #共享主机上的目录，节点挂了数据就全没了
+-------------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-vol-hostpath
+  namespace: default
+spec:
+  containers:
+  - name: myapp
+    image: ikubernetes/myapp:v1
+    volumeMounts: 
+    - name: html
+      mountPath: /usr/share/nginx/html/
+  volumes:
+  - name: html
+    hostPath:
+      path: /data/pod/volume1
+      type: DirectoryOrCreate #类型为DirectoryOrCreate,表示没有此目录就会新建，irectory则为不自主新建
+##结论：此时这个容器会运行在某个节点上，在运行的节点上会新建/data/pod/volume1此目录进行挂到到容器共享，当pod挂掉时，数据还在，但当pod重新运行时，可能这个容器运行在另外的一个节点上，而之前的数据不会被访问掉。
+-------------------------------
+#NFS： #独立于节点外的存储系统，节点挂了数据还存在于存储系统当中
+#先安装nfs存储系统：
+yum install nfs-utils -y
+[root@kvm ~]# mkdir -p /data/volumes #nfs目录
+[root@kvm ~]# vim /etc/exports
+/data/volumes   192.168.0.0/16(rw,no_root_squash) #指定nfs目录，指定允许访问的ip地址，并给定读写权限，设定root用户权限不被压缩。
+[root@kvm ~]# netstat -tnlp | grep 2049
+tcp        0      0 0.0.0.0:2049            0.0.0.0:*               LISTEN      -                   
+tcp6       0      0 :::2049                 :::*                    LISTEN      -                   
+#NFS配置清单文件：
+-------------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-vol-nfs
+  namespace: default
+spec:
+  containers:
+  - name: myapp
+    image: ikubernetes/myapp:v1
+    volumeMounts: 
+    - name: html  #存储系统名称
+      mountPath: /usr/share/nginx/html/ #容器挂载目录
+  volumes:
+  - name: html
+    nfs:
+      path: /data/volumes  #nfs存储系统的目录
+      server: stor01.magedu.com #nfs存储系统的服务地址
+-------------------------------
+每个节点上要设置nfs的解析：echo '192.168.1.233 nfs' >> /etc/hosts
+每个节点上要安装nfs客户端：yum install nfs-utils -y 
+#PC和PVC
+存储工程师：管理存储设备，建立存储单元
+集群管理员：建立PV，与存储单元建立关系，一般一个PV对应一个存储单元
+集群用户：建立PVC，并设置PVC规则使之与PV建立关系，一个PVC只能对应一个PV,一个PVC可以被多个Pod引用（是否被多个pod访问主要看PVC的访问模式设置）
+PV是集群级别的，namespace也是集群级别的，pod，service等是namespace级别的
+#注意：当PVC与PV没有绑定，此时PVC状态为Pending（挂起），直至PV符合PVC的规则时PVC才能被绑定。
+1. 设置存储单元：
+[root@kvm volumes]# mkdir v{1,2,3,4,5}
+[root@kvm volumes]# cat /etc/exports
+/data/volumes/v1        192.168.0.0/16(rw,no_root_squash)
+/data/volumes/v2        192.168.0.0/16(rw,no_root_squash)
+/data/volumes/v3        192.168.0.0/16(rw,no_root_squash)
+/data/volumes/v4        192.168.0.0/16(rw,no_root_squash)
+/data/volumes/v5        192.168.0.0/16(rw,no_root_squash)
+[root@kvm volumes]# exportfs -arv #重新导出并更新所有nfs列表
+exporting 192.168.0.0/16:/data/volumes/v5
+exporting 192.168.0.0/16:/data/volumes/v4
+exporting 192.168.0.0/16:/data/volumes/v3
+exporting 192.168.0.0/16:/data/volumes/v2
+exporting 192.168.0.0/16:/data/volumes/v1
+[root@kvm ~]# showmount -e #查看NFS服务导出列表
+Export list for kvm:
+/data/volumes/v5 192.168.0.0/16
+/data/volumes/v4 192.168.0.0/16
+/data/volumes/v3 192.168.0.0/16
+/data/volumes/v2 192.168.0.0/16
+/data/volumes/v1 192.168.0.0/16
+2. 定义PV
+[root@k8s-master ~]# kubectl explain pv.spec #查看配置清单帮助，跟定义在pod上的存储一模一样
+[root@k8s-master volume]# cat pv-demo.yaml 
+-------------------------------
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv001  #pv的名称。因为是集群级别，所以没有namespace
+  labels:
+    name: pv001
+spec:
+  nfs:
+    path: /data/volumes/v1  #nfs的存储单元路径
+    server: nfs  #nfs服务器地址
+  accessModes: ['ReadWriteMany','ReadWriteOnce'] #PV的访问模式为多路读写，单路读写，还有一种为多路只读(ReadOnlyMany),对应可以简写为：RWX,RWO,ROX
+  capacity:
+    storage: 2Gi  #容量为2G，是以1024为单位的，2G单位为1000
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv002
+  labels:
+    name: pv002
+spec:
+  nfs:
+    path: /data/volumes/v2
+    server: nfs
+  accessModes: ['ReadWriteOnce']
+  capacity:
+    storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv003
+  labels:
+    name: pv003
+spec:
+  nfs:
+    path: /data/volumes/v3
+    server: nfs
+  accessModes: ['ReadWriteMany','ReadWriteOnce']
+  capacity:
+    storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv004
+  labels:
+    name: pv004
+spec:
+  nfs:
+    path: /data/volumes/v4
+    server: nfs
+  accessModes: ['ReadWriteMany','ReadWriteOnce']
+  capacity:
+    storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv005
+  labels:
+    name: pv005
+spec:
+  nfs:
+    path: /data/volumes/v5
+    server: nfs
+  accessModes: ['ReadWriteMany','ReadWriteOnce']
+  capacity:
+    storage: 10Gi
+---
+-------------------------------
+[root@k8s-master volume]# kubectl apply -f pv-demo.yaml 
+persistentvolume/pv001 created
+persistentvolume/pv002 created
+persistentvolume/pv003 created
+persistentvolume/pv004 created
+persistentvolume/pv005 created
+[root@k8s-master volume]# kubectl get pv
+NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+pv001   2Gi        RWO,RWX        Retain           Available                                   3m47s #Retain为回收策略中的保留，Available为可用，表示未被PVC绑定
+pv002   5Gi        RWO            Retain           Available                                   3m47s
+pv003   20Gi       RWO,RWX        Retain           Available                                   3m47s
+pv004   10Gi       RWO,RWX        Retain           Available                                   3m47s
+pv005   10Gi       RWO,RWX        Retain           Available                                   3m47s
+#注：回收策略：Retain（保留用户数据），recycle（把数据全删了，PV腾出来给另的PVC使用），delete（PVC删了，PV也删了）
+
+3. 定义PVC
+[root@k8s-master volume]# cat pod-vol-pvc.yaml 
+----------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mypvc
+  namespace: default
+spec:
+  accessModes: ['ReadWriteMany'] #指定pvc对pod端的访问模式，这个访问模式必须是PV所能支持的（也被称为PV的子集）
+  resources:
+    requests:
+      storage: 6Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-vol-mypvc
+  namespace: default
+  labels:
+    app: mypvc
+    tier: frontend
+  annotations: 
+    magedu.com/created-by: "cluster admin"
+spec:
+  containers:
+  - name: myapp
+    image: ikubernetes/myapp:v1
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+    - name: html
+      mountPath: /usr/share/nginx/html/
+  volumes:
+  - name: html
+    persistentVolumeClaim:
+      claimName: mypvc 
+----------------------------
+[root@k8s-master volume]# kubectl get pv -o wide
+NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM           STORAGECLASS   REASON   AGE
+pv001   2Gi        RWO,RWX        Retain           Available                                           25m
+pv002   5Gi        RWO            Retain           Available                                           25m
+pv003   20Gi       RWO,RWX        Retain           Available                                           25m
+pv004   10Gi       RWO,RWX        Retain           Bound       default/mypvc                           25m #被default/mypvc 绑定了
+pv005   10Gi       RWO,RWX        Retain           Available                                           25m
+[root@k8s-master volume]# kubectl get pvc -o wide
+NAME    STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+mypvc   Bound    pv004    10Gi       RWO,RWX                       7m11s #这个pvc是已经绑定了，绑定的PV是pv004,大小为10Gi,PV的访问模式是单路读写和多路读写
+注：只有pod运行在节点上，其它资源基本保存在etcd当中
+
+#第十三节：configMap和secret
+#动态供给：给pv创建类，pvc选择类。
+#configMap和secret
+configMap:是配置中心，1.容器可以把configMap挂载在容器中使用 2.把configMap注入到容器的变量当中，容器引入变量来使用配置文件。但configMap是明文的。
+secret:跟configMap一样是配置中心，但是是base64编码的配置中心。
+
+#配置容器化应用的试：
+1. 自定义命令行参数，通过command和args来传命令
+2. 把配置文件直接写入到镜像，写得太死了
+3. 环境变量，1.通过预处理脚本entrypoint来读取变量并把值传给容器的配置文件 2.Cloud Native的应用程序直接通过环境变量加载到配置文件
+4. 存储卷
+
+#configMap,名称空间级别
+[root@k8s-master ~]# kubectl create configmap nginx-config --from-literal=nginx_port=80 --from-literal=server_name=myapp.magedu.com #1. 创建一个名叫nginx-config的configMap，并指定nginx_port=80和server_name=myapp.magedu.com的键值对值，2. --from-file=path/to/bar这里bar为键，文件内容为值，3. --from-file=key1=/path/to/bar/file1.txt这个键为key1,值为这个文件，这几种方式都可以写
+configmap/nginx-config created
+[root@k8s-master ~]# kubectl get cm #查看configmap
+NAME           DATA   AGE
+nginx-config   2      3m20s
+[root@k8s-master ~]# kubectl describe cm nginx-config
+Name:         nginx-config
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+nginx_port:
+----
+80
+server_name:
+----
+myapp.magedu.com
+Events:  <none>
+[root@k8s-master configmap]# kubectl create configmap nginx-www --from-file=./www.conf  #键名为www.conf，值为文件的值
+configmap/nginx-www created
+[root@k8s-master configmap]# kubectl get cm nginx-www  -o yaml
+apiVersion: v1
+data:
+  www.conf: "server {\n\tserver_name myapp.magedu.com;\n\tlisten 80;\n\troot /data/web/html;\n}\n"
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2019-05-03T11:26:23Z"
+  name: nginx-www
+  namespace: default
+  resourceVersion: "3316126"
+  selfLink: /api/v1/namespaces/default/configmaps/nginx-www
+  uid: 480aeeca-6d96-11e9-8f19-005056ad5cec
+#配置configMap清单###以环境变量获取配置：
+[root@k8s-master configmap]# vim pod-configmap.yaml 
+-----------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-cm-1
+  namespace: default
+  labels:
+    app: myapp
+    tier: frontend
+  annotations:
+    magedu.com/created-by: "cluster admin"
+spec:
+  containers:
+  - name: myapp
+    image: ikubernetes/myapp:v1
+    ports:
+    - name: http
+      containerPort: 80
+    env:
+    - name: NGINX_SERVER_PORT  #在k8s和docker中以下划线分隔，横线也会被转换成下划线的，这个变量是容器新建的变量
+      valueFrom: #值从外部引用
+        configMapKeyRef:  #引用自configMap的Key
+          name: nginx-config  #configMap的名称是nginx-config
+          key: nginx_port  #键是nginx_port,所以NGINX_SERVER_PORT值为nginx_port的值
+    - name: NGINX_SERVER_NAME
+      valueFrom:
+        configMapKeyRef:
+          name: nginx-config
+          key: server_name 
+-----------------------------
+
+[root@k8s-master configmap]# kubectl apply -f pod-configmap.yaml 
+pod/pod-cm-1 created
+#此时容器中的新变量值为设定的值，当使用kubectl edit cm nginx-config 编辑键nginx_port为8080时，容器的变量不会实时更新，只在容器创建时更新
+###以存储卷获取配置
+[root@k8s-master configmap]# cat pod-configmap-2.yaml 
+---------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-cm-2
+  namespace: default
+  labels:
+    app: myapp
+    tier: frontend
+  annotations:
+    magedu.com/created-by: "cluster admin"
+spec:
+  containers:
+  - name: myapp
+    image: ikubernetes/myapp:v1
+    ports:
+    - name: http
+      containerPort: 80
+    volumeMounts:
+    - name: nginxconf
+      mountPath: /etc/nginx/config.d/
+      readOnly: true
+  volumes:
+  - name: nginxconf
+    configMap:
+      name: nginx-config
+---------------------------
+[root@k8s-master configmap]# kubectl edit cm nginx-config 
+ nginx_port: "8080"
+/etc/nginx/config.d # cat nginx_port   #以这种存储卷挂载的可以自动更新，只是会有延迟，因为是从APIserver同步过来的
+8080/etc/nginx/config.d # 
+
+##实例：创建nginx容器以存储卷方式挂载配置文件
+[root@k8s-master configmap]# cat pod-configmap-3.yaml 
+---------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-cm-3
+  namespace: default
+  labels:
+    app: myapp
+    tier: frontend
+  annotations:
+    magedu.com/created-by: "cluster admin"
+spec:
+  containers:
+  - name: myapp
+    image: ikubernetes/myapp:v1
+    ports:
+    - name: http
+      containerPort: 80
+    volumeMounts:
+    - name: nginxconf
+      mountPath: /etc/nginx/conf.d/
+      readOnly: true
+  volumes:
+  - name: nginxconf
+    configMap:
+      name: nginx-www
+---------------------------
+[root@k8s-master configmap]# kubectl apply -f pod-configmap-3.yaml 
+pod/pod-cm-3 created
+[root@k8s-master configmap]# kubectl exec -it pod-cm-3 -- /bin/sh
+/etc/nginx/conf.d # nginx -T #查看nginx当前运行的配置
+/etc/nginx/conf.d # mkdir -p /data/web/html
+/etc/nginx/conf.d # echo 'configMap' > /data/web/html/index.html #创建主页
+[root@k8s-master configmap]# vim /etc/hosts #设置pod解析
+[root@k8s-master configmap]# curl myapp.magedu.com
+configMap
+[root@k8s-master configmap]# kubectl edit cm nginx-www#把80改成8080端口
+/etc/nginx/conf.d # cat www.conf 
+server {
+        server_name myapp.magedu.com;
+        listen 80;
+        root /data/web/html;
+}
+/etc/nginx/conf.d # cat www.conf 
+server {
+        server_name myapp.magedu.com;
+        listen 8080;       #这里会过几分钟会同步
+        root /data/web/html;
+}
+/etc/nginx/conf.d # nginx -s reload  #使用脚本或其他方法重载配置文件
+2019/05/04 05:15:54 [notice] 44#44: signal process started
+/etc/nginx/conf.d # netstat -tnlp
+Active Internet connections (only servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    
+tcp        0      0 0.0.0.0:8080            0.0.0.0:*               LISTEN      1/nginx: master pro
+[root@k8s-master configmap]# curl myapp.magedu.com:8080
+configMap
+
+###configMap可以只对文件中的部分配置来引用
+把私钥和证书定义成secret,把配置文件定义成configMap,如果涉及帐号密码应该也把帐号密码定义成secret.
+##secret
+secret有3种类型：1.docker-registry(当从私有仓库中pull镜像是需要认证时需要用这种类型创建secret)  2.generic（当使用其他帐号和密码时使用这种）  3. tls(使用私钥和证书时使用这种)
+[root@k8s-master configmap]# kubectl create secret --help
+---------
+Create a secret using specified subcommand.
+
+Available Commands:
+  docker-registry Create a secret for use with a Docker registry
+  generic         Create a secret from a local file, directory or literal value
+  tls             Create a TLS secret
+
+Usage:
+  kubectl create secret [flags] [options]
+
+Use "kubectl <command> --help" for more information about a given command.
+Use "kubectl options" for a list of global command-line options (applies to all commands).
+---------
+[root@k8s-master configmap]# kubectl create secret generic mysql-root-password --from-literal=password=Myp@ss123 #新建一个mysql密码
+[root@k8s-master configmap]# kubectl get secret
+NAME                    TYPE                                  DATA   AGE
+default-token-lw499     kubernetes.io/service-account-token   3      27d
+mysql-root-password     Opaque                                1      35s
+tomcat-ingress-secret   kubernetes.io/tls                     2      5d16h
+[root@k8s-master configmap]# kubectl describe secret mysql-root-password 
+Name:         mysql-root-password
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+password:  9 bytes  #secret不显示值
+[root@k8s-master configmap]# kubectl describe configmap nginx-config
+Name:         nginx-config
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+server_name:
+----
+myapp.magedu.com   #configmap类型显示值
+nginx_port:
+----
+8080
+Events:  <none>
+[root@k8s-master configmap]# kubectl get secrets mysql-root-password -o yaml #使用此命令可查看到password Base64编码后的数据 
+apiVersion: v1
+data:
+  password: TXlwQHNzMTIz
+kind: Secret
+metadata:
+  creationTimestamp: "2019-05-04T05:43:59Z"
+  name: mysql-root-password
+  namespace: default
+  resourceVersion: "3420405"
+  selfLink: /api/v1/namespaces/default/secrets/mysql-root-password
+  uid: 9d3885f3-6e2f-11e9-8f19-005056ad5cec
+type: Opaque
+[root@k8s-master configmap]# echo TXlwQHNzMTIz | base64 -d #使用此命令可以解密
+Myp@ss123[root@k8s-master configmap]# 
+##把secret以环境变量方式注入到容器当中
+[root@k8s-master configmap]# vim pod-secret.yaml 
+-------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-secret-1
+  namespace: default
+  labels:
+    app: myapp
+    tier: frontend
+  annotations:
+    magedu.com/created-by: "cluster admin"
+spec:
+  containers:
+  - name: myapp
+    image: ikubernetes/myapp:v1
+    ports:
+    - name: http
+      containerPort: 80
+    env:
+    - name: MYSQL-ROOT-PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: mysql-root-password
+          key: password
+-------------
+[root@k8s-master configmap]# kubectl exec pod-secret-1 -- printenv | grep MYSQL-ROOT-PASSWORD   
+MYSQL-ROOT-PASSWORD=Myp@ss123
+###注：secret用法跟configMap用法一样。
+
+#第十四节：statefulset控制器
+CoreOS: Operator
+StatefulSet:有状态副本集
+	群体：cattle   个体：ped
+	PetSet(1.5-)-->StatefulSet
+1. 稳定且惟一的网络标识符;  #pod名称是固定唯一的
+2. 稳定且持久的存储;   #采用pvc来绑定pod名称，pvc策略为数据不会删除
+3. 有序、平滑地部署和扩展;  
+4. 有序、平滑地终止和删除;
+5. 有序的流动更新;
+pod_name.service_name.namespace_name.cluster.local #集群解析名称格式 
+#实例：
+#重新构建PV：
+[root@k8s-master volume]# vim pv-demo.yaml 
+-------------  
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv001
+  labels:
+    name: pv001
+spec:
+  nfs:
+    path: /data/volumes/v1
+    server: nfs
+  accessModes: ['ReadWriteMany','ReadWriteOnce']
+  capacity:
+    storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv002
+  labels:
+    name: pv002
+spec:
+  nfs:
+    path: /data/volumes/v2
+    server: nfs
+  accessModes: ['ReadWriteOnce']
+  capacity:
+    storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv003
+  labels:
+    name: pv003
+spec:
+  nfs:
+    path: /data/volumes/v3
+    server: nfs
+  accessModes: ['ReadWriteMany','ReadWriteOnce']
+  capacity:
+    storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv004
+  labels:
+    name: pv004
+spec:
+  nfs:
+    path: /data/volumes/v4
+    server: nfs
+  accessModes: ['ReadWriteMany','ReadWriteOnce']
+  capacity:
+    storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv005
+  labels:
+    name: pv005
+spec:
+  nfs:
+    path: /data/volumes/v5
+    server: nfs
+  accessModes: ['ReadWriteMany','ReadWriteOnce']
+  capacity:
+    storage: 10Gi
+-------------      
+[root@k8s-master volume]# kubectl apply -f pv-demo.yaml 
+persistentvolume/pv001 created
+persistentvolume/pv002 created
+persistentvolume/pv003 created
+persistentvolume/pv004 created
+persistentvolume/pv005 created
+[root@k8s-master volume]# kubectl get pv
+NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+pv001   5Gi        RWO,RWX        Retain           Available                                   1s
+pv002   5Gi        RWO            Retain           Available                                   1s
+pv003   5Gi        RWO,RWX        Retain           Available                                   1s
+pv004   10Gi       RWO,RWX        Retain           Available                                   1s
+pv005   10Gi       RWO,RWX        Retain           Available                                   1s
+##创建一个statefulSet的
+[root@k8s-master volume]# vim statefulSet.yaml 
+-------------------------------
+apiVersion: v1
+kind: Service
+metadata: 
+  name: myapp
+  labels:
+    app: myapp
+spec:
+  ports:
+  - port: 80
+    name: web
+  clusterIP: None   #设置无头service(无IP的headless Service)
+  selector: 
+    app: myapp-pod
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: myapp
+spec:
+  serviceName: myapp  #绑定无头service
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp-pod
+  template:
+    metadata:
+      labels:
+        app: myapp-pod
+    spec: 
+        containers:
+        - name: myapp
+          image: ikubernetes/myapp:v1
+          ports:
+          - containerPort: 80
+            name: web
+          volumeMounts:   #挂载卷名叫myappdata到/usr/share/nginx/html/
+          - name: myappdata
+            mountPath: /usr/share/nginx/html/
+  volumeClaimTemplates:   #这是vc模块，针对每个pod建立一个pvc
+  - metadata:
+      name: myappdata
+    spec:
+      accessModes: ['ReadWriteOnce']
+      resources:
+        requests:
+          storage: 5Gi        
+-------------------------------
+[root@k8s-master volume]# kubectl get svc
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   27d
+myapp        ClusterIP   None         <none>        80/TCP    62s
+[root@k8s-master volume]# kubectl get sts
+NAME    READY   AGE
+myapp   3/3     23s
+[root@k8s-master volume]# kubectl get pods 
+NAME      READY   STATUS    RESTARTS   AGE
+myapp-0   1/1     Running   0          9s
+myapp-1   1/1     Running   0          6s
+myapp-2   1/1     Running   0          3s
+[root@k8s-master volume]# kubectl get pvc
+NAME                STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+myappdata-myapp-0   Bound    pv002    5Gi        RWO                           15s
+myappdata-myapp-1   Bound    pv001    5Gi        RWO,RWX                       12s
+myappdata-myapp-2   Bound    pv003    5Gi        RWO,RWX                       9s
+[root@k8s-master volume]# kubectl get pv 
+NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM                       STORAGECLASS   REASON   AGE
+pv001   5Gi        RWO,RWX        Retain           Bound       default/myappdata-myapp-1                           22m
+pv002   5Gi        RWO            Retain           Bound       default/myappdata-myapp-0                           22m
+pv003   5Gi        RWO,RWX        Retain           Bound       default/myappdata-myapp-2                           22m
+pv004   10Gi       RWO,RWX        Retain           Available                                                       22m
+pv005   10Gi       RWO,RWX        Retain           Available                                                       22m
+[root@k8s-master volume]# kubectl delete -f statefulSet.yaml 
+service "myapp" deleted
+statefulset.apps "myapp" deleted
+[root@k8s-master volume]# kubectl get pods
+No resources found.
+[root@k8s-master volume]# kubectl get pvc #默认pvc一直存在
+NAME                STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+myappdata-myapp-0   Bound    pv002    5Gi        RWO                           10m
+myappdata-myapp-1   Bound    pv001    5Gi        RWO,RWX                       10m
+myappdata-myapp-2   Bound    pv003    5Gi        RWO,RWX                       10m
+[root@k8s-master volume]# kubectl apply -f statefulSet.yaml 
+service/myapp created
+statefulset.apps/myapp created
+[root@k8s-master volume]# kubectl get pods  #新建的statefulSet还是原来的name，这是因为用同一个sts模板建立的，所以名称还和以前一样，使之前的pvc与重新构建的pod相挂载
+NAME      READY   STATUS    RESTARTS   AGE
+myapp-0   1/1     Running   0          6s
+myapp-1   1/1     Running   0          4s
+myapp-2   1/1     Running   0          3s
+[root@k8s-master volume]# kubectl get pvc
+NAME                STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+myappdata-myapp-0   Bound    pv002    5Gi        RWO                           16m
+myappdata-myapp-1   Bound    pv001    5Gi        RWO,RWX                       15m
+myappdata-myapp-2   Bound    pv003    5Gi        RWO,RWX                       15m
+
+[root@k8s-master volume]# kubectl exec -it myapp-0 -- /bin/sh  #在sts控制器下的pod他们之前的pod名称是可以直接解析的
+/ # nslookup myapp-0
+nslookup: can't resolve '(null)': Name does not resolve
+
+Name:      myapp-0
+Address 1: 10.244.2.78 myapp-0.myapp.default.svc.cluster.local
+/ # nslookup myapp-1.myapp.default.svc.cluster.local
+nslookup: can't resolve '(null)': Name does not resolve
+
+Name:      myapp-1.myapp.default.svc.cluster.local
+Address 1: 10.244.1.80 myapp-1.myapp.default.svc.cluster.local
+/ # nslookup myapp-2.myapp.default.svc.cluster.local #当解析pod名称时需要写service名称
+nslookup: can't resolve '(null)': Name does not resolve
+
+Name:      myapp-2.myapp.default.svc.cluster.local
+Address 1: 10.244.2.79 myapp-2.myapp.default.svc.cluster.local
+[root@k8s-master configmap]# kubectl scale sts myapp --replicas=5 #扩展pod
+statefulset.apps/myapp scaled
+[root@k8s-master volume]# kubectl get pvc
+NAME                STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+myappdata-myapp-0   Bound    pv002    5Gi        RWO                           30m
+myappdata-myapp-1   Bound    pv001    5Gi        RWO,RWX                       30m
+myappdata-myapp-2   Bound    pv003    5Gi        RWO,RWX                       30m
+myappdata-myapp-3   Bound    pv004    10Gi       RWO,RWX                       26s
+myappdata-myapp-4   Bound    pv005    10Gi       RWO,RWX                       23s
+[root@k8s-master configmap]# kubectl patch sts myapp -p '{"spec":{"replicas":2}}' #打补丁的方式缩减pod
+statefulset.apps/myapp patched
+[root@k8s-master configmap]# kubectl get pvc  
+NAME                STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+myappdata-myapp-0   Bound    pv002    5Gi        RWO                           33m
+myappdata-myapp-1   Bound    pv001    5Gi        RWO,RWX                       33m
+myappdata-myapp-2   Bound    pv003    5Gi        RWO,RWX                       33m  #但是之前的pvc不会删除，只会保留
+myappdata-myapp-3   Bound    pv004    10Gi       RWO,RWX                       3m8s
+myappdata-myapp-4   Bound    pv005    10Gi       RWO,RWX                       3m5s
+#注：sts的扩展和缩减，更新都是逆序操作的。
+[root@k8s-master configmap]# kubectl describe sts myapp #查看sts的更新策略
+Update Strategy:    RollingUpdate
+  Partition:        824636334988
+[root@k8s-master configmap]# kubectl patch sts myapp -p '{"spec":{"updateStrategy":{"rollingUpdate":{"partition":4}}}}' #以打补丁方式设定sts的滚动更新策略为分区大于等于4的更新
+[root@k8s-master configmap]# kubectl set image sts myapp myapp=ikubernetes/myapp:v2
+statefulset.apps/myapp image updated
+[root@k8s-master configmap]# kubectl get pods myapp-4 -o yaml
+image: ikubernetes/myapp:v2  #可以查看到已经更新为2版本
+[root@k8s-master configmap]# kubectl get pods myapp-3 -o yaml
+image: ikubernetes/myapp:v1
+[root@k8s-master configmap]# kubectl get sts -o wide  #控制器层面的镜像版本
+NAME    READY   AGE   CONTAINERS   IMAGES
+myapp   5/5     45m   myapp        ikubernetes/myapp:v2
+#搜索statefulSet相关的有状态服务：kubernetes statefulset redis
+
+#第十五节：k8s认证及service account
+#restful风格详解:
+Restful就是一个资源定位及资源操作的风格。不是标准也不是协议，只是一种风格。基于这个风格设计的软件可以更简洁，更有层次，更易于实现缓存等机制。
+资源：互联网所有的事物都可以被抽象为资源 
+资源操作：使用POST、DELETE、PUT、GET，使用不同方法对资源进行操作。 
+分别对应 添加、 删除、修改、查询。 
+
+1. 认证  #第三方插件很多，并行认证，并非串行认证 #认证
+2. 授权  #第三方插件，并行认证，并非串行认证 #RBAC  #权限检查
+3. 准入控制  #第三方插件，授权后的后续准则  #进一步补充了授权机制
+http认证：
+只能通过http协议的认证首部来实现token的传递
+kubectl-->apiServer
+ssl认证:
+交换证书，实现https认证。
+客户端-->API server
+	user:username,uid
+	group:groupname,gid
+	extra:注解
+	API Request Path:/apis/apps/v1/namespaces/default/deployment/myapp-deploy/
+	注：只有核心群组v1的可以直接写/api/v1/,如果不是核心群组必须起于/apis/apps/v1/
+#执行动作：
+HTTP request verb:
+	post,delete,put,get
+API Server requests verb:
+	get（查询）,list(列出)，create(创建)，updata(修改)，patch（打补丁），watch（监控）,proxy（代理）redirect（重定向）,delete（删除），deletecollection(删除一个集合)
+Resource:
+Subresource:
+Namespace:
+API group:
+####认证：
+##apiserver端口是6443
+#kubectl执行命令时认证的是[root@k8s-master ~]# cat .kube/config 这个文件下的证书加密和解密方式，只要把这个文件复制到其他客户端，其他客户端也可连上APIserver
+[root@k8s-master ~]# curl https://localhost:6443/api/v1/namespaces #没有使用认证信息时访问apiserver会访问不成功
+curl: (60) Peer's Certificate issuer is not recognized.
+More details here: http://curl.haxx.se/docs/sslcerts.html
+
+curl performs SSL certificate verification by default, using a "bundle"
+ of Certificate Authority (CA) public keys (CA certs). If the default
+ bundle file isn't adequate, you can specify an alternate file
+ using the --cacert option.
+If this HTTPS server uses a certificate signed by a CA represented in
+ the bundle, the certificate verification probably failed due to a
+ problem with the certificate (it might be expired, or the name might
+ not match the domain name in the URL).
+If you'd like to turn off curl's verification of the certificate, use
+ the -k (or --insecure) option.
+
+[root@k8s-master ~]# kubectl proxy --port=8080  #在本地127.0.0.1:8080开启代理，使发送到本地的请求都给代理到apiserver，并且使用kubectl的证书来解密
+[root@k8s-master ~]# curl http://localhost:8080/api/v1/namespaces #此时会访问成功 
+[root@k8s-master ~]# curl http://localhost:8080/api/v1/namespaces/kube-system/
+{
+  "kind": "Namespace",
+  "apiVersion": "v1",
+  "metadata": {
+    "name": "kube-system",
+    "selfLink": "/api/v1/namespaces/kube-system",
+    "uid": "7379868a-5855-11e9-8aeb-005056ad5cec",
+    "resourceVersion": "4",
+    "creationTimestamp": "2019-04-06T10:19:24Z"
+  },
+  "spec": {
+    "finalizers": [
+      "kubernetes"
+    ]
+  },
+  "status": {
+    "phase": "Active"
+  }
+}
+[root@k8s-master ~]# curl http://localhost:8080/apis/apps/v1/namespaces/kube-system/depoyments/  #查看控制器类型
+##使用api操作：create,edit,delete，get
+#两类认证：1. userAccount[一般人使用到的]  2. serviceAccount[pod中使用的]
+创建serviceAccount,并用pod的serviceAccountName来指定serviceAccount
+#serviceAccount:
+[root@k8s-master ~]# kubectl create serviceaccount mysa -o yaml --dry-run #测试并输出成yaml格式，输出成框架
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  creationTimestamp: null
+  name: mysa
+[root@k8s-master ~]# kubectl get pods myapp-0 -o yaml --export #导出成配置框架，以后可以自己拿来用改改就成
+[root@k8s-master ~]# kubectl create sa admin #新建一个serviceaccount
+serviceaccount/admin created
+[root@k8s-master ~]# kubectl get sa
+NAME      SECRETS   AGE
+admin     1         7s
+default   1         28d
+[root@k8s-master ~]# kubectl describe sa admin #查看admin的serviceaccount详细信息
+Name:                admin
+Namespace:           default
+Labels:              <none>
+Annotations:         <none>
+Image pull secrets:  <none>
+Mountable secrets:   admin-token-5v6z8  #k8s为serviceaccount创建的token,只是认证作用，没有授权
+Tokens:              admin-token-5v6z8
+Events:              <none>
+[root@k8s-master ~]# kubectl get secret
+NAME                    TYPE                                  DATA   AGE
+admin-token-5v6z8       kubernetes.io/service-account-token   3      90s #k8s为serviceaccount创建的token
+default-token-lw499     kubernetes.io/service-account-token   3      28d #系统默认创建的token,有最小的授权
+mysql-root-password     Opaque                                1      7h31m
+tomcat-ingress-secret   kubernetes.io/tls                     2      6d
+[root@k8s-master manifests]# vim pod-sa-demo.yaml 
+-----------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-sa-demo
+  namespace: default
+  labels:
+    app: myapp
+    tier: frontend
+  annotations:
+    magedu.com/created-by: "cluster admin"
+spec:
+  containers:
+  - name: myapp
+    image: nginx:1.14-alpine
+    ports:
+    - name: http
+      containerPort: 80
+  serviceAccountName: admin  #把这个pod绑定在admin这个serviceaccount上，
+-----------
+[root@k8s-master manifests]# kubectl apply -f pod-sa-demo.yaml 
+pod/pod-sa-demo created
+[root@k8s-master manifests]# kubectl describe pods pod-sa-demo #查看是否被绑定为admin的serviceaccount
+ SecretName:  admin-token-5v6z8
+##当你的pod从私有仓库下载镜像时，需要用到认证信息，1. 可以在pod上使用ImagePullSecret来指定docker-registry类型的secret 2.  可以在pod上使用serviceAccountName来指定serviceAccount，在serviceAccount上加入ImagePullSecret（docker-registry的类型）
+#k8s上的认证一般用专有CA,并不会轻易授权给其他用户，因为一旦授权就可以拿来认证APIserver了
+
+#设置证书，证书持有者就是用户名
+[root@k8s-master pki]# (umask 077; openssl genrsa -out magedu.key 2048) #用子shell创建magedu私钥
+Generating RSA private key, 2048 bit long modulus
+..................................................+++
+......+++
+e is 65537 (0x10001)
+[root@k8s-master pki]# openssl req -new -key magedu.key -out magedu.csr -subj "/CN=magedu"  #生成证书申请请求，CN就是用户名，
+[root@k8s-master pki]# openssl x509 -req -in magedu.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out magedu.crt -days 365 #用k8s的ca进行授权magedu这个用户
+Signature ok
+subject=/CN=magedu
+Getting CA Private Key
+[root@k8s-master pki]# openssl x509 -in magedu.crt -text -noout #查看证书信息
+把magedu用户设成PIServer认证的用户并隐藏证书信息
+[root@k8s-master pki]# kubectl config set-credentials magedu --client-certificate=./magedu.crt --client-key=./magedu.key --embed-certs=true #设置magedu为当前集群的用户
+User "magedu" set.  
+[root@k8s-master pki]# kubectl config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://192.168.1.238:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes
+current-context: kubernetes-admin@kubernetes
+kind: Config
+preferences: {}
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+- name: magedu
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+#设定上下文使magedu能访问当前集群
+[root@k8s-master pki]# kubectl config set-context magedu@kubernetes --cluster=kubernetes --user=magedu
+Context "magedu@kubernetes" created.
+[root@k8s-master pki]# kubectl config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://192.168.1.238:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes
+- context:
+    cluster: kubernetes
+    user: magedu
+  name: magedu@kubernetes
+current-context: kubernetes-admin@kubernetes
+kind: Config
+preferences: {}
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+- name: magedu
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+[root@k8s-master pki]# kubectl config use-context magedu@kubernetes #切换用户为magedu
+Switched to context "magedu@kubernetes".
+[root@k8s-master pki]# kubectl get pods #此时magedu没有权限访问
+Error from server (Forbidden): pods is forbidden: User "magedu" cannot list resource "pods" in API group "" in the namespace "default"
+---------设置集群为样例----------
+[root@k8s-master pki]# kubectl config set-cluster --help
+[root@k8s-master pki]# kubectl config set-cluster mycluster --kubeconfig=/tmp/test.conf --server=https://192.168.1.238:6443 --certificate-authority=/etc/kubernetes/pki/ca.crt --embed-certs=true #设置一个集群并新建配置文件
+Cluster "mycluster" set.
+[root@k8s-master pki]# kubectl config view --kubeconfig=/tmp/test.conf 
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://192.168.1.238:6443
+  name: mycluster
+contexts: []
+current-context: ""
+kind: Config
+preferences: {}
+users: []
+---------设置集群为样例----------
+
+####授权：
+[root@k8s-master manifests]# kubectl config view #查看APIServer客户端的配置文件
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://192.168.1.238:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes
+current-context: kubernetes-admin@kubernetes
+kind: Config
+preferences: {}
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+
+
+
+
 
 
 

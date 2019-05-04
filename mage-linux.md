@@ -262,6 +262,48 @@ top
 	 PID USER      PR（优先级，rt实时优先级）  NI（nice值）    VIRT（虚拟内存级）    RES（常驻内存级）    SHR（共享内存大小） S（状态）  %CPU %MEM     TIME+ （运行时长，真正占用cpu时长）COMMAND
 交互命令：T表示cpu占用时长，M表示内存比率排序，P表示CPU比率排序
 
+##grub
+修复stage1：
+1. grub  #进入命令行
+2. root (hd0,0) #指定内核所在的分区，hd0为BIOS第一块硬盘，0为第一个分区，/dev/sda1 /boot
+3. setup hd0  #安装stage1并指定硬盘
+重新安装grup:
+mkdir /mnt/boot && mount /dev/hda1 /mnt/boot
+1. grub-install --root-derictory=/mnt /dev/hda  #指定修复的硬盘boot所在的父目录，例如一块硬盘/dev/hda挂载的是/mnt，则boot的父目录是/mnt,并且指定要安装的硬盘
+2. sync 同步数据到硬盘
+3. vim /mnt/boot/grub/gurb.conf  #创建gurb配置文件
+
+如何修复grub.conf配置文件故障：
+1. 当grub.conf故障，你重启系统的时候只会启动第1阶段，不会启动第2阶段，所以会给你grub命令行
+2. find (hd0,0)/ #使用find目录查找内核所在的分区，只能一个个去找，find (hd1,0)/,然后按tab键，直至找到内核
+3.  root (hd0,0) #指定内核目录
+4.  kernel /vmlinuz  #指定kernel,按tab键补全
+5.  initrd /initrd  ##指定initrd,按tab键补全,版本要跟内核版本一致
+6.  boot  #启动系统
+
+##kerner的初始化过程：
+1. 设备探测
+2. 加载驱动初始化（可能会从initrd文件中装载驱动模块）
+3. 以只读方式挂载根文件系统
+4. 装载第一个进程init
+/etc/inittabz:
+initdefault:设定默认运行级别
+sysinit:系统初始化
+wait:等待级别切换到此级别时运行
+respawn:一旦程序终止，会重新启动
+/etc/rc.d/rc.sysinit完成的任务：
+1. 激活udev和selinux
+2. 根据/etc/sysctl.conf文件，来设定内核参数。
+3. 设定系统时钟。
+4. 装载键盘映射。
+5. 启用交换分区。
+6. 设置主机名
+7. 根文件系统检测，并以读写方式重新挂载。
+8. 激活软RAID和LVM设备。
+9. 启用磁盘配额。
+10. 根据/etc/fstab检查并挂载其它文件系统。
+11. 清理过期的锁和PID文件。
+
 
 
 
