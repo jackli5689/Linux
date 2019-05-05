@@ -2597,7 +2597,7 @@ ssl认证:
 	注：只有核心群组v1的可以直接写/api/v1/,如果不是核心群组必须起于/apis/apps/v1/
 #执行动作：
 HTTP request verb:
-	post,delete,put,get
+	put,delete,post,get
 API Server requests verb:
 	get（查询）,list(列出)，create(创建)，updata(修改)，patch（打补丁），watch（监控）,proxy（代理）redirect（重定向）,delete（删除），deletecollection(删除一个集合)
 Resource:
@@ -2818,6 +2818,319 @@ users:
   user:
     client-certificate-data: REDACTED
     client-key-data: REDACTED
+
+#第十六节：授权，RBAC
+授权插件：Node,ABAC(基于属性AC),RBAC(基于角色AC),Webhook(基于http回调AC)
+现在8S使用RBAC: Role-based AC
+名称空间：Role,Rolebinding
+集群级别：clusterRole,clusterRolebinding
+1. 使用rolebinding去绑定role和user,此时user有了名称空间级别的role权限
+2. 使用clusterrolebinding去绑定clusterrole和user，此时user有了集群级别的clusterrole权限
+3. 使用rolebinding绑定clusterrole和user，此时user有了名称空间的clusterrole权限，也就是user有了自己所在名称空间的所有关于clusterrole角色当中的权限
+##创建role
+[root@k8s-master ~]# kubectl create role pod-reader --verb=get,list,watch --resource=pods --dry-run -o yaml > ~/manifests/rbac/role.yaml#可以创建一个role，这里演示导出为yaml格式 
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  creationTimestamp: null
+  name: pod-reader
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+[root@k8s-master rbac]# cat role.yaml 
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: default
+rules:
+- apiGroups:  #这个是rule的起始点，必须写，不过列表你可以留空
+  - ""
+  resources:  #对象资源
+  - pods
+  verbs: #执行的动作
+  - get
+  - list
+  - watch
+[root@k8s-master rbac]# mv role.yaml role-demo.yaml
+[root@k8s-master rbac]# kubectl get role
+NAME         AGE
+pod-reader   3s
+##创建rolebinding
+[root@k8s-master rbac]# kubectl create rolebinding --help
+Usage:
+  kubectl create rolebinding NAME --clusterrole=NAME|--role=NAME
+[--user=username] [--group=groupname]
+[--serviceaccount=namespace:serviceaccountname] [--dry-run] [options]
+[root@k8s-master rbac]# kubectl create rolebinding magedu-pods-read --role=pod-reader --user=magedu -o yaml --dry-run > rolebinding.yaml  #--user这个用户并不是新建的帐号，而是登录时k8s会匹配到的帐号
+[root@k8s-master rbac]# cat rolebinding.yaml   
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  creationTimestamp: null
+  name: magedu-pods-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-reader
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: magedu
+[root@k8s-master rbac]# kubectl apply -f rolebinding.yaml 
+rolebinding.rbac.authorization.k8s.io/magedu-pods-read created
+[root@k8s-master rbac]# kubectl describe rolebinding magedu-pods-read
+Name:         magedu-pods-read
+Labels:       <none>
+Annotations:  kubectl.kubernetes.io/last-applied-configuration:
+                {"apiVersion":"rbac.authorization.k8s.io/v1","kind":"RoleBinding","metadata":{"annotations":{},"creationTimestamp":null,"name":"magedu-pod...
+Role:
+  Kind:  Role
+  Name:  pod-reader  #这个是创建的role角色，有相应对象的操作权限
+Subjects:
+  Kind  Name    Namespace
+  ----  ----    ---------
+  User  magedu    #这个是绑定的user用户。
+[root@k8s-master ~]# kubectl config use-context magedu@kubernetes  #切换magedu这个用户测试权限是否生效
+Switched to context "magedu@kubernetes".
+[root@k8s-master ~]# kubectl get pods #已生效
+NAME          READY   STATUS    RESTARTS   AGE
+myapp-0       1/1     Running   0          28h
+myapp-1       1/1     Running   0          28h
+myapp-2       1/1     Running   0          28h
+myapp-3       1/1     Running   0          28h
+myapp-4       1/1     Running   0          27h
+pod-sa-demo   1/1     Running   0          22h
+[root@k8s-master ~]# kubectl get pods -n kube-system  #因为magedu这个用户绑定的是default这个名称空间的角色，所以只具有default这个名称空间的相应权限。
+Error from server (Forbidden): pods is forbidden: User "magedu" cannot list resource "pods" in API group "" in the namespace "kube-system"
+##新建clusterrole
+[root@k8s-master rbac]# kubectl create clusterrole clurster-reader --verb=get,list,watch --resource=pods --dry-run -o yaml  > clusterrole.yaml
+[root@k8s-master rbac]# vim clusterrole.yaml 
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-reader
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+[root@k8s-master rbac]# kubectl apply -f clusterrole.yaml 
+clusterrole.rbac.authorization.k8s.io/clurster-reader created
+[root@k8s-master rbac]# kubectl get clusterrole clurster-reader
+NAME              AGE
+clurster-reader   44s
+##如何使用普通用户使用超级管理权限
+[root@k8s-master rbac]# useradd ik8s
+[root@k8s-master rbac]# cp -rp ~/.kube/ /home/ik8s/
+[root@k8s-master rbac]# chown -R ik8s.ik8s /home/ik8s/
+[root@k8s-master rbac]# su - ik8s
+[ik8s@k8s-master ~]$ kubectl config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://192.168.1.238:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes
+- context:
+    cluster: kubernetes
+    user: magedu
+  name: magedu@kubernetes
+current-context: magedu@kubernetes
+kind: Config
+preferences: {}
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+- name: magedu
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+[ik8s@k8s-master ~]$ kubectl config use-context magedu@kubenetes
+error: no context exists with the name: "magedu@kubenetes" #切换用户magedu@kubernetes 
+[ik8s@k8s-master ~]$ kubectl config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://192.168.1.238:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes
+- context:
+    cluster: kubernetes
+    user: magedu
+  name: magedu@kubernetes
+current-context: magedu@kubernetes  #此时用户为magedu@kubernetes 
+kind: Config
+preferences: {}
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+- name: magedu
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+#注：这个新建的ik8s用户切换用户不影响root环境下的用户切换
+##新建clusterrolebinding
+[root@k8s-master rbac]# kubectl create clusterrolebinding --help
+Usage:
+  kubectl create clusterrolebinding NAME --clusterrole=NAME [--user=username] [--group=groupname] [--serviceaccount=namespace:serviceaccountname] [--dry-run] [options]
+[root@k8s-master rbac]# kubectl create clusterrolebinding magedu-readall-pods --clusterrole=cluster-reader --user=magedu --dry-run -o yaml > clusterrolebinding-demo.yaml
+[root@k8s-master rbac]# vim clusterrolebinding-demo.yaml 
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: magedu-readall-pods
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-reader
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: magedu
+[root@k8s-master rbac]# kubectl apply -f clusterrolebinding-demo.yaml 
+clusterrolebinding.rbac.authorization.k8s.io/magedu-readall-pods created
+[root@k8s-master rbac]# kubectl describe clusterrolebinding magedu-readall-pods
+Name:         magedu-readall-pods
+Labels:       <none>
+Annotations:  kubectl.kubernetes.io/last-applied-configuration:
+                {"apiVersion":"rbac.authorization.k8s.io/v1beta1","kind":"ClusterRoleBinding","metadata":{"annotations":{},"name":"magedu-readall-pods"},"...
+Role:
+  Kind:  ClusterRole
+  Name:  cluster-reader
+Subjects:
+  Kind  Name    Namespace
+  ----  ----    ---------
+  User  magedu  
+[root@k8s-master rbac]# kubectl describe clusterrole cluster-reader
+Name:         cluster-reader
+Labels:       <none>
+Annotations:  kubectl.kubernetes.io/last-applied-configuration:
+                {"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole","metadata":{"annotations":{},"name":"cluster-reader"},"rules":[{"apiGrou...
+PolicyRule:
+  Resources  Non-Resource URLs  Resource Names  Verbs
+  ---------  -----------------  --------------  -----
+  pods       []                 []              [get list watch]
+###用rolebinding去绑定clusterrole,clusterrole只针对rolebinding所在的名称空间有效
+[root@k8s-master rbac]# kubectl create rolebinding magedu-read-pods --clusterrole=cluster-reader --user=magedu --dry-run -o yaml > rolebinding-clusterrole.yaml
+[root@k8s-master rbac]# vim rolebinding-clusterrole.yaml 
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: magedu-read-pods
+  namespace: default 
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-reader
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: magedu
+[root@k8s-master rbac]# kubectl apply -f rolebinding-clusterrole.yaml 
+rolebinding.rbac.authorization.k8s.io/magedu-read-pods created
+[root@k8s-master rbac]# kubectl get rolebinding 
+NAME               AGE
+magedu-read-pods   4s
+##集群角色讲解
+[root@k8s-master rbac]# kubectl get clusterrole
+NAME                                                                   AGE
+admin                                                                  29d
+cluster-admin                                                          29d
+这两个角色是集群中的管理员角色。
+[root@k8s-master rbac]# kubectl get clusterrolebinding
+NAME                                                   AGE
+cluster-admin                                          29d
+这个clusterrolebinding就是k8s集群中最大权限用户kubernetes-admin的绑定组
+[root@k8s-master rbac]# kubectl describe clusterrolebinding cluster-admin
+Name:         cluster-admin
+Labels:       kubernetes.io/bootstrapping=rbac-defaults
+Annotations:  rbac.authorization.kubernetes.io/autoupdate: true
+Role:
+  Kind:  ClusterRole
+  Name:  cluster-admin
+Subjects:
+  Kind   Name            Namespace
+  ----   ----            ---------
+  Group  system:masters    #这个角色绑定了system:masters这个组
+[root@k8s-master rbac]# kubectl config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://192.168.1.238:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes
+- context:
+    cluster: kubernetes
+    user: magedu
+  name: magedu@kubernetes
+current-context: kubernetes-admin@kubernetes
+kind: Config
+preferences: {}
+users:
+- name: kubernetes-admin  #这个用户就是绑定在system:masters这个组中的
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+- name: magedu
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+[root@k8s-master pki]# ls /etc/kubernetes/pki/
+apiserver.crt                 ca.key                  magedu.crt
+apiserver-etcd-client.crt     ca.srl                  magedu.csr
+apiserver-etcd-client.key     etcd                    magedu.key
+apiserver.key                 front-proxy-ca.crt      sa.key
+apiserver-kubelet-client.crt  front-proxy-ca.key      sa.pub
+apiserver-kubelet-client.key  front-proxy-client.crt
+ca.crt                        front-proxy-client.key
+
+[root@k8s-master pki]# openssl x509 -in apiserver-kubelet-client.crt -text -noout
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 7812310351632908911 (0x6c6ae6df982fc26f)
+    Signature Algorithm: sha256WithRSAEncryption
+        Issuer: CN=kubernetes
+        Validity
+            Not Before: Apr  6 10:19:09 2019 GMT
+            Not After : Apr  5 10:19:10 2020 GMT
+        Subject: O=system:masters, CN=kube-apiserver-kubelet-client #这个CN其实就是kubernetes-admin这个超级用户，这个用户的组是O=system:masters，只要我们创建用户并指定O=system:masters，那么我们创建的用户也具有超级管理员权限
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+	.....................
+
+
 
 
 
