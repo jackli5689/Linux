@@ -3130,6 +3130,131 @@ Certificate:
                 Public-Key: (2048 bit)
 	.....................
 
+#第十七节：dashboard认证及分级授权
+对APIServer（restful风格的api）的访问：
+	subject(用户)-->action(操作)-->object(对象)
+认证：token,tls(重点认证),user/password
+	帐号：UserAccount(不需要单独创建，只需要用户自己宣称就行，但是要经过认证授权才行),ServiceAcount
+授权：RBAC
+	role,rolebinding #名称空间角色，及名称空间角色和群集角色绑定
+	clusterrole,clusterrolebinding #集群角色，及集群角色绑定
+	subject:user,group,serviceaccount #定义binding操作时可以使用的用户类型
+	object:resource group,resource,non-resource url #对象类型
+	action:get,list,watch,patch,delete,detelecollection #操作
+####dashboard
+参考链接：https://github.com/kubernetes/dashboard
+#1. 部署dashboard:
+[root@k8s-master ~]# kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml #应用dashboard清单文件
+secret/kubernetes-dashboard-certs created
+serviceaccount/kubernetes-dashboard created
+role.rbac.authorization.k8s.io/kubernetes-dashboard-minimal created
+rolebinding.rbac.authorization.k8s.io/kubernetes-dashboard-minimal created
+deployment.apps/kubernetes-dashboard created
+service/kubernetes-dashboard created
+[root@k8s-master ~]# kubectl get pods -n kube-system
+NAME                                    READY   STATUS    RESTARTS   AGE
+coredns-fb8b8dccf-2zlk6                 1/1     Running   2          29d
+coredns-fb8b8dccf-brx94                 1/1     Running   2          29d
+etcd-k8s-master                         1/1     Running   2          29d
+kube-apiserver-k8s-master               1/1     Running   2          29d
+kube-controller-manager-k8s-master      1/1     Running   2          29d
+kube-flannel-ds-amd64-rfsd6             1/1     Running   3          29d
+kube-flannel-ds-amd64-swsdg             1/1     Running   4          29d
+kube-flannel-ds-amd64-x5s6p             1/1     Running   4          29d
+kube-proxy-fxvqs                        1/1     Running   3          29d
+kube-proxy-jwxzw                        1/1     Running   2          29d
+kube-proxy-zf9ch                        1/1     Running   2          29d
+kube-scheduler-k8s-master               1/1     Running   2          29d
+kubernetes-dashboard-5f7b999d65-84w4v   1/1     Running   0          74s  #已经running状态了
+[root@k8s-master ~]# kubectl get svc -n kube-system
+NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                  AGE
+kube-dns               ClusterIP   10.96.0.10      <none>        53/UDP,53/TCP,9153/TCP   29d
+kubernetes-dashboard   ClusterIP   10.106.234.66   <none>        443/TCP                  8m21s
+[root@k8s-master ~]# kubectl patch svc kubernetes-dashboard -p '{"spec":{"type":"NodePort"}}' -n kube-system  #映射dashboard443接口使集群外部使用
+service/kubernetes-dashboard patched
+[root@k8s-master ~]# kubectl get svc -n kube-system
+NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                  AGE
+kube-dns               ClusterIP   10.96.0.10      <none>        53/UDP,53/TCP,9153/TCP   29d
+kubernetes-dashboard   NodePort    10.106.234.66   <none>        443:32156/TCP            10m
+访问：https://192.168.1.238:32156
+有两种认证方式：kubeconfig和令牌
+[root@k8s-master pki]# kubectl create serviceaccount jack -n default
+serviceaccount/jack created
+[root@k8s-master pki]# kubectl create rolebinding jack-admin --clusterrole=admin --serviceaccount=default:jack
+rolebinding.rbac.authorization.k8s.io/jack-admin created
+[root@k8s-master pki]# kubectl get secret 
+NAME                    TYPE                                  DATA   AGE
+admin-token-5v6z8       kubernetes.io/service-account-token   3      41h
+default-token-lw499     kubernetes.io/service-account-token   3      29d
+jack-token-n8dsx        kubernetes.io/service-account-token   3      87s
+mysql-root-password     Opaque                                1      2d1h
+tomcat-ingress-secret   kubernetes.io/tls                     2      7d17
+[root@k8s-master pki]# kubectl describe secret jack-token-n8dsx 
+Name:         jack-token-n8dsx
+Namespace:    default
+Labels:       <none>
+Annotations:  kubernetes.io/service-account.name: jack
+              kubernetes.io/service-account.uid: 719ef9a2-6fcc-11e9-8f19-005056ad5cec
+
+Type:  kubernetes.io/service-account-token
+
+Data
+====
+ca.crt:     1025 bytes
+namespace:  7 bytes
+token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZWZhdWx0Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZWNyZXQubmFtZSI6ImphY2stdG9rZW4tbjhkc3giLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoiamFjayIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6IjcxOWVmOWEyLTZmY2MtMTFlOS04ZjE5LTAwNTA1NmFkNWNlYyIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZWZhdWx0OmphY2sifQ.DrG8E19RiZiDBNHTKk3wMX8-lyrTCOS5QJWvgJXZHFn1XyYS_Dasn0FyxURsql_qk0zK6G43tgcHmzKACR0YnQXXJF8Ef9pg_IhzeVH35Zn4_FNMcTo9zpFjY5dvu_egnLfBVwt8TRmll4L9RTg39mJXhiU5WZPi6yL5FRUpQr-9_rWODnC4KpqllrS41dJC1n83xkBAzGROQ_aeBjNQdi9x0gUn3oiMCJktZvkSDmYjKjL8CwU1m0Gge8om5agRfYxk7V83bMLMFaR58UjhtR9k8QbJbAcmn5lT24ff9V3y-dwhOa8R1g0YQbbDxFVTJh5Blxy4wLcqVPOiMiI4SQ
+
+#2. 使用k8s的CA为dashboard签署证书用于部署dashboard
+[root@k8s-master pki]# (umask 077;openssl genrsa -out dashboard.key 2048) #为dashboard生成私钥
+Generating RSA private key, 2048 bit long modulus
+.......+++
+..........+++
+e is 65537 (0x10001)
+[root@k8s-master pki]# openssl req -new -key dashboard.key -out #为dashboard生成证书申请请求，用户名叫ui.magedu.com,以后的网站名也叫ui.magedu.com，属于用户组magedu   dashboard.csr -subj "/O=magedu/CN=ui.magedu.com"
+[root@k8s-master pki]# openssl x509 -req -in dashboard.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out dashboard.crt -days 365 #用k8sca签署dashboard的证书申请请求
+Signature ok
+subject=/O=magedu/CN=ui.magedu.com
+Getting CA Private Key
+[root@k8s-master pki]# kubectl create secret generic dashboard-cert -n kube-system --from-file=dashboard.crt=./dashboard.crt --from-file=dashboard.key=dashboard.key  #为dashboard的公钥和私钥生成一个generic类型的secret。因为由于在dashboard内部使用的，所以类型应该是generic而不是tls类型
+secret/dashboard-cert created
+[root@k8s-master pki]# kubectl get secrets dashboard-cert -n kube-system
+NAME             TYPE     DATA   AGE
+dashboard-cert   Opaque   2      2m51s  #opaque类型就是generic类型的
+
+#Token认证
+#新建serviceaccount
+[root@k8s-master pki]# kubectl create serviceaccount dashboard-admin -n kube-system #新建sa用户dashboard-admin
+serviceaccount/dashboard-admin created
+[root@k8s-master pki]# kubectl get sa -n kube-system dashboard-admin
+NAME              SECRETS   AGE
+dashboard-admin   1         15s
+[root@k8s-master pki]# kubectl create clusterrolebinding dashboard-cluster-admin --clusterrole=cluster-admin --serviceaccount=kube-system:dashboard-admin #把dashboard-admin这个sa帐户绑定在集群角色cluster-admin上，并新建名称叫dashboard-cluster-admin
+clusterrolebinding.rbac.authorization.k8s.io/dashboard-cluster-admin created
+[root@k8s-master pki]# kubectl get secrets -n kube-system
+dashboard-admin-token-hg7ts                      kubernetes.io/service-account-token   3      5m8s  #这个dashboard-admin-token-hg7ts就是serviceaccount帐户dashboard-admin的token，使用describe命令可以看到token
+[root@k8s-master pki]# kubectl describe secrets dashboard-admin-token-hg7ts -n kube-system
+Name:         dashboard-admin-token-hg7ts
+Namespace:    kube-system
+Labels:       <none>
+Annotations:  kubernetes.io/service-account.name: dashboard-admin
+              kubernetes.io/service-account.uid: 48d73c4c-6fc7-11e9-8f19-005056ad5cec
+
+Type:  kubernetes.io/service-account-token
+
+Data
+====
+ca.crt:     1025 bytes
+namespace:  11 bytes
+token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJkYXNoYm9hcmQtYWRtaW4tdG9rZW4taGc3dHMiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoiZGFzaGJvYXJkLWFkbWluIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQudWlkIjoiNDhkNzNjNGMtNmZjNy0xMWU5LThmMTktMDA1MDU2YWQ1Y2VjIiwic3ViIjoic3lzdGVtOnNlcnZpY2VhY2NvdW50Omt1YmUtc3lzdGVtOmRhc2hib2FyZC1hZG1pbiJ9.ZtH4LLN2AhXMpY2X2eND4XX33eVJRyaEzLGoejj1pbotS3foz0iVDG3jCuvGJGsfiPqRbNhnFomFS_dExoDYFgXeTA_IegdkXhW-UUQ8hSRdw9-ICJJOPKLtP18tflYJpb670ZECVN9Soft1jWsMXTIO03IwPAxp_HetJXTtIXYxiyclJZ8o3I0d3DrI4e4WEdB3vI7Q_aHhcStjuz0iY8zlYqUPcbffMJKt3Y79GTDgI_BxOziwVDKk6o2Mv47gLePd5otM7RvMsxAuP1sP5RD6yiqspkMYqs5vzKrcZEdP-m4IiPdPjXKZy_dOOoZTgIXrFObDo12pYihgg  #这个就是token,使用token即可以认证dashboard了
+
+
+
+
+
+
+
+
+
 
 
 
