@@ -304,6 +304,279 @@ respawn:一旦程序终止，会重新启动
 10. 根据/etc/fstab检查并挂载其它文件系统。
 11. 清理过期的锁和PID文件。
 
+#内核模块管理：
+sysctl -w vm.drop_cache=1
+sysctl -w net.ipv4.ip_forward=1
+sysctl -w kerner.hostname=www.jack.com
+vim /etc/sysctl.conf
+	vm.drop_cache=1
+	net.ipv4.ip_forward=1
+	kerner.hostname=www.jack.com
+sysctl -p  #永久生效
+sysctl -a  #显示所有内核参数及其值
+#系统模块管理：
+lsmod  #列出当前系统所有的模块
+modprobe MODULE_NAME  #装载模块，只需要指定模块名称不需要指定模块路径
+modprobe -r MODULE_NAME  #卸载模块，只需要指定模块名称不需要指定模块路径，自己会去/lib/module/kerner_version/下去找模块
+modinfo MODULE_NAME  #查看模块的具体信息
+insmod /PATH/to/file #装载模块，必须指定模块路径
+rmmod MODULE_NAME #移除模块
+depmod /PATH/TO/MODULE_DIR  #生成模块间的依赖关系到这个目录当中，用得不多
+#加网卡加驱动时下载源代码手动编译成ko模式，放在特定的路径下。编译驱动时
+linux版本必须跟自己系统一致才能用
+#内核中的功能除了核心功能之外(不能选择操作的核心)，在编译时，大多功能都有三种选择：
+	1. 不使用此功能
+	2. 编译成内核模块(成为模块，内核后续装载)
+	3. 编译进内核(只要内核装载就装载)
+
+######如何手动编译内核
+升级为2.6.28
+安装编译环境和编译工具
+安装两个开发组：1. Development Libraries  2. Development Tools
+挂载本地光驱安装：
+yum groupinstall -y "Development Libraries" "Development Tools"
+get linux-2.6.28.tar.gz #下载内核文件
+[root@localhost ~]# tar -zxf linux-2.6.28.tar.gz -C /usr/src #解压到路径
+[root@localhost src]# ln -sv linux-2.6.28/ linux #一般来说当前编译的linux版本链接为linux
+create symbolic link `linux' to `linux-2.6.28/'
+[root@localhost linux]# ls arch/ #各种平台的cpu架构
+alpha  blackfin  h8300    m32r       mips     powerpc  sparc    x86
+arm    cris      ia64     m68k       mn10300  s390     sparc64  xtensa
+avr32  frv       Kconfig  m68knommu  parisc   sh       um
+#编译方式
+1. make gconfig:gnome桌面环境下使用，需要安装图形开发库GNOME Software Development
+2. make kconfig:kde桌面环境下使用，需要安装图形开发库KDE Software Development
+3. make menuconfig:一定要在内核目录下打开，并且窗口要足够大，否则会打开文字窗口失败
+ .config - Linux Kernel v2.6.28 Configuration
+ ------------------------------------------------------------------------------
+  +---------------------- Linux Kernel Configuration -----------------------+
+  |  Arrow keys navigate the menu.  <Enter> selects submenus --->.          |
+  |  Highlighted letters are hotkeys.  Pressing <Y> includes, <N> excludes, |
+  |  <M> modularizes features.  Press <Esc><Esc> to exit, <?> for Help, </> |
+  |  for Search.  Legend: [*] built-in  [ ] excluded  <M> module  < >       |
+  | +---------------------------------------------------------------------+ |
+  | |        General setup  --->                                          | | #有箭头表示有子条目，enter键进入，如果是*表示做进内核，如果是m表示做成模块
+  | |    [*] Enable loadable module support  --->                         | |
+  | |    -*- Enable the block layer  --->                                 | |
+  | |        Processor type and features  --->                            | |
+  | |        Power management and ACPI options  --->                      | |
+  | |        Bus options (PCI etc.)  --->                                 | |
+  | |        Executable file formats / Emulations  --->                   | |
+  | |    -*- Networking support  --->                                     | |
+  | |        Device Drivers  --->                                         | |
+  | |        Firmware Drivers  --->                                       | |
+  | |        File systems  --->                                           | |
+  | |        Kernel hacking  --->                                         | |
+  | |        Security options  --->                                       | |
+  | |    -*- Cryptographic API  --->                                      | |
+  | |    [*] Virtualization (NEW)  --->                                   | |
+  | |        Library routines  --->                                       | |
+  | |    ---                                                              | |
+  | |        Load an Alternate Configuration File                         | |
+  | |        Save an Alternate Configuration File                         | |
+  | |                                                                     | |
+  | |                                                                     | |
+  | +---------------------------------------------------------------------+ |
+  +-------------------------------------------------------------------------+
+  |                    <Select>    < Exit >    < Help >                     |
+  +-------------------------------------------------------------------------+
+
+#进入General setup  --->    
+ .config - Linux Kernel v2.6.28 Configuration
+ ------------------------------------------------------------------------------
+  +----------------------------- General setup -----------------------------+
+  |  Arrow keys navigate the menu.  <Enter> selects submenus --->.          |
+  |  Highlighted letters are hotkeys.  Pressing <Y> includes, <N> excludes, |
+  |  <M> modularizes features.  Press <Esc><Esc> to exit, <?> for Help, </> |
+  |  for Search.  Legend: [*] built-in  [ ] excluded  <M> module  < >       |
+  | +---------------------------------------------------------------------+ |
+  | |    [*] Prompt for development and/or incomplete code/drivers        | |
+  | |    ()  Local version - append to kernel release                     | | #需要让你输入字符串，这个字符串是本地版本号，2.6.18-348.el5中的-348.el5是本地版本号
+  | |    [ ] Automatically append version information to the version strin| |
+  | |    [*] Support for paging of anonymous memory (swap)                | |
+  | |    [*] System V IPC                                                 | |
+  | |    [*] POSIX Message Queues                                         | |
+  | |    [*] BSD Process Accounting                                       | |
+  | |    [ ]   BSD Process Accounting version 3 file format               | |
+  | |    [*] Export task/process statistics through netlink (EXPERIMENTAL)| |
+  | |    [*]   Enable per-task delay accounting (EXPERIMENTAL)            | |
+  | |    [*]   Enable extended accounting over taskstats (EXPERIMENTAL)   | |
+  | |    [*]     Enable per-task storage I/O accounting (EXPERIMENTAL)    | |
+  | |    [*] Auditing support                                             | |
+  | |    [*]   Enable system-call auditing support                        | |
+  | |    < > Kernel .config support                                       | |
+  | |    (19) Kernel log buffer size (16 => 64KB, 17 => 128KB)            | |
+  | |    [ ] Control Group support (NEW)                                  | |
+  | |    [ ] Group CPU scheduler (NEW)                                    | |
+  | |    [*] Create deprecated sysfs files (NEW)                          | |
+  | |    -*- Kernel->user space relay support (formerly relayfs)          | |
+  | |    -*- Namespaces support                                           | |
+  | +----v(+)-------------------------------------------------------------+ |
+  +-------------------------------------------------------------------------+
+  |                    <Select>    < Exit >    < Help >                     |
+  +-------------------------------------------------------------------------+
+#保存退出内核编辑
+[root@localhost linux]# ls -a
+.        COPYING        firmware    ipc       MAINTAINERS  REPORTING-BUGS  usr
+..       CREDITS        fs          Kbuild    Makefile     samples         virt
+arch     crypto         .gitignore  kernel    mm           scripts
+block    Documentation  include     lib       net          security
+.config  drivers        init        .mailmap  README       sound
+注：.config文件是你编辑过的配置文件，是保存在这个文件上的
+[root@localhost linux]# ls /boot/
+config-2.6.18-348.el5      lost+found                 System.map-2.6.18-348.el5
+grub                       message                    vmlinuz-2.6.18-348.el5
+initrd-2.6.18-348.el5.img  symvers-2.6.18-348.el5.gz
+[root@localhost linux]# cp /boot/config-2.6.18-348.el5 /usr/src/linux/.config  #因为你自己编辑的配置文件会容易出错，而redhat的配置文件可以运行在你机器上，所以我们把redhat的配置文件复制过来在此基础上更改即可。
+cp: overwrite `/usr/src/linux/.config'? y
+make menuconfig #再次执行编辑内核硬件驱动用不着可取消掉，会导致编辑非常非常慢
+ .config - Linux Kernel v2.6.28 Configuration
+ ------------------------------------------------------------------------------
+  +---------------------- Linux Kernel Configuration -----------------------+
+  |  Arrow keys navigate the menu.  <Enter> selects submenus --->.          |
+  |  Highlighted letters are hotkeys.  Pressing <Y> includes, <N> excludes, |
+  |  <M> modularizes features.  Press <Esc><Esc> to exit, <?> for Help, </> |
+  |  for Search.  Legend: [*] built-in  [ ] excluded  <M> module  < >       |
+  | +---------------------------------------------------------------------+ |
+  | |        General setup  --->                                          | |
+  | |    [*] Enable loadable module support  --->                         | |
+  | |    -*- Enable the block layer  --->                                 | |
+  | |        Processor type and features  --->  #处理器类型和特性           | |
+  | |        Power management and ACPI options  --->                      | |
+  | |        Bus options (PCI etc.)  --->                                 | |
+  | |        Executable file formats / Emulations  --->                   | |
+  | |    -*- Networking support  --->                                     | |
+  | |        Device Drivers  --->                                         | |
+  | |        Firmware Drivers  --->                                       | |
+  | |        File systems  --->                                           | |
+  | |        Kernel hacking  --->                                         | |
+  | |        Security options  --->                                       | |
+  | |    -*- Cryptographic API  --->                                      | |
+  | |    [*] Virtualization (NEW)  --->                                   | |
+  | |        Library routines  --->                                       | |
+  | |    ---                                                              | |
+  | |        Load an Alternate Configuration File                         | |
+  | |        Save an Alternate Configuration File                         | |
+  | |                                                                     | |
+  | |                                                                     | |
+  | +---------------------------------------------------------------------+ |
+  +-------------------------------------------------------------------------+
+  |                    <Select>    < Exit >    < Help >                   
+
+.config - Linux Kernel v2.6.28.9 Configuration
+ ------------------------------------------------------------------------------
+  +---------------------- Processor type and features ----------------------+
+  |  Arrow keys navigate the menu.  <Enter> selects submenus --->.          |
+  |  Highlighted letters are hotkeys.  Pressing <Y> includes, <N> excludes, |
+  |  <M> modularizes features.  Press <Esc><Esc> to exit, <?> for Help, </> |
+  |  for Search.  Legend: [*] built-in  [ ] excluded  <M> module  < >       |
+  | +---------------------------------------------------------------------+ |
+  | |    [ ] Tickless System (Dynamic Ticks) (NEW)                        | |
+  | |    [ ] High Resolution Timer Support (NEW)                          | |
+  | |    [*] Symmetric multi-processing support                           | |
+  | |    [*] Enable MPS table (NEW)                                       | |
+  | |        Subarchitecture Type (PC-compatible)  --->                   | |
+  | |    [ ] Paravirtualized guest support (NEW)  --->                    | |
+  | |    [ ] Memtest (NEW)                                                | |
+  | |        Processor family (Generic-x86-64)  --->  #设置处理器类型跟你物理机cpu一样                    | |
+  | |    [*] IBM Calgary IOMMU support                                    | |
+  | |    [ ]   Should Calgary be enabled by default?                      | |
+  | |    [*] AMD IOMMU support                                            | |
+  | |    (255) Maximum number of CPUs (2-512)                             | |
+  | |    [*] SMT (Hyperthreading) scheduler support                       | |
+  | |    [*] Multi-core scheduler support                                 | |
+  | |        Preemption Model (Voluntary Kernel Preemption (Desktop))  ---| |
+  | |    [*] Machine Check Exception                                      | |
+  | |    [*]   Intel MCE features                                         | |
+  | |    [*]   AMD MCE features                                           | |
+  | |    < > Dell laptop support (NEW)                                    | |
+  | |    <M> /dev/cpu/microcode - microcode support                       | |
+  | |    [*]   Intel microcode patch loading support (NEW)                | |
+  | +----v(+)-------------------------------------------------------------+ |
+  +-------------------------------------------------------------------------+
+  |                    <Select>    < Exit >    < Help >                     |
+  +-------------------------------------------------------------------------+
+make  #编译
+make moules_install #安装模块
+make install  #安装内核
+yum install screen -y #这个能够在当前窗口中模拟好多窗口，可以用于编译内核时，以防断开需要从头开始编译
+screen #进入一个新的屏幕
+screen -S jack #进入新屏幕并设置名称
+screen -ls #列出屏幕会话
+screen -r screen_id #还原屏幕会话
+ctrl+a后松开按d：从当前窗口剥离掉
+exit #退出当前屏幕
+
+当内核不是自己想像的那样，则需要重新编译安装，或者如下
+make clean #清理此前安装好的二进制模块
+make mrproper #清理此前编译残留的文件包括.config
+
+#怎么让自己编译的内核启动
+加一块硬盘到自己现在所在的系统，并对硬盘进行分两个区/mnt/boot和/mnt/sysroot
+1. [root@localhost ~]# fdisk -l
+
+Disk /dev/sda: 53.6 GB, 53687091200 bytes
+255 heads, 63 sectors/track, 6527 cylinders
+Units = cylinders of 16065 * 512 = 8225280 bytes
+
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sda1   *           1          13      104391   83  Linux
+/dev/sda2              14        6527    52323705   8e  Linux LVM
+
+Disk /dev/sdb: 21.4 GB, 21474836480 bytes  #创建两个分区
+255 heads, 63 sectors/track, 2610 cylinders
+Units = cylinders of 16065 * 512 = 8225280 bytes
+
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sdb1               1           3       24066   83  Linux
+/dev/sdb2               4        2610    20940727+  83  Linux
+2. [root@localhost ~]# mke2fs -j /dev/sdb1 #用ext3来格式化分区
+[root@localhost ~]# mke2fs -j /dev/sdb2
+root@localhost ~]# mkdir /mnt/boot
+[root@localhost ~]# mkdir /mnt/sysinit
+[root@localhost ~]# mount /dev/sdb1 /mnt/boot/
+[root@localhost ~]# mount /dev/sdb2 /mnt/sysinit/
+[root@localhost ~]# grub-install --root-directory=/mnt /dev/sda #安装grub,指定新硬盘boot的根目录，及指定哪个硬盘
+Probing devices to guess BIOS drives. This may take a long time.
+Installation finished. No error reported.
+This is the contents of the device map /mnt/boot/grub/device.map.
+Check if this is correct or not. If any of the lines is incorrect,
+fix it and re-run the script `grub-install'.
+
+(fd0)   /dev/fd0
+(hd0)   /dev/sda
+(hd1)   /dev/sdb
+[root@localhost boot]# cp /boot/vmlinuz-2.6.18-348.el5 /mnt/boot/vmlinuz #复制系统内核到新硬盘/boot目录下
+[root@localhost boot]# cp /boot/initrd-`uname -r`.img /root #设置init文件
+[root@localhost ~]# mv initrd-2.6.18-348.el5.img initrd-2.6.18-348.el5.img.gz
+[root@localhost ~]# gzip -d initrd-2.6.18-348.el5.img 
+[root@localhost ~]# file initrd-2.6.18-348.el5.img 
+initrd-2.6.18-348.el5.img: ASCII cpio archive (SVR4 with no CRC)
+[root@localhost ~]# mkdir test
+[root@localhost ~]# cd test/
+[root@localhost test]# cpio -id < ../initrd-2.6.18-348.el5.img  #展开init文件到当前目录下
+17850 blocks
+[root@localhost test]# ls
+bin  dev  etc  init  lib  proc  sbin  sys  sysroot
+[root@localhost iso]# zcat /boot/initrd-2.6.18-348.el5.img | cpio -id  #一条命令搞定前面的，zcat读取压缩文件，并通过管道给cpio从传过来的存档文件复制出文件来，-i为提取，-d为在需要的地方创建目录
+17850 blocks
+[root@localhost iso]# ls
+bin  dev  etc  init  lib  proc  sbin  sys  sysroot
+[root@localhost iso]# vim init #设定initrd挂载根的设备
+mkrootdev -t ext3 -o defaults,ro /dev/sdb2 #设定根设备
+#resume /dev/VolGroup00/LogVol01
+[root@localhost iso]# find . | cpio -H newc --quiet -o | gzip -9 > /mnt/boot/initrd.gz #查看当前目录所有文件通过管理传至cpio命令，让cpio来归档，类型为新归档(newc)，静默输出至管道给gzip,压缩等级为9，最后重定向给/mnt/boot/initrd.gz
+[root@localhost iso]# cd /mnt/boot/
+[root@localhost boot]# ll -h
+total 5.5M
+drwxr-xr-x 2 root root 1.0K May  7 16:04 grub
+-rw-r--r-- 1 root root 3.5M May  7 16:30 initrd.gz
+drwx------ 2 root root  12K May  7 16:02 lost+found
+-rw-r--r-- 1 root root 2.1M May  7 16:07 vmlinuz 
+
+
+
+
 
 
 

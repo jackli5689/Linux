@@ -588,7 +588,7 @@ nat表规则
 SNAT:（源地址转换，用于局域网访问互联网）
 iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -j SNAT --to-source 180.1.1.1  #用于固定外网ip的时候，内网用户可上网，仅限内网用户主动发起
 iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -j MASAUERADE  #用于外网ip不是固定的时候，内网用户可上网，仅限内网用户主动发起
-iptables -t nat -A FORWARD -s 192.168.0.0/24 -p icmp -j REJECT #拒绝icmp的所有协议，其他协议允许通过 
+iptables -t nat -A FORWARD -s 192.168.0.0/24 -p icmp -j REJECT #拒绝转发icmp的所有协议，其他协议允许通过 
 iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT #开启转发ftp数据服务，RELATED就是打开数据服务的   #ip_nat_ftp 和ip_conntrack_ftp两个模块必须安装
 iptables -A FORWARD -s 192.168.1.0/24 -p tcp --dport 21 -m state --state NEW -j ACCEPT #开启转发ftp命令服务
 DNAT:（目标地址转换，用于互联网访问局域网服务器）
