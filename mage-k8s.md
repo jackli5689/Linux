@@ -1,4 +1,4 @@
-﻿#K8S----容器编排
+#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -3143,6 +3143,7 @@ Certificate:
 	action:get,list,watch,patch,delete,detelecollection #操作
 ####dashboard
 参考链接：https://github.com/kubernetes/dashboard
+1.部署 2.将service改为nodePort 3.认证时的帐号必须为serviceaccount,被dashboard pod拿来进行认证
 #1. 部署dashboard:
 [root@k8s-master ~]# kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml #应用dashboard清单文件
 secret/kubernetes-dashboard-certs created
@@ -3177,7 +3178,9 @@ NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)        
 kube-dns               ClusterIP   10.96.0.10      <none>        53/UDP,53/TCP,9153/TCP   29d
 kubernetes-dashboard   NodePort    10.106.234.66   <none>        443:32156/TCP            10m
 访问：https://192.168.1.238:32156
-有两种认证方式：kubeconfig和令牌
+#有两种认证方式：kubeconfig和token认证
+#Token认证：
+#default名称空间权限：
 [root@k8s-master pki]# kubectl create serviceaccount jack -n default
 serviceaccount/jack created
 [root@k8s-master pki]# kubectl create rolebinding jack-admin --clusterrole=admin --serviceaccount=default:jack
@@ -3203,25 +3206,9 @@ Data
 ca.crt:     1025 bytes
 namespace:  7 bytes
 token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZWZhdWx0Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZWNyZXQubmFtZSI6ImphY2stdG9rZW4tbjhkc3giLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoiamFjayIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6IjcxOWVmOWEyLTZmY2MtMTFlOS04ZjE5LTAwNTA1NmFkNWNlYyIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZWZhdWx0OmphY2sifQ.DrG8E19RiZiDBNHTKk3wMX8-lyrTCOS5QJWvgJXZHFn1XyYS_Dasn0FyxURsql_qk0zK6G43tgcHmzKACR0YnQXXJF8Ef9pg_IhzeVH35Zn4_FNMcTo9zpFjY5dvu_egnLfBVwt8TRmll4L9RTg39mJXhiU5WZPi6yL5FRUpQr-9_rWODnC4KpqllrS41dJC1n83xkBAzGROQ_aeBjNQdi9x0gUn3oiMCJktZvkSDmYjKjL8CwU1m0Gge8om5agRfYxk7V83bMLMFaR58UjhtR9k8QbJbAcmn5lT24ff9V3y-dwhOa8R1g0YQbbDxFVTJh5Blxy4wLcqVPOiMiI4SQ
+#注：使用jack-token-n8dsx的token就可以访问default名称空间下的所有资源所有操作了
 
-#2. 使用k8s的CA为dashboard签署证书用于部署dashboard
-[root@k8s-master pki]# (umask 077;openssl genrsa -out dashboard.key 2048) #为dashboard生成私钥
-Generating RSA private key, 2048 bit long modulus
-.......+++
-..........+++
-e is 65537 (0x10001)
-[root@k8s-master pki]# openssl req -new -key dashboard.key -out #为dashboard生成证书申请请求，用户名叫ui.magedu.com,以后的网站名也叫ui.magedu.com，属于用户组magedu   dashboard.csr -subj "/O=magedu/CN=ui.magedu.com"
-[root@k8s-master pki]# openssl x509 -req -in dashboard.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out dashboard.crt -days 365 #用k8sca签署dashboard的证书申请请求
-Signature ok
-subject=/O=magedu/CN=ui.magedu.com
-Getting CA Private Key
-[root@k8s-master pki]# kubectl create secret generic dashboard-cert -n kube-system --from-file=dashboard.crt=./dashboard.crt --from-file=dashboard.key=dashboard.key  #为dashboard的公钥和私钥生成一个generic类型的secret。因为由于在dashboard内部使用的，所以类型应该是generic而不是tls类型
-secret/dashboard-cert created
-[root@k8s-master pki]# kubectl get secrets dashboard-cert -n kube-system
-NAME             TYPE     DATA   AGE
-dashboard-cert   Opaque   2      2m51s  #opaque类型就是generic类型的
-
-#Token认证
+#整个集群权限：
 #新建serviceaccount
 [root@k8s-master pki]# kubectl create serviceaccount dashboard-admin -n kube-system #新建sa用户dashboard-admin
 serviceaccount/dashboard-admin created
@@ -3247,15 +3234,91 @@ ca.crt:     1025 bytes
 namespace:  11 bytes
 token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJkYXNoYm9hcmQtYWRtaW4tdG9rZW4taGc3dHMiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoiZGFzaGJvYXJkLWFkbWluIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQudWlkIjoiNDhkNzNjNGMtNmZjNy0xMWU5LThmMTktMDA1MDU2YWQ1Y2VjIiwic3ViIjoic3lzdGVtOnNlcnZpY2VhY2NvdW50Omt1YmUtc3lzdGVtOmRhc2hib2FyZC1hZG1pbiJ9.ZtH4LLN2AhXMpY2X2eND4XX33eVJRyaEzLGoejj1pbotS3foz0iVDG3jCuvGJGsfiPqRbNhnFomFS_dExoDYFgXeTA_IegdkXhW-UUQ8hSRdw9-ICJJOPKLtP18tflYJpb670ZECVN9Soft1jWsMXTIO03IwPAxp_HetJXTtIXYxiyclJZ8o3I0d3DrI4e4WEdB3vI7Q_aHhcStjuz0iY8zlYqUPcbffMJKt3Y79GTDgI_BxOziwVDKk6o2Mv47gLePd5otM7RvMsxAuP1sP5RD6yiqspkMYqs5vzKrcZEdP-m4IiPdPjXKZy_dOOoZTgIXrFObDo12pYihgg  #这个就是token,使用token即可以认证dashboard了
 
+#使用kubeconfig认证：
+[root@k8s-master ~]# kubectl get secrets jack-token-n8dsx -o json
+{
+    "apiVersion": "v1",
+    "data": {
+        "ca.crt": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUN5RENDQWJDZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREFWTVJNd0VRWURWUVFERXdwcmRXSmwKY201bGRHVnpNQjRYRFRFNU1EUXdOakV3TVRrd09Wb1hEVEk1TURRd016RXdNVGt3T1Zvd0ZURVRNQkVHQTFVRQpBeE1LYTNWaVpYSnVaWFJsY3pDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBT3ZOCjVzTzVwVzZwS1RZN0RScWw2ZlJmOXZxSUZ6MlQ0VnhCM2lRb0Q0dzg3MFVpMUJneVNNMXVCQzFHWXAyRFBtTUkKNHc4N1p6TWdxM1p0ZUJhU3pGVnVCTGwxTmFpa2FZUG1SWXdYNzZSUlZjNzlSSmRIbnl4dElWd2JBanpnS25aMgorZWVNa2cwSFBYZnR3S2Z3a0M3R1pFZUtURDdXemhJU0NIVjR2cmx6aWJVUm5vRGRUSWJHbWJQdHFUeGw3RlA4Cm9PamZxTUlyUEJFaG9CczNRZ3NuOFk3SUZkM0prdTlmMWhnVUNseFluQmdZM2dLQXVtNnVXWVFvTURnZWdnN3EKU3JLU3drYVFTOU5Ea3Mwb0l0U3I1MGRkV3Z6NVA5elVtTDJyd3Buck5SRUVnc3RBTDE1RGFHK0pQaUNYdkxYQgpzaHl1NEZTZjBOQnl5NlVYUTljQ0F3RUFBYU1qTUNFd0RnWURWUjBQQVFIL0JBUURBZ0trTUE4R0ExVWRFd0VCCi93UUZNQU1CQWY4d0RRWUpLb1pJaHZjTkFRRUxCUUFEZ2dFQkFLUzY1MVFYZW40YVBvVHB6VEZ2RXQxS1hMWHgKSUp5a004dncvb1hVWS9PQ3pYc29Ua09GWW9veVhGdUF0QmkzSy9GM1lIc1FlODA1QTI0OEJadFUrcEw2MGVwWgpqUFRjZUtjeU5PZk9IMzY1UVdBV2NkYlNjVWlQV3Ezd1NjNHRqUE1pZGwzbm5STDRWWVAwZ1NFQ21MY1A5b3NFCkkwRTU1TXR4Sk1QbC85YXZyUjNZbDlZYmkxWDFTUnh2RWFRNlJab0NFSWo2SlFaSDkyY0R6T0NOOWtXQ2JUM2EKMlViQk1WMHFSUTVqN1EvU1JoTmUwVWxkYTN2MDFvREtXMXc4VTVKOEE0V2hzempwb293eDVpQzVoeFZvVklsZAo3Wmh1WnNMQjBRUXNaTWxnNGhZb3AzM09hb05sM2xUODduOXNJOVlhTldYUEdiSzZRYm5kdXBuRmo4TT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=",
+        "namespace": "ZGVmYXVsdA==",
+        "token": "ZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNklpSjkuZXlKcGMzTWlPaUpyZFdKbGNtNWxkR1Z6TDNObGNuWnBZMlZoWTJOdmRXNTBJaXdpYTNWaVpYSnVaWFJsY3k1cGJ5OXpaWEoyYVdObFlXTmpiM1Z1ZEM5dVlXMWxjM0JoWTJVaU9pSmtaV1poZFd4MElpd2lhM1ZpWlhKdVpYUmxjeTVwYnk5elpYSjJhV05sWVdOamIzVnVkQzl6WldOeVpYUXVibUZ0WlNJNkltcGhZMnN0ZEc5clpXNHRiamhrYzNnaUxDSnJkV0psY201bGRHVnpMbWx2TDNObGNuWnBZMlZoWTJOdmRXNTBMM05sY25acFkyVXRZV05qYjNWdWRDNXVZVzFsSWpvaWFtRmpheUlzSW10MVltVnlibVYwWlhNdWFXOHZjMlZ5ZG1salpXRmpZMjkxYm5RdmMyVnlkbWxqWlMxaFkyTnZkVzUwTG5WcFpDSTZJamN4T1dWbU9XRXlMVFptWTJNdE1URmxPUzA0WmpFNUxUQXdOVEExTm1Ga05XTmxZeUlzSW5OMVlpSTZJbk41YzNSbGJUcHpaWEoyYVdObFlXTmpiM1Z1ZERwa1pXWmhkV3gwT21waFkyc2lmUS5Eckc4RTE5UmlaaURCTkhUS2szd01YOC1seXJUQ09TNVFKV3ZnSlhaSEZuMVh5WVNfRGFzbjBGeXhVUnNxbF9xazB6SzZHNDN0Z2NIbXpLQUNSMFluUVhYSkY4RWY5cGdfSWh6ZVZIMzVabjRfRk5NY1RvOXpwRmpZNWR2dV9lZ25MZkJWd3Q4VFJtbGw0TDlSVGczOW1KWGhpVTVXWlBpNnlMNUZSVXBRci05X3JXT0RuQzRLcHFsbHJTNDFkSkMxbjgzeGtCQXpHUk9RX2FlQmpOUWRpOXgwZ1VuM29pTUNKa3RadmtTRG1ZaktqTDhDd1UxbTBHZ2U4b201YWdSZll4azdWODNiTUxNRmFSNThVamh0UjlrOFFiSmJBY21uNWxUMjRmZjlWM3ktZHdoT2E4UjFnMFlRYmJEeEZWVEpoNUJseHk0d0xjcVZQT2lNaUk0U1E="
+    },
+    "kind": "Secret",
+    "metadata": {
+        "annotations": {
+            "kubernetes.io/service-account.name": "jack",
+            "kubernetes.io/service-account.uid": "719ef9a2-6fcc-11e9-8f19-005056ad5cec"
+        },
+        "creationTimestamp": "2019-05-06T06:59:08Z",
+        "name": "jack-token-n8dsx",
+        "namespace": "default",
+        "resourceVersion": "3701307",
+        "selfLink": "/api/v1/namespaces/default/secrets/jack-token-n8dsx",
+        "uid": "71a0e98e-6fcc-11e9-8f19-005056ad5cec"
+    },
+    "type": "kubernetes.io/service-account-token"
+}
+[root@k8s-master ~]# kubectl get secrets jack-token-n8dsx -o jsonpath={.data.token} #截取json文件的token指定路径内容
+ZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNklpSjkuZXlKcGMzTWlPaUpyZFdKbGNtNWxkR1Z6TDNObGNuWnBZMlZoWTJOdmRXNTBJaXdpYTNWaVpYSnVaWFJsY3k1cGJ5OXpaWEoyYVdObFlXTmpiM1Z1ZEM5dVlXMWxjM0JoWTJVaU9pSmtaV1poZFd4MElpd2lhM1ZpWlhKdVpYUmxjeTVwYnk5elpYSjJhV05sWVdOamIzVnVkQzl6WldOeVpYUXVibUZ0WlNJNkltcGhZMnN0ZEc5clpXNHRiamhrYzNnaUxDSnJkV0psY201bGRHVnpMbWx2TDNObGNuWnBZMlZoWTJOdmRXNTBMM05sY25acFkyVXRZV05qYjNWdWRDNXVZVzFsSWpvaWFtRmpheUlzSW10MVltVnlibVYwWlhNdWFXOHZjMlZ5ZG1salpXRmpZMjkxYm5RdmMyVnlkbWxqWlMxaFkyTnZkVzUwTG5WcFpDSTZJamN4T1dWbU9XRXlMVFptWTJNdE1URmxPUzA0WmpFNUxUQXdOVEExTm1Ga05XTmxZeUlzSW5OMVlpSTZJbk41YzNSbGJUcHpaWEoyYVdObFlXTmpiM1Z1ZERwa1pXWmhkV3gwT21waFkyc2lmUS5Eckc4RTE5UmlaaURCTkhUS2szd01YOC1seXJUQ09TNVFKV3ZnSlhaSEZuMVh5WVNfRGFzbjBGeXhVUnNxbF9xazB6SzZHNDN0Z2NIbXpLQUNSMFluUVhYSkY4RWY5cGdfSWh6ZVZIMzVabjRfRk5NY1RvOXpwRmpZNWR2dV9lZ25MZkJWd3Q4VFJtbGw0TDlSVGczOW1KWGhpVTVXWlBpNnlMNUZSVXBRci05X3JXT0RuQzRLcHFsbHJTNDFkSkMxbjgzeGtCQXpHUk9RX2FlQmpOUWRpOXgwZ1VuM29pTUNKa3RadmtTRG1ZaktqTDhDd1UxbTBHZ2U4b201YWdSZll4azdWODNiTUxNRmFSNThVamh0UjlrOFFiSmJBY21uNWxUMjRmZjlWM3ktZHdoT2E4UjFnMFlRYmJEeEZWVEpoNUJseHk0d0xjcVZQT2lNaUk0U1E=
+[root@k8s-master ~]# DEF_NS_ADMIN_TOKEN=$(kubectl get secrets jack-token-n8dsx -o jsonpath={.data.token} | base64 -d) #用base64解
+码token并保存在变量DEF_NS_ADMIN_TOKEN
+#新建kubeconfig文件
+[root@k8s-master ~]# kubectl config set-cluster kubernetes --server="https://192.168.1.238:6443" --certificate-authority=/etc/kubernetes/pki/ca.crt --kubeconfig=/root/def-ns-admin.conf#设置集群到文件/root/def-ns-admin.conf
+Cluster "kubernetes" set.
+[root@k8s-master ~]# kubectl config set-credentials def-ns-admin --token=$DEF_NS_ADMIN_TOKEN --kubeconfig=/root/def-ns-admin.conf ##设置用户的token到文件/root/def-ns-admin.conf 
+User "def-ns-admin" set.
+[root@k8s-master ~]# kubectl config set-context def-ns-admin@kubernetes --cluster=kubernetes --user=def-ns-admin --kubeconfig=/root/def-ns-admin.conf  #设置上下文绑定集群和用户关系
+Context "def-ns-admin@kubernetes" created.
+[root@k8s-master ~]# kubectl config view --kubeconfig=/root/def-ns-admin.conf  #查看绑定关系
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: https://192.168.1.238:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: def-ns-admin
+  name: def-ns-admin@kubernetes
+current-context: ""
+kind: Config
+preferences: {}
+users:
+- name: def-ns-admin
+  user:
+    token: eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZWZhdWx0Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZWNyZXQubmFtZSI6ImphY2stdG9rZW4tbjhkc3giLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoiamFjayIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6IjcxOWVmOWEyLTZmY2MtMTFlOS04ZjE5LTAwNTA1NmFkNWNlYyIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZWZhdWx0OmphY2sifQ.DrG8E19RiZiDBNHTKk3wMX8-lyrTCOS5QJWvgJXZHFn1XyYS_Dasn0FyxURsql_qk0zK6G43tgcHmzKACR0YnQXXJF8Ef9pg_IhzeVH35Zn4_FNMcTo9zpFjY5dvu_egnLfBVwt8TRmll4L9RTg39mJXhiU5WZPi6yL5FRUpQr-9_rWODnC4KpqllrS41dJC1n83xkBAzGROQ_aeBjNQdi9x0gUn3oiMCJktZvkSDmYjKjL8CwU1m0Gge8om5agRfYxk7V83bMLMFaR58UjhtR9k8QbJbAcmn5lT24ff9V3y-dwhOa8R1g0YQbbDxFVTJh5Blxy4wLcqVPOiMiI4SQ
+[root@k8s-master ~]# kubectl config use-context def-ns-admin@kubernetes --kubeconfig=/root/def-ns-admin.conf  #切换上下文用户
+Switched to context "def-ns-admin@kubernetes".
+然后把root/def-ns-admin.conf 这个文件导出来即可使用kubeconfig登录认证了
 
 
+###使用k8s的CA为dashboard签署证书用于部署dashboard
+[root@k8s-master pki]# (umask 077;openssl genrsa -out dashboard.key 2048) #为dashboard生成私钥
+Generating RSA private key, 2048 bit long modulus
+.......+++
+..........+++
+e is 65537 (0x10001)
+[root@k8s-master pki]# openssl req -new -key dashboard.key -out #为dashboard生成证书申请请求，用户名叫ui.magedu.com,以后的网站名也叫ui.magedu.com，属于用户组magedu   dashboard.csr -subj "/O=magedu/CN=ui.magedu.com"
+[root@k8s-master pki]# openssl x509 -req -in dashboard.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out dashboard.crt -days 365 #用k8sca签署dashboard的证书申请请求
+Signature ok
+subject=/O=magedu/CN=ui.magedu.com
+Getting CA Private Key
+[root@k8s-master pki]# kubectl create secret generic dashboard-cert -n kube-system --from-file=dashboard.crt=./dashboard.crt --from-file=dashboard.key=dashboard.key  #为dashboard的公钥和私钥生成一个generic类型的secret。因为由于在dashboard内部使用的，所以类型应该是generic而不是tls类型
+secret/dashboard-cert created
+[root@k8s-master pki]# kubectl get secrets dashboard-cert -n kube-system
+NAME             TYPE     DATA   AGE
+dashboard-cert   Opaque   2      2m51s  #opaque类型就是generic类型的
 
 
+##k8s集群的管理方式：
+	1. 命令式：create,run,delete,expose,edit....
+	2. 命令式配置文件:create -f filename,delete -f ,replace -f
+	3. 声明式配置文件:apply -f ,patch
+注：一般建议不要混合使用，至少1和2可以混合使用，3不能一起使用
 
 
-
-
-
+#第十八节：配置网络插件flanner
 
 
 
