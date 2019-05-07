@@ -573,12 +573,63 @@ drwxr-xr-x 2 root root 1.0K May  7 16:04 grub
 -rw-r--r-- 1 root root 3.5M May  7 16:30 initrd.gz
 drwx------ 2 root root  12K May  7 16:02 lost+found
 -rw-r--r-- 1 root root 2.1M May  7 16:07 vmlinuz 
+[root@localhost ~]# cd /mnt/boot/grub/
+[root@localhost grub]# cat grub.conf #编辑grub.conf配置文件
+default=0
+timeout=5
+title test linux(magedu team)
+        root (hd0,0)
+        kerner /vmlinuz
+        initrd /initrd.gz
+[root@localhost sysinit]# mkdir proc sys dev etc/rc.d lib lib64 bin sbin boot home var/log usr/{bin,sbin} root tmp -pv #创建根下的目录
+[root@localhost sysinit]# tree
+.
+|-- bin
+|   `-- bash
+|-- boot
+|-- dev
+|-- etc
+|   `-- rc.d
+|-- home
+|-- lib
+|-- lib64
+|-- lost+found
+|-- proc
+|-- root
+|-- sbin
+|   `-- init
+|-- sys
+|-- tmp
+|-- usr
+|   |-- bin
+|   `-- sbin
+`-- var
+    `-- log
 
-
-
-
-
-
-
+[root@localhost sysinit]# cp /sbin/init /mnt/sysinit/sbin/
+[root@localhost sysinit]# cp /bin/bash /mnt/sysinit/bin/
+ [root@localhost sysinit]# ldd /sbin/init #查看init依赖的库文件
+        linux-vdso.so.1 =>  (0x00007fff6e7fd000)
+        libsepol.so.1 => /lib64/libsepol.so.1 (0x00000037c8800000)
+        libselinux.so.1 => /lib64/libselinux.so.1 (0x00000037c8400000)
+        libc.so.6 => /lib64/libc.so.6 (0x00000037c0c00000)
+        libdl.so.2 => /lib64/libdl.so.2 (0x00000037c1400000)
+        /lib64/ld-linux-x86-64.so.2 (0x00000037c0800000)
+[root@localhost sysinit]# cp /lib64/libsepol.so.1 /mnt/sysinit/lib64/ #复制init依赖的库文件
+[root@localhost sysinit]# cp /lib64/libselinux.so.1 /mnt/sysinit/lib64/
+[root@localhost sysinit]# cp /lib64/libc.so.6 /mnt/sysinit/lib64/
+[root@localhost sysinit]# cp /lib64/libdl.so.2 /mnt/sysinit/lib64/
+[root@localhost sysinit]# cp /lib64/ld-linux-x86-64.so.2 /mnt/sysinit/lib64/
+[root@localhost sysinit]# ls /mnt/sysinit/lib64
+ld-linux-x86-64.so.2  libc.so.6  libdl.so.2  libselinux.so.1  libsepol.so.1
+[root@localhost ~]# ldd /bin/bash
+        linux-vdso.so.1 =>  (0x00007fff47bfd000)
+        libtermcap.so.2 => /lib64/libtermcap.so.2 (0x00000037c1c00000)
+        libdl.so.2 => /lib64/libdl.so.2 (0x00000037c1400000)
+        libc.so.6 => /lib64/libc.so.6 (0x00000037c0c00000)
+        /lib64/ld-linux-x86-64.so.2 (0x00000037c0800000)
+[root@localhost ~]# cp /lib64/libtermcap.so.2 /mnt/sysinit/lib64/
+[root@localhost ~]# chroot /mnt/sysinit/
+bash-3.2# exit
 
 </pre>
