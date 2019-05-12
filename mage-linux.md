@@ -632,4 +632,15 @@ ld-linux-x86-64.so.2  libc.so.6  libdl.so.2  libselinux.so.1  libsepol.so.1
 [root@localhost ~]# chroot /mnt/sysinit/
 bash-3.2# exit
 
+
+
+
+
+
+
+
+
+
+
+
 </pre>

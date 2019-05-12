@@ -1,4 +1,4 @@
-#K8S----容器编排
+﻿#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -1238,6 +1238,7 @@ kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   20d
 1. 需要在/etc/sysconfig/kubelet的配置文件上添加一行KUBE_PROXY_MODE=ipvs
 2. 写脚本使node主机启动时自动装载ipvs模块。ip_vs,ip_vs_rr,ip_vs_wrr,ip_vs_sh,nf_conntrack_ipv4几个模块
 3. 初始化安装kublet就可以安装ipvs了。只能在刚开始装的时候开启。
+###kubeadm安装时只需要设置kube-proxy的mode为ipvs即可，最后让kube-proxy重载配置文件即可
 
 ##k8s组成：
 master组件:APIServer,Scheduler,Controll Manager 【ReplicaSet,Deployment,DaemonSet】
@@ -3061,7 +3062,7 @@ magedu-read-pods   4s
 NAME                                                                   AGE
 admin                                                                  29d
 cluster-admin                                                          29d
-这两个角色是集群中的管理员角色。
+注：上面这两个角色是集群中的管理员角色。
 [root@k8s-master rbac]# kubectl get clusterrolebinding
 NAME                                                   AGE
 cluster-admin                                          29d
@@ -3319,10 +3320,582 @@ dashboard-cert   Opaque   2      2m51s  #opaque类型就是generic类型的
 
 
 #第十八节：配置网络插件flanner
+##注：生产环境flannel用来ip分配，calico用来做策略
+docker网络：
+	1. bridge（自由网络名称空间）
+	2. joined（共享使用另外空间的名称空间）
+	3. open(容器共享宿主机网络名称空间)
+	4. none（不使用任何网络名称空间）
+k8s网络通信：
+	1. 容器间通信：同一个pod内的多个容器间的通信，lo接口通信
+	2. pod通信：pod IP<--> pod IP  ,ip直达，overlay网络 
+	3. pod与service通信： pod IP <-->cluster IP ,iptables与ipvs的规则进行通信,ipvs取代不了iptables,因为ipvs不能nat
+	4. service与集群外部客户端的通信
+k8s需要CNI接口的网络插件：
+	1. flannel
+	2. calico
+	3. canel
+	4. kube-router
+	5. ......
+	解决方案：
+		1. 虚拟网桥
+		2. 多路复用：MacVLAN(基于宿主机mac地址划分vlan)
+		3. 硬件交换：SR-IOV（单臂路由）
+三大类：men,metadata,IPAM
+flannel网络插件对名称空间与名称空间之间的网络是没有隔离的，因为flannel没有网络策略（networkPolicy）
+#可以使用flannel+calico一起使用，flannel分配地址，calico部署网络策略
+kubelet启动时去/etc/cni/net.d/下加载配置文件从而实现地址分配
+[root@k8s-master ~]# ls /etc/cni/net.d/
+10-flannel.conflist
+
+flannel支持多种后端承载网络：
+	1. VxLAN:overlay网络（可以跨三层网络，可以扩展与host-gw一起使用，当node在一个网络时使用host-gw(Directrouting),当不在同一网络时使用overlay网络(vxlan)）
+	2. host-gw:HOST Gateway（性能比VxLAN好，但是不能跨三层网络）
+	3. UDP: 基于普通UDP转发，性能最差，在以上两种不能使用时才使用这种。
+
+####k8s有两种部署方式，1.使用宿主机service服务启动方式部署  2.使用kubeadm来部署，只是把kubelet和docker独立出来，其他都运行为pod
+kubelet启动pod，而Pod需要网络，所以kubelet调flannel而启动网络插件，所以flannel必须跟kubelet安装在一起。但是flannel是第三方插件，所以部署k8s时首先要部署flannel第三方网络插件，否则k8s集群无法启动起来
+flannel怎么部署：
+	1. 部署在主机上
+	2. 部署为pod
+
+[root@k8s-master ~]# kubectl get daemonset -n kube-system -o wide #查看daemonset
+NAME                      DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR                     AGE   CONTAINERS     IMAGES                                   SELECTOR
+kube-flannel-ds-amd64     3         3         3       3            3           beta.kubernetes.io/arch=amd64     34d   kube-flannel   quay.io/coreos #flannel以daemonset方式运行在每个kubelet之上，本k8s有node3个，所以flannel为3个 
+flannel:v0.11.0-amd64     app=flannel,tier=node
+kube-flannel-ds-arm       0         0         0       0            0           beta.kubernetes.io/arch=arm       34d   kube-flannel   quay.io/coreos/flannel:v0.11.0-arm       app=flannel,tier=node
+kube-flannel-ds-arm64     0         0         0       0            0           beta.kubernetes.io/arch=arm64     34d   kube-flannel   quay.io/coreos/flannel:v0.11.0-arm64     app=flannel,tier=node
+kube-flannel-ds-ppc64le   0         0         0       0            0           beta.kubernetes.io/arch=ppc64le   34d   kube-flannel   quay.io/coreos/flannel:v0.11.0-ppc64le   app=flannel,tier=node
+kube-flannel-ds-s390x     0         0         0       0            0           beta.kubernetes.io/arch=s390x     34d   kube-flannel   quay.io/coreos/flannel:v0.11.0-s390x     app=flannel,tier=node
+kube-proxy                3         3         3       3            3           <none>                            34d   kube-proxy     k8s.gcr.io/kube-proxy:v1.14.0            k8s-app=kube-proxy
+[root@k8s-master ~]# kubectl get configmap -n kube-system
+NAME                                 DATA   AGE
+coredns                              1      34d
+extension-apiserver-authentication   6      34d
+kube-flannel-cfg                     2      34d  #flannel的配置
+kube-proxy                           2      34d
+kubeadm-config                       2      34d
+kubelet-config-1.14                  1      34d
+[root@k8s-master ~]# kubectl get configmap kube-flannel-cfg -o json -n kube-system
+------------
+{
+    "apiVersion": "v1",
+    "data": {
+        "cni-conf.json": "{\n  \"name\": \"cbr0\",\n  \"plugins\": [\n    {\n      \"type\": \"flannel\",\n      \"delegate\": {\n        \"hairpinMode\": true,\n        \"isDefaultGateway\": true\n      }\n    },\n    {\n      \"type\": \"portmap\",\n      \"capabilities\": {\n        \"portMappings\": true\n      }\n    }\n  ]\n}\n",
+        "net-conf.json": "{\n  \"Network\": \"10.244.0.0/16\",\n  \"Backend\": {\n    \"Type\": \"vxlan\"\n  }\n}\n"
+    },
+    "kind": "ConfigMap",
+    "metadata": {
+        "annotations": {
+            "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"data\":{\"cni-conf.json\":\"{\\n  \\\"name\\\": \\\"cbr0\\\",\\n  \\\"plugins\\\": [\\n    {\\n      \\\"type\\\": \\\"flannel\\\",\\n      \\\"delegate\\\": {\\n        \\\"hairpinMode\\\": true,\\n        \\\"isDefaultGateway\\\": true\\n      }\\n    },\\n    {\\n      \\\"type\\\": \\\"portmap\\\",\\n      \\\"capabilities\\\": {\\n        \\\"portMappings\\\": true\\n      }\\n    }\\n  ]\\n}\\n\",\"net-conf.json\":\"{\\n  \\\"Network\\\": \\\"10.244.0.0/16\\\",\\n  \\\"Backend\\\": {\\n    \\\"Type\\\": \\\"vxlan\\\"\\n  }\\n}\\n\"},\"kind\":\"ConfigMap\",\"metadata\":{\"annotations\":{},\"labels\":{\"app\":\"flannel\",\"tier\":\"node\"},\"name\":\"kube-flannel-cfg\",\"namespace\":\"kube-system\"}}\n"
+        },
+        "creationTimestamp": "2019-04-06T11:18:53Z",
+        "labels": {
+            "app": "flannel",
+            "tier": "node"
+        },
+        "name": "kube-flannel-cfg",
+        "namespace": "kube-system",
+        "resourceVersion": "5479",
+        "selfLink": "/api/v1/namespaces/kube-system/configmaps/kube-flannel-cfg",
+        "uid": "c31175f6-585d-11e9-8aeb-005056ad5cec"
+    }
+}
+------------
+flannel的配置参数：
+	Network: flannel使用的CIDR格式的网络地址，用于为pod配置网络功能
+		10.244.0.0/16为全集群的ip，master为10.244.0.0/24,node1为10.244.1.0/24...
+	SubnetLen: 把Network切分子网供各节点使用时，使用多长的掩码进行切分，默认是24位掩码
+	SubnetMin: 设置分配给节点的最小子网，例:10.244.10.0/24，就是pod网络从10.0开始，11.0，依次类推
+	SubnetMax: 设置分配给节点的最大子网，10.244.100.0/24
+	Backend: VxLAN,host-gw,UDP
+		VxLAN:1. vxlan,Directrouting
+###例：vim flannel.json  #这个是设置flannel插件地址分配的参数示例
+{
+  "Network": "10.244.0.0/16", #设置全群集子网
+  "Backend": {
+    "Type": "vxlan",  #使用类型为vxlan,也可以为host-gw,UDP
+    "Directrouting": true  #启用vxlan的同时是否启用host-gw,建议开启
+  }
+}
+##注：这个flannel网络配置时应在配置集群时就该配置好，不应该在半路配置，这样会导致正在运行的pod实现网络中断
+[root@k8s-master flannel]# wget https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml #下载flannel插件的配置清单
+[root@k8s-master flannel]# vim kube-flannel.yml #编辑flannel启用host-gw
+-------- 
+net-conf.json: |
+    {
+      "Network": "10.244.0.0/16",
+      "Backend": {
+        "Type": "vxlan", #加个,号
+        "Directrouting": true #设置启用vxlan的同时是否启用host-gw
+      }
+    }
+--------
+[root@k8s-master flannel]# kubectl delete -f kube-flannel.yml  #先删除flannel插件，然后重装部署
+podsecuritypolicy.extensions "psp.flannel.unprivileged" deleted
+clusterrole.rbac.authorization.k8s.io "flannel" deleted
+clusterrolebinding.rbac.authorization.k8s.io "flannel" deleted
+serviceaccount "flannel" deleted
+configmap "kube-flannel-cfg" deleted
+daemonset.extensions "kube-flannel-ds-amd64" deleted
+daemonset.extensions "kube-flannel-ds-arm64" deleted
+daemonset.extensions "kube-flannel-ds-arm" deleted
+daemonset.extensions "kube-flannel-ds-ppc64le" deleted
+daemonset.extensions "kube-flannel-ds-s390x" deleted
+[root@k8s-master flannel]# kubectl get pods -n kube-system
+NAME                                    READY   STATUS        RESTARTS   AGE
+coredns-fb8b8dccf-2zlk6                 1/1     Running       2          35d
+coredns-fb8b8dccf-brx94                 1/1     Running       2          35d
+etcd-k8s-master                         1/1     Running       2          35d
+kube-apiserver-k8s-master               1/1     Running       2          35d
+kube-controller-manager-k8s-master      1/1     Running       2          35d
+kube-flannel-ds-amd64-rfsd6             1/1     Terminating   3          34d #正在终止
+kube-flannel-ds-amd64-swsdg             1/1     Terminating   4          34d
+kube-flannel-ds-amd64-x5s6p             1/1     Terminating   4          34d
+kube-proxy-fxvqs                        1/1     Running       3          34d
+kube-proxy-jwxzw                        1/1     Running       2          34d
+kube-proxy-zf9ch                        1/1     Running       2          35d
+kube-scheduler-k8s-master               1/1     Running       2          35d
+kubernetes-dashboard-5f7b999d65-64lpz   1/1     Running       0          5d3h
+[root@k8s-master flannel]# kubectl apply -f kube-flannel.yml  #安装flannel，flannel类型为daemonset，所以每个节点它都会安装。除非其它节点还未加入只能在其它节点单独安装
+podsecuritypolicy.extensions/psp.flannel.unprivileged created
+clusterrole.rbac.authorization.k8s.io/flannel created
+clusterrolebinding.rbac.authorization.k8s.io/flannel created
+serviceaccount/flannel created
+configmap/kube-flannel-cfg created
+daemonset.extensions/kube-flannel-ds-amd64 created
+daemonset.extensions/kube-flannel-ds-arm64 created
+daemonset.extensions/kube-flannel-ds-arm created
+daemonset.extensions/kube-flannel-ds-ppc64le created
+daemonset.extensions/kube-flannel-ds-s390x created
+[root@k8s-master flannel]# kubectl get pods -n kube-system
+NAME                                    READY   STATUS    RESTARTS   AGE
+coredns-fb8b8dccf-2zlk6                 1/1     Running   2          35d
+coredns-fb8b8dccf-brx94                 1/1     Running   2          35d
+etcd-k8s-master                         1/1     Running   2          35d
+kube-apiserver-k8s-master               1/1     Running   2          35d
+kube-controller-manager-k8s-master      1/1     Running   2          35d
+kube-flannel-ds-amd64-4h795             1/1     Running   0          4s
+kube-flannel-ds-amd64-j2s9t             1/1     Running   0          4s
+kube-flannel-ds-amd64-k4pqg             1/1     Running   0          4s
+kube-proxy-fxvqs                        1/1     Running   3          34d
+kube-proxy-jwxzw                        1/1     Running   2          34d
+kube-proxy-zf9ch                        1/1     Running   2          35d
+kube-scheduler-k8s-master               1/1     Running   2          35d
+kubernetes-dashboard-5f7b999d65-64lpz   1/1     Running   0          5d3h
+[root@k8s ~]# ip route show #这个是之前的状态
+default via 192.168.1.254 dev eth0 proto static metric 100 
+10.244.0.0/24 via 10.244.0.0 dev flannel.1 onlink 
+10.244.1.0/24 dev cni0 proto kernel scope link src 10.244.1.1 
+10.244.2.0/24 via 10.244.2.0 dev flannel.1 onlink 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 
+192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.31 metric 100 
+[root@k8s ~]# ip route show #这个是应用后的状态
+default via 192.168.1.254 dev eth0 proto static metric 100 
+10.244.0.0/24 via 192.168.1.238 dev eth0  #直接指向宿主机的网口
+10.244.1.0/24 dev cni0 proto kernel scope link src 10.244.1.1  #收到时使用cni0接口到pod去
+10.244.2.0/24 via 192.168.1.37 dev eth0  #直接指向宿主机的网口
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 
+192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.31 metric 100 
 
 
+#第十九节：基于canel的网络策略
+calico:BGP协议,基于IPIP的遂道
+calico只支持iptables,flannel支持iptables和ipvs的。
+使用整合方式安装calico，使calico在flannel的基础上支持网络策略
+#部署canel:
+参考链接：https://docs.projectcalico.org/v3.7/getting-started/kubernetes/installation/flannel#before-you-begin
+使用Kubernetes API数据存储区安装（推荐）
+1. 确保Kubernetes控制器管理器设置了以下标志：
+--cluster-cidr=<your-pod-cidr>和--allocate-node-cidrs=true。 #--allocate-node-cidrs=true默认是开启的
+2. 下载Kubernetes API数据存储区的flannel网络清单。#获取flannel网络清单
+curl https://docs.projectcalico.org/v3.7/manifests/canal.yaml -O
+3. 如果您使用的是pod CIDR 10.244.0.0/16，请跳至下一步。如果您使用的是其他pod CIDR，请使用以下命令设置一个名为POD_CIDR包含pod CIDR 的环境变量，并使用pod CIDR替换10.244.0.0/16清单。 #pod网络必须是10.244.0.0/16
+POD_CIDR="<your-pod-cidr>" \
+sed -i -e "s?10.244.0.0/16?$POD_CIDR?g" canal.yaml
+4. 发出以下命令以安装Calico。
+kubectl apply -f canal.yaml
+5. 如果您希望使用相互TLS身份验证强制实施应用程序层策略并保护工作负载到工作负载的通信，请继续启用应用程序层策略（可选）链接：https://docs.projectcalico.org/v3.7/getting-started/kubernetes/installation/app-layer-policy
+#实操：
+[root@k8s-master ~]# curl https://docs.projectcalico.org/v3.7/manifests/canal.yaml -O
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 15512  100 15512    0     0  13079      0  0:00:01  0:00:01 --:--:-- 13090
+[root@k8s-master ~]# mv canal.yaml manifests/flannel/
+[root@k8s-master ~]# cd manifests/flannel/
+[root@k8s-master flannel]# ls
+canal.yaml  flannel-conf.json  kube-flannel.yml
+[root@k8s-master flannel]# kubectl apply -f canal.yaml
+configmap/canal-config created
+customresourcedefinition.apiextensions.k8s.io/felixconfigurations.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/bgpconfigurations.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/ippools.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/hostendpoints.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/clusterinformations.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/globalnetworkpolicies.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/globalnetworksets.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/networkpolicies.crd.projectcalico.org created
+customresourcedefinition.apiextensions.k8s.io/networksets.crd.projectcalico.org created
+clusterrole.rbac.authorization.k8s.io/calico-node created
+clusterrole.rbac.authorization.k8s.io/flannel configured
+clusterrolebinding.rbac.authorization.k8s.io/canal-flannel created
+clusterrolebinding.rbac.authorization.k8s.io/canal-calico created
+daemonset.extensions/canal created
+serviceaccount/canal created
+[root@k8s-master flannel]# kubectl get pods -n kube-system
+NAME                                    READY   STATUS     RESTARTS   AGE
+canal-brrjc                             0/2     Init:0/1   0          18s #正在初始安装中，跟flannel一样是daemonset控制器，每个node都安装一个pod，每个pod有两个容器
+canal-jbgvx                             0/2     Init:0/1   0          18s
+canal-wz5n8                             0/2     Init:0/1   0          18s
+coredns-fb8b8dccf-2zlk6                 1/1     Running    2          35d
+coredns-fb8b8dccf-brx94                 1/1     Running    2          35d
+etcd-k8s-master                         1/1     Running    2          35d
+kube-apiserver-k8s-master               1/1     Running    2          35d
+kube-controller-manager-k8s-master      1/1     Running    2          35d
+kube-flannel-ds-amd64-4h795             1/1     Running    0          15h
+kube-flannel-ds-amd64-j2s9t             1/1     Running    0          15h
+kube-flannel-ds-amd64-k4pqg             1/1     Running    0          15h
+kube-proxy-fxvqs                        1/1     Running    3          35d
+kube-proxy-jwxzw                        1/1     Running    2          35d
+kube-proxy-zf9ch                        1/1     Running    2          35d
+kube-scheduler-k8s-master               1/1     Running    2          35d
+kubernetes-dashboard-5f7b999d65-64lpz   1/1     Running    0          5d18h
+##如何控制pod间的通信
+动作：
+	posSelector:pod选择
+	Egress:出站方向
+	Ingress:进站方向
+	policyTypes:设定Egress和Ingress是一起生效还是各自单独生效，当都生效时，而Ingress规则定义时，则Egress没有定义,则生效的规则是Ingress自定义规则和Egress默认规则
+[root@k8s-master flannel]# kubectl explain networkpolicy
+KIND:     NetworkPolicy
+VERSION:  extensions/v1beta1
+
+DESCRIPTION:
+     DEPRECATED 1.9 - This group version of NetworkPolicy is deprecated by
+     networking/v1/NetworkPolicy. NetworkPolicy describes what network traffic
+     is allowed for a set of Pods
+
+FIELDS:
+   apiVersion   <string>
+     APIVersion defines the versioned schema of this representation of an
+     object. Servers should convert recognized schemas to the latest internal
+     value, and may reject unrecognized values. More info:
+     https://git.k8s.io/community/contributors/devel/api-conventions.md#resources
+
+   kind <string>
+     Kind is a string value representing the REST resource this object
+     represents. Servers may infer this from the endpoint the client submits
+     requests to. Cannot be updated. In CamelCase. More info:
+     https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds
+
+   metadata     <Object>
+     Standard object's metadata. More info:
+     https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+
+   spec <Object>
+     Specification of the desired behavior for this NetworkPolicy.
+##创建两个名称空间prod和dev，对两个名称空间进行做网络策略
+[root@k8s-master networkpolicy]# kubectl create namespace dev
+namespace/dev created
+[root@k8s-master networkpolicy]# kubectl create namespace prod
+namespace/prod created
+[root@k8s-master networkpolicy]# ls
+ingress-def.yaml
+[root@k8s-master networkpolicy]# cat ingress-def.yaml 
+---------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+spec:
+  podSelector: {}  #为{}表示选择应用在哪个名称空间下的所有pod
+  policyTypes:
+  - Ingress    #表示只对Ingress生效，而配置清单没有定义Ingress规则，则所有Ingress的都被拒绝。Egress没有定义则表示不受policyType控制，表示允许
+---------
+[root@k8s-master networkpolicy]# kubectl apply -f ingress-def.yaml -n dev
+networkpolicy.networking.k8s.io/deny-all-ingress created
+[root@k8s-master networkpolicy]# kubectl get netpol -n dev
+NAME               POD-SELECTOR   AGE
+deny-all-ingress   <none>         3m12s
+[root@k8s-master networkpolicy]# cat pod-a.yaml 
+apiVersion: v1
+kind: Pod
+metadata: 
+  name: pod1
+spec:
+  containers:
+  - name: myapp
+    image: ikubernetes/myapp:v
+[root@k8s-master networkpolicy]# kubectl apply -f pod-a.yaml -n dev
+pod/pod1 created
+[root@k8s-master networkpolicy]# kubectl get pods -n dev -o wide
+NAME   READY   STATUS    RESTARTS   AGE   IP           NODE        NOMINATED NODE   READINESS GATES
+pod1   1/1     Running   0          58s   10.244.1.2   k8s.node1   <none>           <none>
+[root@k8s-master networkpolicy]# curl 10.244.1.2  #访问应用网络策略的dev名称空间下的pod被拒绝
+^C
+[root@k8s-master networkpolicy]# kubectl apply -f pod-a.yaml -n prod
+pod/pod1 created
+[root@k8s-master networkpolicy]# kubectl get pods -n prod -o wide
+NAME   READY   STATUS    RESTARTS   AGE   IP           NODE        NOMINATED NODE   READINESS GATES
+pod1   1/1     Running   0          5s    10.244.2.2   k8s.node2   <none>           <none>
+[root@k8s-master networkpolicy]# curl 10.244.2.2 #没有应用网络策略的为允许
+Hello MyApp | Version: v1 | <a href="hostname.html">Pod Name</a>
+[root@k8s-master networkpolicy]# cat ingress-def.yaml 
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+spec:
+  podSelector: {} #表示本名称空间的所有pod
+  ingress:  #这个是ingress的规则
+  - {}  #表示所有允许
+  policyTypes:
+  - Ingress
+[root@k8s-master networkpolicy]# kubectl apply  -f ingress-def.yaml -n dev
+networkpolicy.networking.k8s.io/deny-all-ingress configured
+[root@k8s-master networkpolicy]# curl 10.244.1.2 #也可以访问了
+Hello MyApp | Version: v1 | <a href="hostname.html">Pod Name</a>
+[root@k8s-master networkpolicy]# curl 10.244.2.2
+Hello MyApp | Version: v1 | <a href="hostname.html">Pod Name</a>
+[root@k8s-master networkpolicy]# vim ingress-def.yaml  #设置进站的都被拒绝
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+[root@k8s-master networkpolicy]# kubectl label pods pod1 app=myapp -n dev  #给pod1打上标签app=myapp
+pod/pod1 labeled
+[root@k8s-master networkpolicy]# cat allow-myapp-ingress.yaml 
+-----
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-myapp-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: myapp  #本标签选择器匹配本地的一组pod
+  ingress:
+  - from: 
+    - ipBlock:
+        cidr: 10.244.0.0/16  #源ip段
+        except:  
+        - 10.244.0.6/32  #排除ip段
+    ports:
+    - protocol: TCP
+      port: 80  #访问本地的特定协议及80端口
+-----
+[root@k8s-master networkpolicy]# kubectl apply -f  allow-myapp-ingress.yaml -n dev 
+networkpolicy.networking.k8s.io/allow-myapp-ingress created
+[root@k8s-master networkpolicy]# curl 10.244.1.2 #访问80端口允许
+Hello MyApp | Version: v1 | <a href="hostname.html">Pod Name</a>
+[root@k8s-master networkpolicy]# curl 10.244.1.2:443 #访问443端口被拒绝
+^C
+###注：egress跟ingress的配置清单写法一样。而且网络策略可以叠加配置清单应用
 
 
+#第二十节：调试器、预先策略及优先函数
+Predicate(预选)-->Priority(优先)-->Select(随机选择需求个数)
+对节点进行标签分类：ssd,gpu,
+#调度器：
+参考链接：https://github.com/kubernetes/kubernetes/blob/master/pkg/scheduler/algorithm/predicates/predicates.go
+	预先策略(一票否决)：
+		1. CheckNodeCondition(检查节点是否准备就绪)，默认启用
+		2. GeneralPredicates，默认启用
+			1. HostName:检查Pod对象是否定义了pods.spec.hostname,
+			2. PodFitsHostPorts:pods.spec.containers.ports.hostPort，检查pod开放的端口是否能被节点所满足
+			3. MatchNodeSelector:pods.spec.nodeSelector，匹配标签的节点进行pod部署
+			4. PodFitsResources:检查pod的资源需求是否能被节点所满足
+		3. NoDiskConflict(检查硬盘是否冲突，不冲突则被节点使用)，默认不启用
+		4. PodToleratesNodeTaints:检查pod上的spec.tolerations可容忍的污点是否完全包含节点上的污点;默认启用
+		5. PodToleratesNodeNoExecuteTaints:节点部署在污点的节点上，节点后期又加了污点而这个污点不能被pod接收时，使用此预先策略则会让已运行的pod驱离此node。默认不启用
+		6. CheckNodeLabelPresence:检查指定节点标签是否存在，默认不启用
+		7. CheckServiceAffinity:检查service的亲和性，如果新增pod是属于这个service时,是否调并在已经运行在这个service下的pod所在的节点，默认不启用
+		8. MaxGCEPDVolumeCountPred：公有云上支持存储卷的，默认启用
+		9. MaxEBSVolumeCountPred:公有云上支持存储卷的，默认启用
+		10. MaxAzureDiskVolumeCountPred:公有云上支持存储卷的，默认启用
+		11. CheckVolumeBinding:检查pvc是否被绑定，默认不启用
+		12. NoVolumeZoneConflict:检查区域节点上的存储卷是否与pod有冲突，默认不启用
+		13. CheckNodeMemoryPressure:检查节点内存资源是否处在压力过大的状态，默认不启用
+		14. CheckNodePIDPressure:检查节点的PID是否处在压力过大的状态。默认不启用
+		15. CheckNodeDiskPressure:检查节点的磁盘io是否过大
+		16. MatchInterPodAffinity:匹配pod间的亲和性
+	优先函数(每个得分相加得分越高)：
+		1. LeastRequisted(最小的需求):(cpu((capacity_sum(requested))*10/capacity)+memory((capacity_sum(requested))*10/capacity))/2  占用率越低的得分越高，默认启用
+		2. BalanceResourceAllocation(评估cpu和memeory被占用率越接近越被匹配)
+		3. NodePreferAvoidPods：优先级很高，根据节点注解信，默认启用息"scheduler.alpha.kubernetes.io/preferAvoidPods"判定,节点上是否有这个注解存在，如果没有则得分为10，权重为10000，如果存在注解时，得分是0，默认启用
+		4. TaintToleration:将pod对象的spec.tolerations列表项与节点的taint列表项进行匹配度检查，匹配条目越多，得分越低;，默认启用
+		5. SelectorSpreading:对节点进行同一类pod控制器标签选择，节点越没被pod控制器使用则这个节点得分最高，默认启用
+		6. InterPodAffinity:遍历pod对象的亲和性条目，匹配条目越多的pod所在node得分越高，默认启用
+		7. NodeAffinity:节点亲和性，node亲和性越高则得分越高，默认启用
+		8. MostRequested:跟LeastRequisted相反，不能同时使用，占用率越高的得分越高，默认不启用
+		9. NodeLabel:根据node标签来评判，有标签则得分越高，无标签则得分越低，默认不启用
+		10. ImageLocality:根据node本地中有镜像且镜像容量越大的得分越高，默认不启用
+	选择：当得分一样时则会随机选择一个node	
+
+#第二十一节：kubernetes高级调度方式
+高级调度设置机制：
+	1. 节点选择器：nodeSelector,nodeName
+	2. 节点亲和性调度：nodeAffinity
+#nodeName使用：在配置清单中spec字段下使用，nodeName: node1,指定特定节点即可
+#nodeSelector使用：
+[root@k8s-master scheduler]# cat pod-demo.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-demo
+  namespace: default
+  labels:
+    app: myapp
+    tier: frontend
+  annotations:
+    magedu.com/created-by: "cluster admin"
+spec:
+  containers:
+  - name: myapp
+    image: nginx:1.14-alpine
+  nodeSelector:
+    disktype: ssd  #不能为yes或true,名字敏感
+[root@k8s-master scheduler]# kubectl apply -f pod-demo.yaml 
+pod/pod-demo created
+[root@k8s-master scheduler]# kubectl get pods -o wide
+NAME       READY   STATUS    RESTARTS   AGE     IP           NODE        NOMINATED NODE   READINESS GATES
+pod-demo   1/1     Running   0          2m15s   10.244.1.9   k8s.node1   <none>           <none>
+[root@k8s-master scheduler]# kubectl get nodes --show-labels
+NAME         STATUS   ROLES    AGE   VERSION   LABELS
+k8s-master   Ready    master   35d   v1.14.0   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,kubernetes.io/arch=amd64,kubernetes.io/hostname=k8s-master,kubernetes.io/os=linux,node-role.kubernetes.io/master=
+k8s.node1    Ready    <none>   35d   v1.14.0   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,disktype=ssd,kubernetes.io/arch=amd64,kubernetes.io/hostname=k8s.node1,kubernetes.io/os=linux #这个节点有disktype=ssd将在这个节点运行
+k8s.node2    Ready    <none>   35d   v1.14.0   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,kubernetes.io/arch=amd64,kubernetes.io/hostname=k8s.node2,kubernetes.io/os=linux
+[root@k8s-master scheduler]# cat pod-demo.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-demo
+  namespace: default
+  labels:
+    app: myapp
+    tier: frontend
+spec:
+  containers:
+  - name: myapp
+    image: nginx:1.14-alpine
+    imagePullPolicy: IfNotPresent
+  nodeSelector:
+    disktype: harddisk 
+[root@k8s-master scheduler]# kubectl apply -f pod-demo.yaml 
+pod/pod-demo created
+[root@k8s-master scheduler]# kubectl get pods  #这个pod将是挂起状态，因为配置清单中nodeSelector选定的节点标签现在还没有，将不会运行，直至被匹配到节点标签为止
+NAME       READY   STATUS    RESTARTS   AGE
+pod-demo   0/1     Pending   0          5s
+[root@k8s-master scheduler]# kubectl label nodes k8s.node2 disktype=harddisk #一旦给节点打上disktype=harddisk则挂载的pod立即生效
+node/k8s.node2 labeled
+[root@k8s-master scheduler]# kubectl get pods 
+NAME       READY   STATUS    RESTARTS   AGE
+pod-demo   1/1     Running   0          2m
+#nodeAffinity使用
+[root@k8s-master scheduler]# kubectl explain pod.spec.affinity
+KIND:     Pod
+VERSION:  v1
+
+RESOURCE: affinity <Object>
+
+DESCRIPTION:
+     If specified, the pod's scheduling constraints
+
+     Affinity is a group of affinity scheduling rules.
+
+FIELDS:
+   nodeAffinity <Object>
+     Describes node affinity scheduling rules for the pod.
+
+   podAffinity  <Object>
+     Describes pod affinity scheduling rules (e.g. co-locate this pod in the
+     same node, zone, etc. as some other pod(s)).
+
+   podAntiAffinity      <Object>
+     Describes pod anti-affinity scheduling rules (e.g. avoid putting this pod
+     in the same node, zone, etc. as some other pod(s)).
+[root@k8s-master scheduler]# kubectl explain pod.spec.affinity.nodeAffinity
+KIND:     Pod
+VERSION:  v1
+
+RESOURCE: nodeAffinity <Object>
+
+DESCRIPTION:
+     Describes node affinity scheduling rules for the pod.
+
+     Node affinity is a group of node affinity scheduling rules.
+
+FIELDS:
+   preferredDuringSchedulingIgnoredDuringExecution      <[]Object> #尽量满足，软亲和性
+   requiredDuringSchedulingIgnoredDuringExecution       <Object> #一定满足，硬亲和性
+#硬亲和使用nodeAffinity
+[root@k8s-master scheduler]# cat pod-nodeaffinity-demo.yaml 
+------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-nodeaffinity-demo
+  namespace: default
+  labels:
+    app: myapp
+    tier: frontend
+spec:
+  containers:
+  - name: myapp
+    image: nginx:1.14-alpine
+    imagePullPolicy: IfNotPresent
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: zone  #键
+            operator: In  #键值的关系，有In,NotIn,Exists,DoesNotExist等关系
+            values:   #值
+            - foo
+            - bar
+------
+[root@k8s-master scheduler]# kubectl get pods 
+NAME                    READY   STATUS    RESTARTS   AGE
+pod-nodeaffinity-demo   0/1     Pending   0          3s  #因为是硬亲和，所以不会运行一直是挂起状态
+#软亲和使用nodeAffinity
+[root@k8s-master scheduler]# cat pod-nodeaffinity-demo-2.yaml 
+-----
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-nodeaffinity-demo-2
+  namespace: default
+  labels:
+    app: myapp
+    tier: frontend
+spec:
+  containers:
+  - name: myapp
+    image: nginx:1.14-alpine
+    imagePullPolicy: IfNotPresent
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - preference:
+          matchExpressions:
+          - key: zone
+            operator: In
+            values:
+            - foo
+            - bar
+        weight: 60  #权重值，设定preference的权重
+-----
+[root@k8s-master scheduler]# kubectl apply -f  pod-nodeaffinity-demo-2.yaml 
+pod/pod-nodeaffinity-demo-2 created
+[root@k8s-master scheduler]# kubectl get pods 
+NAME                      READY   STATUS    RESTARTS   AGE
+pod-nodeaffinity-demo     0/1     Pending   0          12m
+pod-nodeaffinity-demo-2   1/1     Running   0          4s  #因为是软亲和，所以当没有满足这个键值时则选择别的节点运行pod
 
 
 
