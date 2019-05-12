@@ -1,4 +1,4 @@
-﻿#Linux基础
+#Linux基础
 <pre>
 man命令：
 1.用户命令
@@ -535,8 +535,8 @@ Units = cylinders of 16065 * 512 = 8225280 bytes
 root@localhost ~]# mkdir /mnt/boot
 [root@localhost ~]# mkdir /mnt/sysinit
 [root@localhost ~]# mount /dev/sdb1 /mnt/boot/
-[root@localhost ~]# mount /dev/sdb2 /mnt/sysinit/
-[root@localhost ~]# grub-install --root-directory=/mnt /dev/sda #安装grub,指定新硬盘boot的根目录，及指定哪个硬盘
+[root@localhost ~]# mount /dev/sdb2 /mnt/sysroot/
+[root@localhost ~]# grub-install --root-directory=/mnt /dev/sdb #安装grub,指定新硬盘boot的根目录，及指定哪个硬盘
 Probing devices to guess BIOS drives. This may take a long time.
 Installation finished. No error reported.
 This is the contents of the device map /mnt/boot/grub/device.map.
@@ -546,7 +546,7 @@ fix it and re-run the script `grub-install'.
 (fd0)   /dev/fd0
 (hd0)   /dev/sda
 (hd1)   /dev/sdb
-[root@localhost boot]# cp /boot/vmlinuz-2.6.18-348.el5 /mnt/boot/vmlinuz #复制系统内核到新硬盘/boot目录下
+[root@localhost boot]# cp /boot/vmlinuz-2.6.18-348.el5 /mnt/boot/vmlinuz #复制编译好的系统内核到新硬盘/boot目录下
 [root@localhost boot]# cp /boot/initrd-`uname -r`.img /root #设置init文件
 [root@localhost ~]# mv initrd-2.6.18-348.el5.img initrd-2.6.18-348.el5.img.gz
 [root@localhost ~]# gzip -d initrd-2.6.18-348.el5.img 
@@ -579,13 +579,12 @@ default=0
 timeout=5
 title test linux(magedu team)
         root (hd0,0)
-        kerner /vmlinuz
+        kernel /vmlinuz
         initrd /initrd.gz
-[root@localhost sysinit]# mkdir proc sys dev etc/rc.d lib lib64 bin sbin boot home var/log usr/{bin,sbin} root tmp -pv #创建根下的目录
-[root@localhost sysinit]# tree
+[root@localhost sysroot]# mkdir proc sys dev etc/rc.d lib lib64 bin sbin boot home var/log usr/{bin,sbin} root tmp -pv #创建根下的目录
+[root@localhost sysroot]# tree
 .
 |-- bin
-|   `-- bash
 |-- boot
 |-- dev
 |-- etc
@@ -593,6 +592,71 @@ title test linux(magedu team)
 |-- home
 |-- lib
 |-- lib64
+|-- lost+found
+|-- proc
+|-- root
+|-- sbin
+|-- sys
+|-- tmp
+|-- usr
+|   |-- bin
+|   `-- sbin
+`-- var
+    `-- log
+
+[root@localhost sysroot]# cp /sbin/init /mnt/sysroot/sbin/
+[root@localhost sysroot]# cp /bin/bash /mnt/sysroot/bin/
+ [root@localhost sysroot]# ldd /sbin/init #查看init依赖的库文件
+        linux-vdso.so.1 =>  (0x00007fff6e7fd000)
+        libsepol.so.1 => /lib64/libsepol.so.1 (0x00000037c8800000)
+        libselinux.so.1 => /lib64/libselinux.so.1 (0x00000037c8400000)
+        libc.so.6 => /lib64/libc.so.6 (0x00000037c0c00000)
+        libdl.so.2 => /lib64/libdl.so.2 (0x00000037c1400000)
+        /lib64/ld-linux-x86-64.so.2 (0x00000037c0800000)
+[root@localhost sysinit]# cp /lib64/libsepol.so.1 /mnt/sysroot/lib64/ #复制init依赖的库文件
+[root@localhost sysinit]# cp /lib64/libselinux.so.1 /mnt/sysroot/lib64/
+[root@localhost sysroot]# cp /lib64/libc.so.6 /mnt/sysroot/lib64/
+[root@localhost sysroot]# cp /lib64/libdl.so.2 /mnt/sysroot/lib64/
+[root@localhost sysroot]# cp /lib64/ld-linux-x86-64.so.2 /mnt/sysinit/lib64/
+[root@localhost sysroot]# ls /mnt/sysroot/lib64
+ld-linux-x86-64.so.2  libc.so.6  libdl.so.2  libselinux.so.1  libsepol.so.1
+[root@localhost ~]# ldd /bin/bash
+        linux-vdso.so.1 =>  (0x00007fff47bfd000)
+        libtermcap.so.2 => /lib64/libtermcap.so.2 (0x00000037c1c00000)
+        libdl.so.2 => /lib64/libdl.so.2 (0x00000037c1400000)
+        libc.so.6 => /lib64/libc.so.6 (0x00000037c0c00000)
+        /lib64/ld-linux-x86-64.so.2 (0x00000037c0800000)
+[root@localhost ~]# cp /lib64/libtermcap.so.2 /mnt/sysroot/lib64/
+[root@localhost ~]# chroot /mnt/sysroot/
+bash-3.2# exit
+[root@localhost sysroot]# cat /mnt/sysroot/etc/inittab 
+id:3:initdefault:
+si::sysinit:/etc/rc.d/rc.sysinit
+[root@localhost sysroot]# cat /mnt/sysroot/etc/rc.d/rc.sysinit
+#!/bin/bash
+#
+echo -e "\tWelcome to \033[31mMagEdu Team\033[0m Linux."
+/bin/bash
+[root@localhost sysinit]# chmod +x etc/rc.d/rc.sysinit
+[root@localhost sysroot]# tree 
+.
+|-- bin
+|   `-- bash
+|-- boot
+|-- dev
+|-- etc
+|   |-- inittab
+|   `-- rc.d
+|       `-- rc.sysinit
+|-- home
+|-- lib
+|-- lib64
+|   |-- ld-linux-x86-64.so.2
+|   |-- libc.so.6
+|   |-- libdl.so.2
+|   |-- libselinux.so.1
+|   |-- libsepol.so.1
+|   `-- libtermcap.so.2
 |-- lost+found
 |-- proc
 |-- root
@@ -605,32 +669,23 @@ title test linux(magedu team)
 |   `-- sbin
 `-- var
     `-- log
+[root@localhost sysroot]# sync 
+[root@localhost sysroot]# sync 
+[root@localhost sysroot]# sync 
+[root@localhost sysroot]# sync 
 
-[root@localhost sysinit]# cp /sbin/init /mnt/sysinit/sbin/
-[root@localhost sysinit]# cp /bin/bash /mnt/sysinit/bin/
- [root@localhost sysinit]# ldd /sbin/init #查看init依赖的库文件
-        linux-vdso.so.1 =>  (0x00007fff6e7fd000)
-        libsepol.so.1 => /lib64/libsepol.so.1 (0x00000037c8800000)
-        libselinux.so.1 => /lib64/libselinux.so.1 (0x00000037c8400000)
-        libc.so.6 => /lib64/libc.so.6 (0x00000037c0c00000)
-        libdl.so.2 => /lib64/libdl.so.2 (0x00000037c1400000)
-        /lib64/ld-linux-x86-64.so.2 (0x00000037c0800000)
-[root@localhost sysinit]# cp /lib64/libsepol.so.1 /mnt/sysinit/lib64/ #复制init依赖的库文件
-[root@localhost sysinit]# cp /lib64/libselinux.so.1 /mnt/sysinit/lib64/
-[root@localhost sysinit]# cp /lib64/libc.so.6 /mnt/sysinit/lib64/
-[root@localhost sysinit]# cp /lib64/libdl.so.2 /mnt/sysinit/lib64/
-[root@localhost sysinit]# cp /lib64/ld-linux-x86-64.so.2 /mnt/sysinit/lib64/
-[root@localhost sysinit]# ls /mnt/sysinit/lib64
-ld-linux-x86-64.so.2  libc.so.6  libdl.so.2  libselinux.so.1  libsepol.so.1
-[root@localhost ~]# ldd /bin/bash
-        linux-vdso.so.1 =>  (0x00007fff47bfd000)
-        libtermcap.so.2 => /lib64/libtermcap.so.2 (0x00000037c1c00000)
-        libdl.so.2 => /lib64/libdl.so.2 (0x00000037c1400000)
-        libc.so.6 => /lib64/libc.so.6 (0x00000037c0c00000)
-        /lib64/ld-linux-x86-64.so.2 (0x00000037c0800000)
-[root@localhost ~]# cp /lib64/libtermcap.so.2 /mnt/sysinit/lib64/
-[root@localhost ~]# chroot /mnt/sysinit/
-bash-3.2# exit
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
