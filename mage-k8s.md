@@ -3850,7 +3850,7 @@ spec:
     imagePullPolicy: IfNotPresent
   affinity:
     nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
+      requiredDuringSchedulingIgnoredDuringExecution: #硬亲和
         nodeSelectorTerms:
         - matchExpressions:
           - key: zone  #键
@@ -3880,9 +3880,9 @@ spec:
     imagePullPolicy: IfNotPresent
   affinity:
     nodeAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
+      preferredDuringSchedulingIgnoredDuringExecution: #软亲和
       - preference:
-          matchExpressions:
+          matchExpressions: #集合选择器，matchLabels等值选择器
           - key: zone
             operator: In
             values:
@@ -3896,6 +3896,370 @@ pod/pod-nodeaffinity-demo-2 created
 NAME                      READY   STATUS    RESTARTS   AGE
 pod-nodeaffinity-demo     0/1     Pending   0          12m
 pod-nodeaffinity-demo-2   1/1     Running   0          4s  #因为是软亲和，所以当没有满足这个键值时则选择别的节点运行pod
+##pod亲和性
+pod和pod在一个位置和不同位置的判断标准：
+	1. 机架分隔，例如rack=rack1，rack=rack1,rack=rack2，rack=rack2,代表着四个节点都在两个机柜上，rack=rack1和row=row1,rack=rack2和row=row1,表示这两个节点在不同机柜但同一排机柜
+[root@k8s-master ~]# kubectl explain pods.spec.affinity
+KIND:     Pod
+VERSION:  v1
+
+RESOURCE: affinity <Object>
+
+DESCRIPTION:
+     If specified, the pod's scheduling constraints
+
+     Affinity is a group of affinity scheduling rules.
+
+FIELDS:
+   nodeAffinity <Object>
+     Describes node affinity scheduling rules for the pod.
+
+   podAffinity  <Object>
+     Describes pod affinity scheduling rules (e.g. co-locate this pod in the
+     same node, zone, etc. as some other pod(s)).
+
+   podAntiAffinity      <Object>
+     Describes pod anti-affinity scheduling rules (e.g. avoid putting this pod
+     in the same node, zone, etc. as some other pod(s)).
+##podAffinity 
+[root@k8s-master scheduler]# cat pod-required-affinity-demo.yaml 
+-----------------
+apiVersion: v1   #第一个pod是当做基准pod
+kind: Pod
+metadata:
+  name: pod-first
+  labels:
+    app: myapp
+    tier: frontend
+spec:
+  containers:
+  - name: myapp
+    image: nginx:1.14-alpine
+    imagePullPolicy: IfNotPresent
+---
+apiVersion: v1  #第二个pod来选择第一个pod，做亲和性判断
+kind: Pod
+metadata:
+  name: pod-second
+  labels:
+    app: db
+    tier: db
+spec:
+  containers:
+  - name: busybox
+    image: busybox:latest
+    imagePullPolicy: IfNotPresent
+    command: ["sh","-c","sleep 3600"]
+  affinity:
+    podAffinity:  #pod亲和性
+      requiredDuringSchedulingIgnoredDuringExecution:  #硬亲和性
+      - labelSelector: #标签选择
+          matchExpressions:  #匹配集合
+          - {key: app, operator: In, values: ["myapp"]}  #值myapp在键app中的pod
+        topologyKey: kubernetes.io/hostname  #并且还以节点的主机名为匹配，新的pod运行在同一个主机名节点上
+-----------------
+[root@k8s-master scheduler]# kubectl apply -f  pod-required-affinity-demo.yaml 
+pod/pod-first created
+pod/pod-second created
+[root@k8s-master scheduler]# kubectl get pods -o wide
+NAME         READY   STATUS    RESTARTS   AGE   IP           NODE        NOMINATED NODE   READINESS GATES
+pod-first    1/1     Running   0          4s    10.244.2.5   k8s.node2     <none>           <none> #被调度到同一个节点上了
+pod-second   1/1     Running   0          4s    10.244.2.6   k8s.node2   <none>           <none> #被调度到同一个节点上了
+
+##podAntiAffinity  #pod反亲和性
+[root@k8s-master scheduler]# kubectl label nodes k8s.node1 zone=foo
+node/k8s.node1 labeled
+[root@k8s-master scheduler]# kubectl label nodes k8s.node2 zone=foo
+node/k8s.node2 labeled
+[root@k8s-master scheduler]# cat pod-required-anti-affinity-demo.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-first
+  labels:
+    app: myapp
+    tier: frontend
+spec:
+  containers:
+  - name: myapp
+    image: nginx:1.14-alpine
+    imagePullPolicy: IfNotPresent
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-second
+  labels:
+    app: db
+    tier: db
+spec:
+  containers:
+  - name: busybox
+    image: busybox:latest
+    imagePullPolicy: IfNotPresent
+    command: ["sh","-c","sleep 3600"]
+  affinity:
+    podAntiAffinity:  #pod反亲和性
+      requiredDuringSchedulingIgnoredDuringExecution: #硬亲和
+      - labelSelector:
+          matchExpressions:
+          - {key: app, operator: In, values: ["myapp"]} #只要app=myapp的pod运行的节点都不运行
+        topologyKey: zone  #并且节点中键为zone的都不运行
+[root@k8s-master scheduler]# kubectl apply -f  pod-required-anti-affinity-demo.yaml 
+pod/pod-first created
+pod/pod-second created
+[root@k8s-master scheduler]# kubectl get pods -o wide
+NAME         READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+pod-first    1/1     Running   0          6s    10.244.1.12   k8s.node1    <none>           <none>  #这个是基准pod
+pod-second   0/1     Pending   0          6s    <none>        <none>      <none>           <none>  #这个是调度的pod，是挂起状态，
+#####因为反亲和性的条件是：不能在pod的键值为app=mapp所在的节点和键为zone的节点上运行，而k8s.node1是app=mapp所在的节点，而k8s.node2是键为zone的节点，所以这两个节点都不允许运行
+####污点调度或容忍调度、
+1.节点调度  2. pod调度 3. 污点调度
+污点是定义在节点在的键值属性数据：1.标签 2.annotaions(注解) 3.污点(通常用在节点上，不像前面两个别的资源都可以用)
+在pod上定义容忍度，pod对象的键值形数据，这个数据是污点值列表
+taints是键值形数据，用在节点上，定义污点。
+tolerations是键值形数据,用在pod上，定义容忍度，容忍哪些污点。
+##taints的effect定义对pod的排斥等级效果有多强：
+	1. NoSchedule:仅影响调度过程，对现存的pod对象不产生影响
+	2. NoExecute：既影响调度过程也影响现存的pod对象，不容忍的pod对象将被驱逐
+	3. PreferNoSchedule：不能调度到不能容忍的节点上，但是没有节点运行时也可以运行在不容忍时的节点上
+等值比较，存在性判断
+##例：
+[root@k8s-master scheduler]# kubectl describe nodes k8s-master
+Taints:             node-role.kubernetes.io/master:NoSchedule #这个就是master的污点，而我们运行的pod从来没有容忍过这个污点，所以不会运行在master节点上
+[root@k8s-master scheduler]# kubectl describe pods kube-proxy-fxvqs    -n kube-system #查看lproxy的容忍度
+Tolerations:     
+                 CriticalAddonsOnly  #这个就是容忍master污点的容忍度
+                 node.kubernetes.io/disk-pressure:NoSchedule
+                 node.kubernetes.io/memory-pressure:NoSchedule
+                 node.kubernetes.io/network-unavailable:NoSchedule
+                 node.kubernetes.io/not-ready:NoExecute
+                 node.kubernetes.io/pid-pressure:NoSchedule
+                 node.kubernetes.io/unreachable:NoExecute
+                 node.kubernetes.io/unschedulable:NoSchedule
+Events:          <none>
+
+[root@k8s-master scheduler]# kubectl taint node k8s.node1 node-type=production:NoSchedule
+node/k8s.node1 tainted
+[root@k8s-master scheduler]# cat deploy-demo.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deploy
+  namespace: default
+spec:
+  replicas: 3
+  selector: 
+    matchLabels: 
+      app: myapp
+      release: canary
+  template: 
+    metadata:
+      labels: 
+        app: myapp
+        release: canary
+    spec:
+      containers:
+      - name: myapp
+        image: ikubernetes/myapp:v3
+        ports: 
+        - name: http
+          containerPort: 80
+[root@k8s-master scheduler]# kubectl get pods -o wide
+NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+myapp-deploy-7f577979c8-6c5ng   1/1     Running   0          9s    10.244.2.8    k8s.node2   <none>           <none>
+myapp-deploy-7f577979c8-ftwrl   1/1     Running   0          9s    10.244.2.7    k8s.node2   <none>           <none>
+myapp-deploy-7f577979c8-wzgc2   1/1     Running   0          9s    10.244.2.9    k8s.node2   <none>           <none>  #这3个pod都不会运行在node1中，因为这些pod不容忍node-type=production:NoSchedule这个污点
+[root@k8s-master scheduler]# kubectl taint node k8s.node2 node-type=dev:NoExecute  #给节点2打上污点，并且不容忍的pod将不会被调度及会被驱逐
+node/k8s.node2 tainted
+[root@k8s-master scheduler]# kubectl get pods -o wide
+NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+myapp-deploy-7f577979c8-9tkwc   0/1     Pending   0          8s    <none>        <none>      <none>           <none>
+myapp-deploy-7f577979c8-hf99x   0/1     Pending   0          8s    <none>        <none>      <none>           <none>
+myapp-deploy-7f577979c8-l5rvr   0/1     Pending   0          8s    <none>        <none>      <none>           <none>  #不容忍的pod已经被驱逐
+
+[root@k8s-master scheduler]# kubectl explain pod.spec.tolerations
+--------
+KIND:     Pod
+VERSION:  v1
+
+RESOURCE: tolerations <[]Object>
+
+DESCRIPTION:
+     If specified, the pod's tolerations.
+
+     The pod this Toleration is attached to tolerates any taint that matches the
+     triple <key,value,effect> using the matching operator <operator>.
+
+FIELDS:
+   effect       <string>
+     Effect indicates the taint effect to match. Empty means match all taint
+     effects. When specified, allowed values are NoSchedule, PreferNoSchedule
+     and NoExecute.
+
+   key  <string>
+     Key is the taint key that the toleration applies to. Empty means match all
+     taint keys. If the key is empty, operator must be Exists; this combination
+     means to match all values and all keys.
+
+   operator     <string>
+     Operator represents a key's relationship to the value. Valid operators are
+     Exists and Equal. Defaults to Equal. Exists is equivalent to wildcard for
+     value, so that a pod can tolerate all taints of a particular category.
+
+   tolerationSeconds    <integer>
+     TolerationSeconds represents the period of time the toleration (which must
+     be of effect NoExecute, otherwise this field is ignored) tolerates the
+     taint. By default, it is not set, which means tolerate the taint forever
+     (do not evict). Zero and negative values will be treated as 0 (evict
+     immediately) by the system.
+
+   value        <string>
+     Value is the taint value the toleration matches to. If the operator is
+     Exists, the value should be empty, otherwise just a regular string.
+--------
+
+
+[root@k8s-master scheduler]# cat deploy-demo.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deploy
+  namespace: default
+spec:
+  replicas: 3
+  selector: 
+    matchLabels: 
+      app: myapp
+      release: canary
+  template: 
+    metadata:
+      labels: 
+        app: myapp
+        release: canary
+    spec:
+      containers:
+      - name: myapp
+        image: ikubernetes/myapp:v3
+        ports: 
+        - name: http
+          containerPort: 80
+      tolerations:
+      - key: "node-type"
+        operator: "Equal"
+        value: "production"
+        effect: "NoExecute"
+        tolerationSeconds: 3600
+[root@k8s-master scheduler]# kubectl get pods -o wide
+NAME                            READY   STATUS    RESTARTS   AGE   IP       NODE     NOMINATED NODE   READINESS GATES
+myapp-deploy-5b9cbf4b89-5rnf2   0/1     Pending   0          5s    <none>   <none>   <none>           <none>
+myapp-deploy-5b9cbf4b89-fv97v   0/1     Pending   0          5s    <none>   <none>   <none>           <none>
+myapp-deploy-5b9cbf4b89-wpmv5   0/1     Pending   0          5s    <none>   <none>   <none>           <none>
+
+[root@k8s-master scheduler]# cat deploy-demo.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deploy
+  namespace: default
+spec:
+  replicas: 3
+  selector: 
+    matchLabels: 
+      app: myapp
+      release: canary
+  template: 
+    metadata:
+      labels: 
+        app: myapp
+        release: canary
+    spec:
+      containers:
+      - name: myapp
+        image: ikubernetes/myapp:v3
+        ports: 
+        - name: http
+          containerPort: 80
+      tolerations:
+      - key: "node-type"
+        operator: "Equal"  #为等值，Exists为存在
+        value: "production"
+        effect: "NoSchedule"
+[root@k8s-master scheduler]# kubectl get pods -o wide
+NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+myapp-deploy-6f9888dcc5-5tx69   1/1     Running   0          11s   10.244.1.15   k8s.node1   <none>           <none>
+myapp-deploy-6f9888dcc5-cw2dw   1/1     Running   0          11s   10.244.1.14   k8s.node1   <none>           <none>
+myapp-deploy-6f9888dcc5-jnb9p   1/1     Running   0          11s   10.244.1.13   k8s.node1   <none>           <none>
+[root@k8s-master scheduler]# cat deploy-demo.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deploy
+  namespace: default
+spec:
+  replicas: 3
+  selector: 
+    matchLabels: 
+      app: myapp
+      release: canary
+  template: 
+    metadata:
+      labels: 
+        app: myapp
+        release: canary
+    spec:
+      containers:
+      - name: myapp
+        image: ikubernetes/myapp:v3
+        ports: 
+        - name: http
+          containerPort: 80
+      tolerations:
+      - key: "node-type"
+        operator: "Exists"
+        effect: "NoSchedule"
+[root@k8s-master scheduler]# vim deploy-demo.yaml 
+[root@k8s-master scheduler]# kubectl get pods -o wide
+NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+myapp-deploy-79cc54dcc6-4xnks   1/1     Running   0          10s   10.244.1.22   k8s.node1   <none>           <none>
+myapp-deploy-79cc54dcc6-npps6   1/1     Running   0          11s   10.244.1.21   k8s.node1   <none>           <none>
+myapp-deploy-79cc54dcc6-vpc9x   1/1     Running   0          13s   10.244.1.20   k8s.node1   <none>           <none>
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deploy
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+      release: canary
+  template:
+    metadata:
+      labels:
+        app: myapp
+        release: canary
+    spec:
+      containers:
+      - name: myapp
+        image: ikubernetes/myapp:v3
+        ports:
+        - name: http
+          containerPort: 80
+      tolerations:
+      - key: "node-type"
+        operator: "Exists"
+        effect: ""
+[root@k8s-master scheduler]# kubectl get pods -o wide
+NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+myapp-deploy-7779d8596b-2rmg7   1/1     Running   0          15s   10.244.2.11   k8s.node2   <none>           <none>
+myapp-deploy-7779d8596b-89f2v   1/1     Running   0          18s   10.244.2.10   k8s.node2   <none>           <none>
+myapp-deploy-7779d8596b-ff9bb   1/1     Running   0          16s   10.244.1.19   k8s.node1   <none>           <none>
+
+
+
 
 
 
