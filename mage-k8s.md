@@ -1,4 +1,4 @@
-﻿#K8S----容器编排
+#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -4076,7 +4076,7 @@ node/k8s.node2 tainted
 NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
 myapp-deploy-7f577979c8-9tkwc   0/1     Pending   0          8s    <none>        <none>      <none>           <none>
 myapp-deploy-7f577979c8-hf99x   0/1     Pending   0          8s    <none>        <none>      <none>           <none>
-myapp-deploy-7f577979c8-l5rvr   0/1     Pending   0          8s    <none>        <none>      <none>           <none>  #不容忍的pod已经被驱逐
+myapp-deploy-7f577979c8-l5rvr   0/1     Pending   0          8s    <none>        <none>      <none>           <none>  #不容忍的pod已经被驱逐，因为pod先被node1不匹配而不会调度在node1上，在node2时先匹配到了，但是后面node2打上了污点，而这个污点又不被pod所容忍，所以节点就会执行不被容忍的效果NoExecute，这个效果是不被调度及驱逐，所以在运行的pod被驱逐到别的节点去，但是现集群只有两个节点，而这两个节点都不被pod容忍，最终是挂起状态
 
 [root@k8s-master scheduler]# kubectl explain pod.spec.tolerations
 --------
@@ -4144,17 +4144,17 @@ spec:
         ports: 
         - name: http
           containerPort: 80
-      tolerations:
-      - key: "node-type"
-        operator: "Equal"
-        value: "production"
-        effect: "NoExecute"
-        tolerationSeconds: 3600
+      tolerations:   #容忍污点
+      - key: "node-type"  #污点的键为node-type
+        operator: "Equal"  #键与值的关系是等值关系
+        value: "production" #污点的值为production
+        effect: "NoExecute"  #效果与节点的效果必须一样，否则节点不会被调度到匹配的节点上，
+        tolerationSeconds: 3600  #容忍时间3600秒
 [root@k8s-master scheduler]# kubectl get pods -o wide
 NAME                            READY   STATUS    RESTARTS   AGE   IP       NODE     NOMINATED NODE   READINESS GATES
 myapp-deploy-5b9cbf4b89-5rnf2   0/1     Pending   0          5s    <none>   <none>   <none>           <none>
 myapp-deploy-5b9cbf4b89-fv97v   0/1     Pending   0          5s    <none>   <none>   <none>           <none>
-myapp-deploy-5b9cbf4b89-wpmv5   0/1     Pending   0          5s    <none>   <none>   <none>           <none>
+myapp-deploy-5b9cbf4b89-wpmv5   0/1     Pending   0          5s    <none>   <none>   <none>           <none>  #为什么没有被调度上去，因为node1的效果是NoSchedule,而pod容忍的效果是NoExecute，所以不一样不会被node1调度，而且node2键值跟pod容忍的不匹配，所以所有节点都不会被调度，最终状态为挂起状态
 
 [root@k8s-master scheduler]# cat deploy-demo.yaml 
 apiVersion: apps/v1
@@ -4189,7 +4189,7 @@ spec:
 NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
 myapp-deploy-6f9888dcc5-5tx69   1/1     Running   0          11s   10.244.1.15   k8s.node1   <none>           <none>
 myapp-deploy-6f9888dcc5-cw2dw   1/1     Running   0          11s   10.244.1.14   k8s.node1   <none>           <none>
-myapp-deploy-6f9888dcc5-jnb9p   1/1     Running   0          11s   10.244.1.13   k8s.node1   <none>           <none>
+myapp-deploy-6f9888dcc5-jnb9p   1/1     Running   0          11s   10.244.1.13   k8s.node1   <none>           <none> #因为pod容忍的键值和效果跟node1的污点一致，所以被调度到node1上。
 [root@k8s-master scheduler]# cat deploy-demo.yaml 
 apiVersion: apps/v1
 kind: Deployment
@@ -4218,13 +4218,13 @@ spec:
       - key: "node-type"
         operator: "Exists"
         effect: "NoSchedule"
-[root@k8s-master scheduler]# vim deploy-demo.yaml 
 [root@k8s-master scheduler]# kubectl get pods -o wide
 NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
 myapp-deploy-79cc54dcc6-4xnks   1/1     Running   0          10s   10.244.1.22   k8s.node1   <none>           <none>
 myapp-deploy-79cc54dcc6-npps6   1/1     Running   0          11s   10.244.1.21   k8s.node1   <none>           <none>
 myapp-deploy-79cc54dcc6-vpc9x   1/1     Running   0          13s   10.244.1.20   k8s.node1   <none>           <none>
 
+[root@k8s-master scheduler]# cat deploy-demo.yaml 
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -4251,12 +4251,37 @@ spec:
       tolerations:
       - key: "node-type"
         operator: "Exists"
-        effect: ""
+        effect: ""  #因为效果为所有，所以当节点效果为NoScheduler和NoExecute时而且容忍的键值相匹配时所有节点都会被调度到
 [root@k8s-master scheduler]# kubectl get pods -o wide
 NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
 myapp-deploy-7779d8596b-2rmg7   1/1     Running   0          15s   10.244.2.11   k8s.node2   <none>           <none>
 myapp-deploy-7779d8596b-89f2v   1/1     Running   0          18s   10.244.2.10   k8s.node2   <none>           <none>
-myapp-deploy-7779d8596b-ff9bb   1/1     Running   0          16s   10.244.1.19   k8s.node1   <none>           <none>
+myapp-deploy-7779d8596b-ff9bb   1/1     Running   0          16s   10.244.1.19   k8s.node1   <none>           <none> #节点为所有节点都调度到了
+
+
+#第二十二节：容器资源需求、资源限制及HeapSter
+#容器的资源需求，资源限制
+requests:需求、最低保障;
+limits:限制，硬限制的;
+CPU:
+	1颗逻辑CPU为一核心
+	1=1000millicores(毫核)
+		500m=0.5CPU
+内存:
+	E、P、T、G、M、K
+	Ei、Pi、Ti……
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
