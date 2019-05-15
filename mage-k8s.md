@@ -1,4 +1,4 @@
-#K8S----容器编排
+﻿#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -4271,21 +4271,466 @@ CPU:
 	E、P、T、G、M、K
 	Ei、Pi、Ti……
 
+[root@k8s-master ~]# kubectl explain pods.spec.containers
+KIND:     Pod
+VERSION:  v1
 
+RESOURCE: containers <[]Object>
+resources    <Object>
+     Compute Resources required by this container. Cannot be updated. More info:
+     https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
+[root@k8s-master ~]# kubectl explain pods.spec.containers.resources
+KIND:     Pod
+VERSION:  v1
 
+RESOURCE: resources <Object>
+limits       <map[string]string>
+requests     <map[string]string>
+Example:
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend
+spec:
+  containers:
+  - name: db
+    image: mysql
+    env:
+    - name: MYSQL_ROOT_PASSWORD
+      value: "password"
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "250m"
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+  - name: wp
+    image: wordpress
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "250m"
+      limits:
+        memory: "128Mi" #
+        cpu: "500m"
+##实例：
+[root@k8s-master metrics]# kubectl taint node k8s.node1 node-type-
+node/k8s.node1 untainted
+[root@k8s-master metrics]# kubectl taint node k8s.node2 node-type-
+node/k8s.node2 untainted  #先把两个节点的pod先去掉
+[root@k8s-master metrics]# cat pod-demo.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-demo
+  namespace: default
+  labels:
+    app: myapp
+    tier: frontend
+spec:
+  containers:
+  - name: myapp
+    image: ikubernetes/stress-ng
+    command: ["/usr/bin/stress-ng","-m 1","-c 1","--metrics-brief"]
+    resources:
+      requests:
+        cpu: "200m"  #cpu最低需求为0.2个cpu
+        memory: "128Mi"  #内存最低为128M
+      limits:
+        cpu: "500m"  #cpu最高为0.5个cpu
+        memory: "200Mi" #cpu最高为200M，i为单位是1024
 
+容器当中使用free等命令看到的是整个节点的使用情况。在容器资源限制的情况下还是有点问题的。
+QoS的资源类别：
+	1. Guranteed:每个容器同时设置了cpu和内存的requests和limits。而且cpu.limits=cpu.requests,memory.limits=memory.request，优先级最高，优先运行，自动归类为Guranteed
+	2. Bustable:至少有一个容器设置了CPU或内存资源的requests属性，就会自动成为Bustable,具有中等优先级，
+	3. BestEffort:没有任何一个容器设置了requests或limits属性;最低优先级别
+##QoS类别是自动被归类的，当node上的资源不够用时，先后终止BestEffort-->Bustable-->Guranteed
+以占用量与需求量的比例来计算，比例越大的越先被干掉。
 
+#HeapSter部署：
+kubectl top命令依赖addon:HeapSter
+dashboard的pod用量也依赖HeapSter
+###kubelet代理内嵌插件cAdvisor监听在4194端口，负责收集本节点,pod,container的cpu,内存，存储信息，最后发送给HeapSter,HeapSter将收到的数据存储在InfluxDB,达到持久存储目的，Grafana配置InfluxDB为数据源，于是可以愉快展示每一个节点、pod、容器的统计结果了。
+指标：k8s系统指标，容器指标，应用指标
+注：HeapSter依赖InfluxDB,所以先安装InfluxDB,Grafana做为查看数据的内容你可以选择部署与否。
+1.部署InfluxDB(持续数据库系统)
+#InfluxDB配置清单在生产环境中要配置存储卷，例如NFS,GlusterFS等
+参考链接：https://github.com/kubernetes-retired/heapster/blob/master/deploy/kube-config/influxdb/influxdb.yaml
+[root@k8s-master metrics]# wget https://raw.githubusercontent.com/kubernetes-retired/heapster/master/deploy/kube-config/influxdb/influxdb.yaml
+[root@k8s-master metrics]# cat 
+influxdb.yaml  pod-demo.yaml  
+[root@k8s-master metrics]# cat influxdb.yaml 
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: monitoring-influxdb
+  namespace: kube-system
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        task: monitoring
+        k8s-app: influxdb
+    spec:
+      containers:
+      - name: influxdb
+        image: k8s.gcr.io/heapster-influxdb-amd64:v1.5.2
+        volumeMounts:
+        - mountPath: /data
+          name: influxdb-storage
+      volumes:
+      - name: influxdb-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    task: monitoring
+    # For use as a Cluster add-on (https://github.com/kubernetes/kubernetes/tree/master/cluster/addons)
+    # If you are NOT using this as an addon, you should comment out this line.
+    kubernetes.io/cluster-service: 'true'
+    kubernetes.io/name: monitoring-influxdb
+  name: monitoring-influxdb
+  namespace: kube-system
+spec:
+  ports:
+  - port: 8086
+    targetPort: 8086
+  selector:
+    k8s-app: influxdb
+[root@k8s-master metrics]# vim influxdb.yaml 
+apiVersion: apps/v1 #将extensions/v1beta1改成apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-influxdb
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector: #要增加标签匹配选择，否则报错,加入如下4行
+    matchLabels:
+      task: monitoring
+      k8s-app: influxdb
+  template:
+    metadata:
+      labels:
+        task: monitoring
+        k8s-app: influxdb
+    spec:
+      containers:
+      - name: influxdb
+        image: k8s.gcr.io/heapster-influxdb-amd64:v1.5.2
+        volumeMounts:
+        - mountPath: /data
+          name: influxdb-storage
+      volumes:
+      - name: influxdb-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    task: monitoring
+    # For use as a Cluster add-on (https://github.com/kubernetes/kubernetes/tree/master/cluster/addons)
+    # If you are NOT using this as an addon, you should comment out this line.
+    kubernetes.io/cluster-service: 'true'
+    kubernetes.io/name: monitoring-influxdb
+  name: monitoring-influxdb
+  namespace: kube-system
+spec:
+  ports:
+  - port: 8086
+    targetPort: 8086
+  selector:
+    k8s-app: influxdb
+[root@k8s-master metrics]# kubectl apply -f influxdb.yaml 
+deployment.apps/monitoring-influxdb created
+service/monitoring-influxdb created
+[root@k8s-master metrics]# kubectl get svc -n kube-system
+NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                  AGE
+kube-dns               ClusterIP   10.96.0.10      <none>        53/UDP,53/TCP,9153/TCP   38d
+kubernetes-dashboard   NodePort    10.96.150.7     <none>        443:31693/TCP            9d
+monitoring-influxdb    ClusterIP   10.99.131.155   <none>        8086/TCP                 14s  #influxdb的service
+[root@k8s-master metrics]# kubectl get pods -n kube-system
+NAME                                    READY   STATUS    RESTARTS   AGE
+canal-brrjc                             2/2     Running   2          3d7h
+canal-jbgvx                             2/2     Running   4          3d7h
+canal-wz5n8                             2/2     Running   2          3d7h
+coredns-fb8b8dccf-2zlk6                 1/1     Running   4          38d
+coredns-fb8b8dccf-brx94                 1/1     Running   4          38d
+etcd-k8s-master                         1/1     Running   4          38d
+kube-apiserver-k8s-master               1/1     Running   4          38d
+kube-controller-manager-k8s-master      1/1     Running   4          38d
+kube-flannel-ds-amd64-j2s9t             1/1     Running   2          3d22h
+kube-flannel-ds-amd64-k4pqg             1/1     Running   1          3d22h
+kube-flannel-ds-amd64-kqd7s             1/1     Running   1          173m
+kube-proxy-fxvqs                        1/1     Running   5          38d
+kube-proxy-jwxzw                        1/1     Running   4          38d
+kube-proxy-zf9ch                        1/1     Running   5          38d
+kube-scheduler-k8s-master               1/1     Running   4          38d
+kubernetes-dashboard-5f7b999d65-pg6vp   1/1     Running   1          23h
+monitoring-influxdb-866db5f944-ntc6q    1/1     Running   0          7m26s #已经运行
+[root@k8s-master metrics]# kubectl logs -n kube-system monitoring-influxdb-866db5f944-ntc6q 
+ts=2019-05-15T08:51:46.953092Z lvl=info msg="InfluxDB starting" log_id=0FQft_YG000 version=unknown branch=unknown commit=unknown
+ts=2019-05-15T08:51:46.953125Z lvl=info msg="Go runtime" log_id=0FQft_YG000 version=go1.10.3 maxprocs=2
+ts=2019-05-15T08:51:51.099238Z lvl=info msg="Using data dir" log_id=0FQft_YG000 service=store path=/data/data
+ts=2019-05-15T08:51:51.099378Z lvl=info msg="Open store (start)" log_id=0FQft_YG000 service=store trace_id=0FQftpjl000 op_name=tsdb_open op_event=start
+ts=2019-05-15T08:51:51.099425Z lvl=info msg="Open store (end)" log_id=0FQft_YG000 service=store trace_id=0FQftpjl000 op_name=tsdb_open op_event=end op_elapsed=0.050ms
+ts=2019-05-15T08:51:51.099460Z lvl=info msg="Opened service" log_id=0FQft_YG000 service=subscriber
+ts=2019-05-15T08:51:51.099469Z lvl=info msg="Starting monitor service" log_id=0FQft_YG000 service=monitor
+ts=2019-05-15T08:51:51.099476Z lvl=info msg="Registered diagnostics client" log_id=0FQft_YG000 service=monitor name=build
+ts=2019-05-15T08:51:51.099482Z lvl=info msg="Registered diagnostics client" log_id=0FQft_YG000 service=monitor name=runtime
+ts=2019-05-15T08:51:51.099488Z lvl=info msg="Registered diagnostics client" log_id=0FQft_YG000 service=monitor name=network
+ts=2019-05-15T08:51:51.099499Z lvl=info msg="Registered diagnostics client" log_id=0FQft_YG000 service=monitor name=system
+ts=2019-05-15T08:51:51.099585Z lvl=info msg="Starting precreation service" log_id=0FQft_YG000 service=shard-precreation check_interval=10m advance_period=30m
+ts=2019-05-15T08:51:51.099601Z lvl=info msg="Starting snapshot service" log_id=0FQft_YG000 service=snapshot
+ts=2019-05-15T08:51:51.099611Z lvl=info msg="Starting continuous query service" log_id=0FQft_YG000 service=continuous_querier
+ts=2019-05-15T08:51:51.099626Z lvl=info msg="Starting HTTP service" log_id=0FQft_YG000 service=httpd authentication=false
+ts=2019-05-15T08:51:51.099638Z lvl=info msg="opened HTTP access log" log_id=0FQft_YG000 service=httpd path=stderr
+ts=2019-05-15T08:51:51.099726Z lvl=info msg="Listening on HTTP" log_id=0FQft_YG000 service=httpd addr=[::]:8086 https=false
+ts=2019-05-15T08:51:51.099747Z lvl=info msg="Starting retention policy enforcement service" log_id=0FQft_YG000 service=retention check_interval=30m
+ts=2019-05-15T08:51:51.100001Z lvl=info msg="Storing statistics" log_id=0FQft_YG000 service=monitor db_instance=_internal db_rp=monitor interval=10s
+ts=2019-05-15T08:51:51.100234Z lvl=info msg="Listening for signals" log_id=0FQft_YG000 #从InfluxDB的pod中可以看到是监听在http协议的8086端口，可以用Grafana客户端去连接InfluxDB检查是否正常
+##部署HeapSter
+#依赖于rbac的设置,安装rbac
+参考链接：https://github.com/kubernetes-retired/heapster/blob/master/deploy/kube-config/rbac/heapster-rbac.yaml
+[root@k8s-master metrics]# wget https://raw.githubusercontent.com/kubernetes-retired/heapster/master/deploy/kube-config/rbac/heapster-rbac.yaml
+[root@k8s-master metrics]# kubectl apply -f heapster-rbac.yaml  #安装heapster的rbac
+clusterrolebinding.rbac.authorization.k8s.io/heapster created
+#安装heapster
+[root@k8s-master metrics]# wget https://raw.githubusercontent.com/kubernetes-retired/heapster/master/deploy/kube-config/influxdb/heapster.yaml
+[root@k8s-master metrics]# cat heapster.yaml 
+----------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: heapster
+  namespace: kube-system
+---
+apiVersion: apps/v1 #更改为主版本号
+kind: Deployment
+metadata:
+  name: heapster
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:  #增加标签匹配
+    matchLabels:
+      task: monitoring
+      k8s-app: heapster
+  template:
+    metadata:
+      labels:
+        task: monitoring
+        k8s-app: heapster
+    spec:
+      serviceAccountName: heapster
+      containers:
+      - name: heapster
+        image: k8s.gcr.io/heapster-amd64:v1.5.4
+        imagePullPolicy: IfNotPresent
+        command:
+        - /heapster
+        - --source=kubernetes:https://kubernetes.default
+        - --sink=influxdb:http://monitoring-influxdb.kube-system.svc:8086
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    task: monitoring
+    # For use as a Cluster add-on (https://github.com/kubernetes/kubernetes/tree/master/cluster/addons)
+    # If you are NOT using this as an addon, you should comment out this line.
+    kubernetes.io/cluster-service: 'true'
+    kubernetes.io/name: Heapster
+  name: heapster
+  namespace: kube-system
+spec:
+  ports:
+  - port: 80
+    targetPort: 8082
+  type: NodePort  #设置为nodePort使集群外可访问，heapster后面发现没必要，所以不用设置这个
+  selector:
+    k8s-app: heapster
+----------------------
+[root@k8s-master metrics]# kubectl apply -f heapster.yaml 
+serviceaccount/heapster created
+deployment.apps/heapster created
+service/heapster created
+[root@k8s-master metrics]# kubectl get svc -n kube-system
+NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                  AGE
+heapster               NodePort    10.107.80.13    <none>        80:31512/TCP             72s #运行的hearster SVC
+kube-dns               ClusterIP   10.96.0.10      <none>        53/UDP,53/TCP,9153/TCP   38d
+kubernetes-dashboard   NodePort    10.96.150.7     <none>        443:31693/TCP            9d
+monitoring-influxdb    ClusterIP   10.106.66.137   <none>        8086/TCP                 25m
+[root@k8s-master metrics]# kubectl get pods -n kube-system
+NAME                                    READY   STATUS    RESTARTS   AGE
+canal-brrjc                             2/2     Running   2          3d7h
+canal-jbgvx                             2/2     Running   4          3d7h
+canal-wz5n8                             2/2     Running   2          3d7h
+coredns-fb8b8dccf-2zlk6                 1/1     Running   4          38d
+coredns-fb8b8dccf-brx94                 1/1     Running   4          38d
+etcd-k8s-master                         1/1     Running   4          38d
+heapster-5d4bf58946-vj54k               1/1     Running   0          43s #运行的heapster
+kube-apiserver-k8s-master               1/1     Running   4          38d
+kube-controller-manager-k8s-master      1/1     Running   4          38d
+kube-flannel-ds-amd64-j2s9t             1/1     Running   2          3d22h
+kube-flannel-ds-amd64-k4pqg             1/1     Running   1          3d22h
+kube-flannel-ds-amd64-kqd7s             1/1     Running   1          3h11m
+kube-proxy-fxvqs                        1/1     Running   5          38d
+kube-proxy-jwxzw                        1/1     Running   4          38d
+kube-proxy-zf9ch                        1/1     Running   5          38d
+kube-scheduler-k8s-master               1/1     Running   4          38d
+kubernetes-dashboard-5f7b999d65-pg6vp   1/1     Running   1          23h
+monitoring-influxdb-866db5f944-ntc6q    1/1     Running   0          25m
+[root@k8s-master metrics]# kubectl logs heapster-5d4bf58946-vj54k -n kube-system
+I0515 09:16:51.287364       1 heapster.go:78] /heapster --source=kubernetes:https://kubernetes.default --sink=influxdb:http://monitoring-influxdb.kube-system.svc:8086
+I0515 09:16:51.287413       1 heapster.go:79] Heapster version v1.5.4
+I0515 09:16:51.287621       1 configs.go:61] Using Kubernetes client with master "https://kubernetes.default" and version v1
+I0515 09:16:51.287641       1 configs.go:62] Using kubelet port 10255
+I0515 09:16:51.300272       1 influxdb.go:312] created influxdb sink with options: host:monitoring-influxdb.kube-system.svc:8086 user:root db:k8s
+I0515 09:16:51.300293       1 heapster.go:202] Starting with InfluxDB Sink
+I0515 09:16:51.300299       1 heapster.go:202] Starting with Metric Sink
+I0515 09:16:51.310729       1 heapster.go:112] Starting heapster on port 8082
+#部署grafana
+参考链接：https://raw.githubusercontent.com/kubernetes-retired/heapster/master/deploy/kube-config/influxdb/grafana.yaml
+[root@k8s-master ~]# wget https://raw.githubusercontent.com/kubernetes-retired/heapster/master/deploy/kube-config/influxdb/grafana.yaml
+[root@k8s-master ~]# cat grafana.yaml 
+-----------------------
+apiVersion: apps/v1 #改成v1
+kind: Deployment
+metadata:
+  name: monitoring-grafana
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:  #添加标签匹配
+    matchLabels:
+      task: monitoring
+      k8s-app: grafana
+  template:
+    metadata:
+      labels:
+        task: monitoring
+        k8s-app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: k8s.gcr.io/heapster-grafana-amd64:v5.0.4
+        ports:
+        - containerPort: 3000
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /etc/ssl/certs
+          name: ca-certificates
+          readOnly: true
+        - mountPath: /var
+          name: grafana-storage
+        env:
+        - name: INFLUXDB_HOST
+          value: monitoring-influxdb
+        - name: GF_SERVER_HTTP_PORT
+          value: "3000"
+          # The following env variables are required to make Grafana accessible via
+          # the kubernetes api-server proxy. On production clusters, we recommend
+          # removing these env variables, setup auth for grafana, and expose the grafana
+          # service using a LoadBalancer or a public IP.
+        - name: GF_AUTH_BASIC_ENABLED
+          value: "false"
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: "true"
+        - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+          value: Admin
+        - name: GF_SERVER_ROOT_URL
+          # If you're only using the API Server proxy, set this value instead:
+          # value: /api/v1/namespaces/kube-system/services/monitoring-grafana/proxy
+          value: /
+      volumes:
+      - name: ca-certificates
+        hostPath:
+          path: /etc/ssl/certs
+      - name: grafana-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    # For use as a Cluster add-on (https://github.com/kubernetes/kubernetes/tree/master/cluster/addons)
+    # If you are NOT using this as an addon, you should comment out this line.
+    kubernetes.io/cluster-service: 'true'
+    kubernetes.io/name: monitoring-grafana
+  name: monitoring-grafana
+  namespace: kube-system
+spec:
+  # In a production setup, we recommend accessing Grafana through an external Loadbalancer
+  # or through a public IP.
+  # type: LoadBalancer
+  # You could also use NodePort to expose the service at a randomly-generated port
+  # type: NodePort
+  ports:
+  - port: 80
+    targetPort: 3000
+  selector:
+    k8s-app: grafana
+  type: NodePort  #设成集群外访问
+-----------------------
+[root@k8s-master ~]# kubectl apply -f grafana.yaml 
+deployment.apps/monitoring-grafana created
+service/monitoring-grafana created
+[root@k8s-master ~]# kubectl get svc -n kube-system 
+NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                  AGE
+heapster               NodePort    10.107.80.13    <none>        80:31512/TCP             16m
+kube-dns               ClusterIP   10.96.0.10      <none>        53/UDP,53/TCP,9153/TCP   38d
+kubernetes-dashboard   NodePort    10.96.150.7     <none>        443:31693/TCP            9d
+monitoring-grafana     NodePort    10.101.63.181   <none>        80:32407/TCP             11s #grafana端口为32407
+monitoring-influxdb    ClusterIP   10.106.66.137   <none>        8086/TCP                 41m
+[root@k8s-master ~]# kubectl get pods  -n kube-system 
+NAME                                    READY   STATUS    RESTARTS   AGE
+canal-brrjc                             2/2     Running   2          3d7h
+canal-jbgvx                             2/2     Running   4          3d7h
+canal-wz5n8                             2/2     Running   2          3d7h
+coredns-fb8b8dccf-2zlk6                 1/1     Running   4          38d
+coredns-fb8b8dccf-brx94                 1/1     Running   4          38d
+etcd-k8s-master                         1/1     Running   4          38d
+heapster-5d4bf58946-vj54k               1/1     Running   0          18m
+kube-apiserver-k8s-master               1/1     Running   4          38d
+kube-controller-manager-k8s-master      1/1     Running   4          38d
+kube-flannel-ds-amd64-j2s9t             1/1     Running   2          3d23h
+kube-flannel-ds-amd64-k4pqg             1/1     Running   1          3d23h
+kube-flannel-ds-amd64-kqd7s             1/1     Running   1          3h29m
+kube-proxy-fxvqs                        1/1     Running   5          38d
+kube-proxy-jwxzw                        1/1     Running   4          38d
+kube-proxy-zf9ch                        1/1     Running   5          38d
+kube-scheduler-k8s-master               1/1     Running   4          38d
+kubernetes-dashboard-5f7b999d65-pg6vp   1/1     Running   1          24h
+monitoring-grafana-658976d65f-fs4x5     1/1     Running   0          2m29s #运行了grafana
+monitoring-influxdb-866db5f944-ntc6q    1/1     Running   0          43m
+[root@k8s-master ~]# kubectl top pod 
+W0515 17:41:00.630463   10953 top_pod.go:259] Metrics not available for pod default/myapp-deploy-79cc54dcc6-4xnks, age: 23h40m39.630446924s
+error: Metrics not available for pod default/myapp-deploy-79cc54dcc6-4xnks, age: 23h40m39.630446924s
+[root@k8s-master ~]# kubectl top node k8s.node1
+Error from server (NotFound): the server could not find the requested resource (get services http:heapster:) #还是没有数据
+[root@k8s-master ~]# kubectl logs -n kube-system heapster-5d4bf58946-vj54k 
+I0515 09:16:51.287364       1 heapster.go:78] /heapster --source=kubernetes:https://kubernetes.default --sink=influxdb:http://monitoring-influxdb.kube-system.svc:8086
+I0515 09:16:51.287413       1 heapster.go:79] Heapster version v1.5.4
+I0515 09:16:51.287621       1 configs.go:61] Using Kubernetes client with master "https://kubernetes.default" and version v1
+I0515 09:16:51.287641       1 configs.go:62] Using kubelet port 10255
+I0515 09:16:51.300272       1 influxdb.go:312] created influxdb sink with options: host:monitoring-influxdb.kube-system.svc:8086 user:root db:k8s
+I0515 09:16:51.300293       1 heapster.go:202] Starting with InfluxDB Sink
+I0515 09:16:51.300299       1 heapster.go:202] Starting with Metric Sink
+I0515 09:16:51.310729       1 heapster.go:112] Starting heapster on port 8082
+E0515 09:17:05.002901       1 manager.go:101] Error in scraping containers from kubelet:192.168.1.37:10255: failed to get all container stats from Kubelet URL "http://192.168.1.37:10255/stats/container/": Post http://192.168.1.37:10255/stats/container/: dial tcp 192.168.1.37:10255: getsockopt: connection refused
+E0515 09:17:05.003827       1 manager.go:101] Error in scraping containers from kubelet:192.168.1.238:10255: failed to get all container stats from Kubelet URL "http://192.168.1.238:10255/stats/container/": Post http://192.168.1.238:10255/stats/container/: dial tcp 192.168.1.238:10255: getsockopt: connection refused
+E0515 09:17:05.006040       1 manager.go:101] Error in scraping containers from kubelet:192.168.1.31:10255: failed to get all container stats from Kubelet URL "http://192.168.1.31:10255/stats/container/": Post http://192.168.1.31:10255/stats/container/: dial tcp 192.168.1.31:10255: getsockopt: connection refused  #显示无法连接每个节点的10255端口来收集日志
+#注：因为k8s从1.11版本开始不再支持heapster，1.10及以前支持，部署到这步就可以成功了
+#参考链接：https://grafana.com/dashboards这个链接可以下载好多grafana的模块，不用自己去创建模块。
 
-
-
-
-
-
-
-
-
-
-
+#第二十三节：
 
 
 </pre>
