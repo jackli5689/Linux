@@ -1,4 +1,4 @@
-﻿#K8S----容器编排
+#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -4730,7 +4730,26 @@ E0515 09:17:05.006040       1 manager.go:101] Error in scraping containers from 
 #注：因为k8s从1.11版本开始不再支持heapster，1.10及以前支持，部署到这步就可以成功了
 #参考链接：https://grafana.com/dashboards这个链接可以下载好多grafana的模块，不用自己去创建模块。
 
-#第二十三节：
+#第二十三节：资源指标API及自定义指标API
+资源指标：metrics-server
+自定义指标：prometheus,k8s-prometheus-adpter(把监控数据转换为指标格式)
+#新一代架构：
+	1. 核心指标流水线：由kubelet、metrics-server以及由API server提供的api组成;CPU累积使用率、内存实时使用率、Pod的资源占用率及容器的磁盘占用率;
+	2. 监控流水线：用于从系统收集各种指标数据并提供终端用户、存储系统以及HPA,它们包含核心指标及许多非核心指标。非核心指标本身不能被k8s所解析，所以有了k8s-prometheus-adpter来负责解析给k8s所认知。
+metrics-server:API server（/apis/metrics.k8s.io/v1beta1）
+k8s:API server
+为了用户无缝调用api server,所以有了聚合器(kube-aggregator)，聚合器下放了所有有关的api server,例如：k8s的api server,metrics-server的api server等。用户只访问聚合器的api即可实现无缝调用所有api server。
+#部署metrics-server
+
+
+
+
+
+
+
+
+
+
 
 
 </pre>
