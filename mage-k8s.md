@@ -1,4 +1,4 @@
-#K8S----容器编排
+﻿#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -4731,7 +4731,8 @@ E0515 09:17:05.006040       1 manager.go:101] Error in scraping containers from 
 #参考链接：https://grafana.com/dashboards这个链接可以下载好多grafana的模块，不用自己去创建模块。
 
 #第二十三节：资源指标API及自定义指标API
-资源指标：metrics-server
+#替代HeapSter
+资源指标：metrics-server  
 自定义指标：prometheus,k8s-prometheus-adpter(把监控数据转换为指标格式)
 #新一代架构：
 	1. 核心指标流水线：由kubelet、metrics-server以及由API server提供的api组成;CPU累积使用率、内存实时使用率、Pod的资源占用率及容器的磁盘占用率;
@@ -4740,14 +4741,39 @@ metrics-server:API server（/apis/metrics.k8s.io/v1beta1）
 k8s:API server
 为了用户无缝调用api server,所以有了聚合器(kube-aggregator)，聚合器下放了所有有关的api server,例如：k8s的api server,metrics-server的api server等。用户只访问聚合器的api即可实现无缝调用所有api server。
 #部署metrics-server
+参考链接：https://github.com/kubernetes-incubator/metrics-server/tree/master/deploy/1.8%2B
+[root@k8s-master metrics]# git clone https://github.com/kubernetes-incubator/metrics-server.git
+[root@k8s-master 1.8+]# ls
+aggregated-metrics-reader.yaml  metrics-server-deployment.yaml
+auth-delegator.yaml             metrics-server-service.yaml
+auth-reader.yaml                resource-reader.yaml
+metrics-apiservice.yaml
+[root@k8s-master 1.8+]# kubectl apply -f .  #部署当前路径下的所有配置清单
+clusterrole.rbac.authorization.k8s.io/system:aggregated-metrics-reader created
+clusterrolebinding.rbac.authorization.k8s.io/metrics-server:system:auth-delegator created
+rolebinding.rbac.authorization.k8s.io/metrics-server-auth-reader created
+apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io created
+serviceaccount/metrics-server created
+deployment.extensions/metrics-server created
+service/metrics-server created
+clusterrole.rbac.authorization.k8s.io/system:metrics-server created
+clusterrolebinding.rbac.authorization.k8s.io/system:metrics-server created
+[root@k8s-master 1.8+]# kubectl get pods -n kube-system 
+metrics-server-548456b4cd-ds9cq         0/1     ContainerCreating   0          49s #新版本部署不稳定，不成功，可以看做是开发版
 
-
-
-
-
-
-
-
+#用稳定版部署：
+参考链接：https://github.com/kubernetes/kubernetes/tree/master/cluster/addons/metrics-server #下载此链接的yaml配置文件
+[root@k8s-master metrics-server]# for i in auth-delegator.yaml auth-reader.yaml metrics-apiservice.yaml metrics-server-deployment.yaml metrics-server-service.yaml resource-reader.yaml;do wget https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/metrics-server/$i;done
+[root@k8s-master metrics-server]# kubectl apply -f . #应用稳定版配置文件
+clusterrolebinding.rbac.authorization.k8s.io/metrics-server:system:auth-delegator created
+rolebinding.rbac.authorization.k8s.io/metrics-server-auth-reader created
+apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io created
+serviceaccount/metrics-server created
+configmap/metrics-server-config created
+deployment.apps/metrics-server-v0.3.2 created
+service/metrics-server created
+clusterrole.rbac.authorization.k8s.io/system:metrics-server created
+clusterrolebinding.rbac.authorization.k8s.io/system:metrics-server created
 
 
 
