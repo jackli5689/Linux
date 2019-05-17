@@ -147,7 +147,7 @@ nohup sslocal -c /etc/shadowsocks/shadowsocks.json &>/dev/null & #添加此行�
 ------------
 #!/bin/bash
 #
-export https_proxy="https://192.168.1.235:8118/"
+export https_proxy="http://192.168.1.235:8118/"
 export http_proxy="http://192.168.1.235:8118/"
 ------------
 
