@@ -111,4 +111,39 @@ export https_proxy="https://127.0.0.1:8118"
 使配置在当前环境生效： . /etc/profile
 
 测试是否可用：curl www.google.com
+
+
+#Centos利用Shadowsocks搭建privoxy代理服务器
+yum install python-pip
+pip install shadowsocks #安装shadowsocks客户端
+[root@salt-server ~]# cat /etc/shadowsocks/shadowsocks.json 
+{
+  "server": "185.243.57.221",
+  "server_port": 80,
+  "local_address": "127.0.0.1",
+  "local_post": 1080,
+  "password": "t.me/SSRSUB",
+  "timeout": 600,
+  "method": "rc4-md5",
+  "fast_open": false,
+  "workers":1
+}
+nohup sslocal -c /etc/shadowsocks/shadowsocks.json &>/dev/null & #启动代理在后台
+[root@salt-server ~]# netstat -tunlp | grep 1080
+tcp        0      0 127.0.0.1:1080          0.0.0.0:*               LISTEN      22868/python2       
+udp        0      0 127.0.0.1:1080          0.0.0.0:*                           22868/python2       
+[root@salt-server ~]# yum install -y privoxy
+[root@salt-server ~]# vim /etc/privoxy/config 
+listen-address  0.0.0.0:8118
+         forward-socks5t   /               127.0.0.1:1080 .
+systemctl start privoxy #启动代理服务
+[root@salt-server ~]# netstat -tunlp | grep 8118
+tcp        0      0 0.0.0.0:8118            0.0.0.0:*               LISTEN      23294/privoxy      
+#到这一步就可以使用wget https://www.google.com访问了
+#开机启动
+[root@salt-server ~]# cat /etc/rc.local 
+nohup sslocal -c /etc/shadowsocks/shadowsocks.json &>/dev/null & #添加此行即可
+
+
+
 </pre>
