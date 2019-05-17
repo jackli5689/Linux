@@ -143,7 +143,13 @@ tcp        0      0 0.0.0.0:8118            0.0.0.0:*               LISTEN      
 #开机启动
 [root@salt-server ~]# cat /etc/rc.local 
 nohup sslocal -c /etc/shadowsocks/shadowsocks.json &>/dev/null & #添加此行即可
-
+[root@k8s ~]# cat /etc/profile.d/privoxy.sh  #此脚本可使命令行下的linux能代理上网
+------------
+#!/bin/bash
+#
+export https_proxy="https://192.168.1.235:8118/"
+export http_proxy="http://192.168.1.235:8118/"
+------------
 
 
 </pre>
