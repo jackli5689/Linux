@@ -59,7 +59,7 @@ master:API-Server、Controller-Manager、scheduler、etcd、flanner
 nodes:kubelet、docker、kube-proxy、flanner
 #架构流程：
 1. master,nodes:先安装kubelet,kubeadmin,docker,kubectl（kubectl客户端管理工具仅master安装即可）
-2. master:运行kubeadm init初始化为master，预检、解决先决条件、证书、私钥、生成配置文件、生成每一个静态pod的清单文件并完成部署，接下来部署addon
+2. master:运行kubeadm init初始化为master，预检、解决先决条件、证书、私钥、生成配置文件、生成每一个静态pod的清单文件并完成部署，接下来部署addon(插件)
 3. nodes:kubeadm join加入集群，预检、解决先决条件、基于bodstip、基于预共享的令牌认证方式、来完成认证到master节点并完成本地的pod自有安装和以addon部署kube-proxy、部署dns
 参考文档：https://github.com/kubernetes/kubeadm/blob/master/docs/design/design_v1.10.md
 
@@ -101,7 +101,7 @@ net.bridge.bridge-nf-call-iptables = 1
 4. master:配置并启动kubelet
 [root@k8s-master systemd]# rpm -ql kubelet
 /etc/kubernetes/manifests
-/etc/sysconfig/kubelet #配置文件
+/etc/sysconfig/kubelet #代理配置文件
 /usr/bin/kubelet  #执行命令
 /usr/lib/systemd/system/kubelet.service  #启动脚本
 [root@k8s-master systemd]# cat /etc/sysconfig/kubelet  #这个文件可以更改是否启用swap
@@ -130,7 +130,7 @@ Your Kubernetes control-plane has initialized successfully!
 
 To start using your cluster, you need to run the following as a regular user:
 
-  mkdir -p $HOME/.kube         #这3个操作是需要操作的
+  mkdir -p $HOME/.kube #这3步是需要操作的
   sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
   sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
@@ -140,8 +140,8 @@ Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
 
 Then you can join any number of worker nodes by running the following on each as root:
 
-kubeadm join 192.168.1.238:6443 --token 0waj98.to1dyo9i8vn9omms \
-    --discovery-token-ca-cert-hash sha256:e832244b85a4aca36b24173d4c8bf1fc29bacef7db956cdc7d95a9f4dca53048
+kubeadm join 192.168.1.238:6443 --token k8lv44.pyktab0j12svv500 \
+    --discovery-token-ca-cert-hash sha256:c55752c032afcb23133068c635f933a3f5602d5b0c91f0db506356384480d7ce 
 ----------------- 
 [root@k8s-master ~]# docker image ls #初始化成功后会有镜像pull下来并启动了容器
 REPOSITORY                           TAG                 IMAGE ID            CREATED             SIZE
@@ -4740,8 +4740,11 @@ E0515 09:17:05.006040       1 manager.go:101] Error in scraping containers from 
 metrics-server:API server（/apis/metrics.k8s.io/v1beta1）
 k8s:API server
 为了用户无缝调用api server,所以有了聚合器(kube-aggregator)，聚合器下放了所有有关的api server,例如：k8s的api server,metrics-server的api server等。用户只访问聚合器的api即可实现无缝调用所有api server。
-#部署metrics-server
-参考链接：https://github.com/kubernetes-incubator/metrics-server/tree/master/deploy/1.8%2B
+
+#部署metrics-server最新版，此1.14版本部署上来了
+##安全参考链接：https://aeric.io/post/k8s-metrics-server-installation/
+老版本参考链接：https://github.com/kubernetes/kubernetes/tree/master/cluster/addons/metrics-server 
+新版本参考链接：https://github.com/kubernetes-incubator/metrics-server/tree/master/deploy/1.8%2B
 [root@k8s-master metrics]# git clone https://github.com/kubernetes-incubator/metrics-server.git
 [root@k8s-master 1.8+]# ls
 aggregated-metrics-reader.yaml  metrics-server-deployment.yaml
@@ -4759,21 +4762,188 @@ service/metrics-server created
 clusterrole.rbac.authorization.k8s.io/system:metrics-server created
 clusterrolebinding.rbac.authorization.k8s.io/system:metrics-server created
 [root@k8s-master 1.8+]# kubectl get pods -n kube-system 
-metrics-server-548456b4cd-ds9cq         0/1     ContainerCreating   0          49s #新版本部署不稳定，不成功，可以看做是开发版
+metrics-server-548456b4cd-ds9cq         0/1     ContainerCreating   0          49s 
+[root@k8s-master metrics-server]# kubectl get pods  -n kube-system
+metrics-server-7cffff65bc-4lx9f         1/1     Running   0          106m
+[root@k8s-master metrics-server]# kubectl api-versions 
+---------------
+admissionregistration.k8s.io/v1beta1
+apiextensions.k8s.io/v1beta1
+apiregistration.k8s.io/v1
+apiregistration.k8s.io/v1beta1
+apps/v1
+apps/v1beta1
+apps/v1beta2
+authentication.k8s.io/v1
+authentication.k8s.io/v1beta1
+authorization.k8s.io/v1
+authorization.k8s.io/v1beta1
+autoscaling/v1
+autoscaling/v2beta1
+autoscaling/v2beta2
+batch/v1
+batch/v1beta1
+certificates.k8s.io/v1beta1
+coordination.k8s.io/v1
+coordination.k8s.io/v1beta1
+crd.projectcalico.org/v1
+events.k8s.io/v1beta1
+extensions/v1beta1
+metrics.k8s.io/v1beta1  #这个是由刚刚的metrics-server提供的，通过聚合器聚合上来的
+networking.k8s.io/v1
+networking.k8s.io/v1beta1
+node.k8s.io/v1beta1
+policy/v1beta1
+rbac.authorization.k8s.io/v1
+rbac.authorization.k8s.io/v1beta1
+scheduling.k8s.io/v1
+scheduling.k8s.io/v1beta1
+storage.k8s.io/v1
+storage.k8s.io/v1beta1
+v1
+---------------
+[root@k8s-master metrics-server]# kubectl proxy --port=8080 #打开一个k8s的api server反向代理接口
+Starting to serve on 127.0.0.1:8080
+[root@k8s 1.8+]# curl http://localhost:8080/apis/metrics.k8s.io/v1beta1/nodes/ #通过metrics-server获取nodes的指标，此时是无数据的，需要改yaml配置文件
+[root@k8s 1.8+]# kubectl top nodes
+NAME         CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
+k8s.master   169m         4%     1478Mi          40%       
+k8s.node1    37m          1%     671Mi           18%       
+k8s.node2    35m          1%     453Mi           12%       
+[root@k8s 1.8+]# kubectl top pods
+NAME                           CPU(cores)   MEMORY(bytes)   
+myapp-deploy-67b6dfcd8-4pmln   0m           2Mi             
+myapp-deploy-67b6dfcd8-8lkzl   0m           2Mi             
+myapp-deploy-67b6dfcd8-rbjm9   0m           2Mi  
+[root@k8s deployment]# kubectl get nodes
+NAME         STATUS   ROLES    AGE     VERSION
+k8s.master   Ready    master   2d13h   v1.14.1  #k8s版本
+k8s.node1    Ready    <none>   2d13h   v1.14.1
+k8s.node2    Ready    <none>   2d12h   v1.14.1
+附配置文件：
+----------------
+[root@k8s 1.8+]# cat metrics-server-deployment.yaml 
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: metrics-server
+  namespace: kube-system
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: metrics-server
+  namespace: kube-system
+  labels:
+    k8s-app: metrics-server
+spec:
+  selector:
+    matchLabels:
+      k8s-app: metrics-server
+  template:
+    metadata:
+      name: metrics-server
+      labels:
+        k8s-app: metrics-server
+    spec:
+      serviceAccountName: metrics-server
+      volumes:
+      # mount in tmp so we can safely use from-scratch images and/or read-only containers
+      - name: tmp-dir
+        emptyDir: {}
+      containers:
+      - name: metrics-server
+        image: k8s.gcr.io/metrics-server-amd64:v0.3.0
+        imagePullPolicy: Always
+        command:   #添加这四行
+        - /metrics-server
+        - --kubelet-preferred-address-types=InternalIP #优先使用ip解析，至关重要
+        - --kubelet-insecure-tls  #忽略证书认证
+        volumeMounts:
+        - name: tmp-dir
+          mountPath: /tmp
+----------------
+[root@k8s 1.8+]# cat resource-reader.yaml 
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: system:metrics-server
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - nodes
+  - nodes/stats
+  - namespaces  #加入这行
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "extensions"
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system:metrics-server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:metrics-server
+subjects:
+- kind: ServiceAccount
+  name: metrics-server
+  namespace: kube-system
+----------------
+ ~ kubectl edit configmap coredns -n kube-system  #此段可省，只是另外一种解析节点的方法。最坏的方法，建议使用添加--kubelet-preferred-address-types=InternalIP参数
+---
+apiVersion: v1
+data:
+  Corefile: |
+    .:53 {
+        errors
+        health
+        hosts {                        # 增加此字段，可解决无法解析问题
+          10.200.100.216  k8s-m1           
+          10.200.100.215  k8s-node1
+          10.200.100.214  k8s-node2
+          fallthrough
+        }
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+           pods insecure
+           upstream
+           fallthrough in-addr.arpa ip6.arpa
+        }
+        prometheus :9153
+        proxy . /etc/resolv.conf
+        cache 30
+        loop
+        reload
+        loadbalance
+    }
+kind: ConfigMap
+metadata:
+  creationTimestamp: 2018-11-28T10:50:05Z
+  name: coredns
+  namespace: kube-system
+  resourceVersion: "4454220"
+  selfLink: /api/v1/namespaces/kube-system/configmaps/coredns
+  uid: 5da15457-f2fb-11e8-affd-080027adebb7
+其实除了上述方法外还有一种方法可以解决此问题，需要就是按照上面的方法修改metrics-server-deployment.yaml文件，添加--kubelet-preferred-address-types=InternalIP参数即可。
 
-#用稳定版部署：
-参考链接：https://github.com/kubernetes/kubernetes/tree/master/cluster/addons/metrics-server #下载此链接的yaml配置文件
-[root@k8s-master metrics-server]# for i in auth-delegator.yaml auth-reader.yaml metrics-apiservice.yaml metrics-server-deployment.yaml metrics-server-service.yaml resource-reader.yaml;do wget https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/metrics-server/$i;done
-[root@k8s-master metrics-server]# kubectl apply -f . #应用稳定版配置文件
-clusterrolebinding.rbac.authorization.k8s.io/metrics-server:system:auth-delegator created
-rolebinding.rbac.authorization.k8s.io/metrics-server-auth-reader created
-apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io created
-serviceaccount/metrics-server created
-configmap/metrics-server-config created
-deployment.apps/metrics-server-v0.3.2 created
-service/metrics-server created
-clusterrole.rbac.authorization.k8s.io/system:metrics-server created
-clusterrolebinding.rbac.authorization.k8s.io/system:metrics-server created
+
+
+
+
 
 
 
