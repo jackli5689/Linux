@@ -4939,10 +4939,223 @@ metadata:
   selfLink: /api/v1/namespaces/kube-system/configmaps/coredns
   uid: 5da15457-f2fb-11e8-affd-080027adebb7
 其实除了上述方法外还有一种方法可以解决此问题，需要就是按照上面的方法修改metrics-server-deployment.yaml文件，添加--kubelet-preferred-address-types=InternalIP参数即可。
+#自定义指标：cpu、内存、Pod之外的指标需要借助promethues
+pod的日志路径在节点的/var/log/containers/路径下
+#部署
+建议部署promethues在单独的名称空间中:
+参考链接：https://github.com/kubernetes/kubernetes/tree/master/cluster/addons/prometheus
+参考链接：https://github.com/ikubernetes/k8s-prom #马哥github
+[root@k8s metrics]# git clone https://github.com/iKubernetes/k8s-prom.git #克隆
+[root@k8s k8s-prom]# kubectl apply -f namespace.yaml  #建立名称空间
+namespace/prom created
+#部署node_exporter
+[root@k8s node_exporter]# kubectl apply -f . #部署node_exporter
+daemonset.apps/prometheus-node-exporter created
+service/prometheus-node-exporter created
+[root@k8s node_exporter]# kubectl get pods -n prom
+NAME                             READY   STATUS    RESTARTS   AGE
+prometheus-node-exporter-k4zdd   1/1     Running   0          106s
+prometheus-node-exporter-qdlvb   1/1     Running   0          106s
+prometheus-node-exporter-qt6s5   1/1     Running   0          106s
+#部署prometheus
+[root@k8s prometheus]# kubectl apply -f . #部署prometheus
+configmap/prometheus-config created
+deployment.apps/prometheus-server created
+clusterrole.rbac.authorization.k8s.io/prometheus created
+serviceaccount/prometheus created
+clusterrolebinding.rbac.authorization.k8s.io/prometheus created
+service/prometheus created
+[root@k8s prometheus]# kubectl get all -n prom
+NAME                                     READY   STATUS    RESTARTS   AGE
+pod/prometheus-node-exporter-k4zdd       1/1     Running   0          4m22s
+pod/prometheus-node-exporter-qdlvb       1/1     Running   0          4m22s
+pod/prometheus-node-exporter-qt6s5       1/1     Running   0          4m22s
+pod/prometheus-server-75cf46bdbc-txqzz   1/1     Running   0          68s #部署完成了
 
+NAME                               TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+service/prometheus                 NodePort    10.101.39.45   <none>        9090:30090/TCP   69s  #nodePort为30090，可以使用promethues自带图形查看
+service/prometheus-node-exporter   ClusterIP   None           <none>        9100/TCP         4m22s
 
+NAME                                      DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+daemonset.apps/prometheus-node-exporter   3         3         3       3            3           <none>          4m22s
 
+NAME                                READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/prometheus-server   1/1     1            1           69s
 
+NAME                                           DESIRED   CURRENT   READY   AGE
+replicaset.apps/prometheus-server-75cf46bdbc   1         1         1       69s
+http://192.168.1.31:30090/ #通过这个可访问prometheus，这个prometheus部署的数据在pod中，生产环境是要结合pvc来完成的
+#部署kube-state-metrics,来接收prometheus的数据
+[root@k8s kube-state-metrics]# kubectl apply -f . #部署kube-state-metrics
+deployment.apps/kube-state-metrics created
+serviceaccount/kube-state-metrics created
+clusterrole.rbac.authorization.k8s.io/kube-state-metrics created
+clusterrolebinding.rbac.authorization.k8s.io/kube-state-metrics created
+service/kube-state-metrics created
+[root@k8s kube-state-metrics]# kubectl get all -n prom
+NAME                                      READY   STATUS    RESTARTS   AGE
+pod/kube-state-metrics-6b44579cc4-kfbjg   1/1     Running   0          3m44s #已经运行
+pod/prometheus-node-exporter-k4zdd        1/1     Running   0          15m
+pod/prometheus-node-exporter-qdlvb        1/1     Running   0          15m
+pod/prometheus-node-exporter-qt6s5        1/1     Running   0          15m
+pod/prometheus-server-75cf46bdbc-txqzz    1/1     Running   0          12m
+
+NAME                               TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+service/kube-state-metrics         ClusterIP   10.98.64.108   <none>        8080/TCP         3m45s #创建了一个svc
+service/prometheus                 NodePort    10.101.39.45   <none>        9090:30090/TCP   12m
+service/prometheus-node-exporter   ClusterIP   None           <none>        9100/TCP         15m
+#部署k8s-prometheus-adpater，以https提供服务，默认是http,所以先部署证书
+[root@k8s k8s-prometheus-adapter]# ls
+custom-metrics-apiserver-auth-delegator-cluster-role-binding.yaml
+custom-metrics-apiserver-auth-reader-role-binding.yaml
+custom-metrics-apiserver-deployment.yaml
+custom-metrics-apiserver-resource-reader-cluster-role-binding.yaml
+custom-metrics-apiserver-service-account.yaml
+custom-metrics-apiserver-service.yaml
+custom-metrics-apiservice.yaml
+custom-metrics-cluster-role.yaml
+custom-metrics-resource-reader-cluster-role.yaml
+hpa-custom-metrics-cluster-role-binding.yaml
+#先创建证书：
+[root@k8s k8s-prometheus-adapter]# cd /etc/kubernetes/pki/
+[root@k8s pki]# (umask 077;openssl genrsa -out serving.key 2048) #创建私钥
+Generating RSA private key, 2048 bit long modulus
+..............................................................+++
+........................................+++
+e is 65537 (0x10001)
+[root@k8s pki]# openssl req -new -key serving.key -out serving.csr -subj "/CN=serving" #生成证书请求
+[root@k8s pki]# openssl x509 -req -in serving.csr -CA ./ca.crt -CAkey ./ca.key -CAcreateserial -out serving.crt -days 3650 #用k8s的ca签署生成的证书申请请求
+Signature ok
+subject=/CN=serving
+Getting CA Private Key
+创建secret：
+[root@k8s pki]# kubectl create secret generic cm-adapter-serving-certs --from-file=serving.crt=./serving.crt --from-file=serving.key=./serving.key -n prom
+secret/cm-adapter-serving-certs created
+[root@k8s pki]# kubectl get secret -n prom
+NAME                             TYPE                                  DATA   AGE
+cm-adapter-serving-certs         Opaque                                2      26s
+#再部署k8s-prometheus-adpater
+[root@k8s k8s-prometheus-adapter]# kubectl apply -f .
+clusterrolebinding.rbac.authorization.k8s.io/custom-metrics:system:auth-delegator created
+rolebinding.rbac.authorization.k8s.io/custom-metrics-auth-reader created
+deployment.apps/custom-metrics-apiserver created
+clusterrolebinding.rbac.authorization.k8s.io/custom-metrics-resource-reader created
+serviceaccount/custom-metrics-apiserver created
+service/custom-metrics-apiserver created
+apiservice.apiregistration.k8s.io/v1beta1.custom.metrics.k8s.io created
+clusterrole.rbac.authorization.k8s.io/custom-metrics-server-resources created
+clusterrole.rbac.authorization.k8s.io/custom-metrics-resource-reader created
+clusterrolebinding.rbac.authorization.k8s.io/hpa-controller-custom-metrics created
+[root@k8s k8s-prometheus-adapter]# kubectl get pods -n prom
+NAME                                        READY   STATUS             RESTARTS   AGE
+custom-metrics-apiserver-6bb45c6978-fpmjm   0/1     CrashLoopBackOff   7          13m #部署失败，需要替换这个文件custom-metrics-apiserver-deployment.yaml
+参考链接：https://github.com/DirectXMan12/k8s-prometheus-adapter/tree/master/deploy/manifests
+https://raw.githubusercontent.com/DirectXMan12/k8s-prometheus-adapter/master/deploy/manifests/custom-metrics-apiserver-deployment.yaml #替换文件custom-metrics-apiserver-deployment.yaml
+[root@k8s k8s-prometheus-adapter]# mv custom-metrics-apiserver-deployment.yaml{,.bak} #更改旧文件名
+[root@k8s k8s-prometheus-adapter]# wget https://raw.githubusercontent.com/DirectXMan12/k8s-prometheus-adapter/master/deploy/manifests/custom-metrics-apiserver-deployment.yaml #下载替换文件
+[root@k8s k8s-prometheus-adapter]# wget https://raw.githubusercontent.com/DirectXMan12/k8s-prometheus-adapter/master/deploy/manifests/custom-metrics-config-map.yaml #这个文件被新custom-metrics-apiserver-deployment.yaml所依赖
+[root@k8s k8s-prometheus-adapter]# kubectl delete -f custom-metrics-apiserver-deployment.yaml.bak  #删除老custom-metrics-apiserver-deployment.yaml.bak的pod
+deployment.apps "custom-metrics-apiserver" deleted 
+[root@k8s k8s-prometheus-adapter]# vim custom-metrics-apiserver-deployment.yaml
+namespace: prom  #更改成我们自己的名称空间
+[root@k8s k8s-prometheus-adapter]# vim custom-metrics-config-map.yaml 
+namespace: prom  #更改成我们自己的名称空间
+[root@k8s k8s-prometheus-adapter]# kubectl apply -f custom-metrics-config-map.yaml #先应用依赖的config-map
+configmap/adapter-config created 
+[root@k8s k8s-prometheus-adapter]# kubectl apply -f custom-metrics-apiserver-deployment.yaml #部署k8s-prometheus-adapter
+deployment.apps/custom-metrics-apiserver created
+[root@k8s k8s-prometheus-adapter]# kubectl get pods -n prom
+NAME                                        READY   STATUS    RESTARTS   AGE
+custom-metrics-apiserver-667fd4fffd-f79m4   1/1     Running   0          28s #终于部署成功了
+[root@k8s k8s-prometheus-adapter]# kubectl api-versions
+admissionregistration.k8s.io/v1beta1
+apiextensions.k8s.io/v1beta1
+apiregistration.k8s.io/v1
+apiregistration.k8s.io/v1beta1
+apps/v1
+apps/v1beta1
+apps/v1beta2
+authentication.k8s.io/v1
+authentication.k8s.io/v1beta1
+authorization.k8s.io/v1
+authorization.k8s.io/v1beta1
+autoscaling/v1
+autoscaling/v2beta1
+autoscaling/v2beta2
+batch/v1
+batch/v1beta1
+certificates.k8s.io/v1beta1
+coordination.k8s.io/v1
+coordination.k8s.io/v1beta1
+custom.metrics.k8s.io/v1beta1  #新的api可以正常使用并且融合了许多新的指标
+events.k8s.io/v1beta1
+extensions/v1beta1
+metrics.k8s.io/v1beta1
+networking.k8s.io/v1
+networking.k8s.io/v1beta1
+node.k8s.io/v1beta1
+policy/v1beta1
+rbac.authorization.k8s.io/v1
+rbac.authorization.k8s.io/v1beta1
+scheduling.k8s.io/v1
+scheduling.k8s.io/v1beta1
+storage.k8s.io/v1
+storage.k8s.io/v1beta1
+v1
+[root@k8s k8s-prometheus-adapter]# curl http://localhost:8080/apis/custom.metricsk8s.io/v1beta1/
+ {
+      "name": "pods/cpu_cfs_throttled_periods",
+      "singularName": "",
+      "namespaced": true,
+      "kind": "MetricValueList",
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "name": "namespaces/kube_pod_container_status_running",
+      "singularName": "",
+      "namespaced": false,
+      "kind": "MetricValueList",
+      "verbs": [
+        "get"
+      ]
+    },
+.................. #好多信息不一一复制
+#可以结合grafana
+创建HPA：自动伸缩副本数量
+HPAv1和HPAv2
+[root@k8s k8s-prometheus-adapter]# kubectl explain hpa
+KIND:     HorizontalPodAutoscaler
+VERSION:  autoscaling/v1
+
+DESCRIPTION:
+     configuration of a horizontal pod autoscaler.
+
+FIELDS:
+   apiVersion   <string>
+     APIVersion defines the versioned schema of this representation of an
+     object. Servers should convert recognized schemas to the latest internal
+     value, and may reject unrecognized values. More info:
+     https://git.k8s.io/community/contributors/devel/api-conventions.md#resources
+
+   kind <string>
+     Kind is a string value representing the REST resource this object
+     represents. Servers may infer this from the endpoint the client submits
+     requests to. Cannot be updated. In CamelCase. More info:
+     https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds
+
+   metadata     <Object>
+     Standard object metadata. More info:
+     https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata
+
+   spec <Object>
+     behaviour of autoscaler. More info:
+     https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status.
+
+   status       <Object>
+     current information about the autoscaler.
+hpa来针对pod使其可以自动伸缩：kubectl autoscale deployment myapp --min=1 --max=8 --cpu-percent=60
 
 
 
