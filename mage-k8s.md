@@ -5122,9 +5122,101 @@ v1
       ]
     },
 .................. #好多信息不一一复制
-#可以结合grafana
-创建HPA：自动伸缩副本数量
-HPAv1和HPAv2
+#结合grafana工作
+下载grafana配置清单：wget https://raw.githubusercontent.com/kubernetes-retired/heapster/master/deploy/kube-config/influxdb/grafana.yaml
+[root@k8s grafana]# cat grafana.yaml 
+----------------
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: monitoring-grafana
+  namespace: prom  #改成跟k8s-prometheus-adpater一样的名称空间prom
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        task: monitoring
+        k8s-app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: k8s.gcr.io/heapster-grafana-amd64:v5.0.4
+        ports:
+        - containerPort: 3000
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /etc/ssl/certs
+          name: ca-certificates
+          readOnly: true
+        - mountPath: /var
+          name: grafana-storage
+        env:
+       # - name: INFLUXDB_HOST  #注释infludb的源
+       #   value: monitoring-influxdb
+        - name: GF_SERVER_HTTP_PORT
+          value: "3000"
+          # The following env variables are required to make Grafana accessible via
+          # the kubernetes api-server proxy. On production clusters, we recommend
+          # removing these env variables, setup auth for grafana, and expose the grafana
+          # service using a LoadBalancer or a public IP.
+        - name: GF_AUTH_BASIC_ENABLED
+          value: "false"
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: "true"
+        - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+          value: Admin
+        - name: GF_SERVER_ROOT_URL
+          # If you're only using the API Server proxy, set this value instead:
+          # value: /api/v1/namespaces/kube-system/services/monitoring-grafana/proxy
+          value: /
+      volumes:
+      - name: ca-certificates
+        hostPath:
+          path: /etc/ssl/certs
+      - name: grafana-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    # For use as a Cluster add-on (https://github.com/kubernetes/kubernetes/tree/master/cluster/addons)
+    # If you are NOT using this as an addon, you should comment out this line.
+    kubernetes.io/cluster-service: 'true'
+    kubernetes.io/name: monitoring-grafana
+  name: monitoring-grafana
+  namespace: prom #改成跟k8s-prometheus-adpater一样的名称空间prom
+spec:
+  # In a production setup, we recommend accessing Grafana through an external Loadbalancer
+  # or through a public IP.
+  # type: LoadBalancer
+  # You could also use NodePort to expose the service at a randomly-generated port
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 3000
+  selector:
+    k8s-app: grafana
+----------------
+[root@k8s grafana]# kubectl apply -f grafana.yaml 
+deployment.extensions/monitoring-grafana created
+service/monitoring-grafana created
+[root@k8s grafana]# kubectl get pods -n prom
+monitoring-grafana-5c96c4966d-kms8w         1/1     Running   0          78s
+[root@k8s grafana]# kubectl get svc -n prom
+monitoring-grafana         NodePort    10.102.186.185   <none>        80:31565/TCP     3m2s
+http://192.168.1.37:31565/  #web访问grafana
+添加数据源：
+1. 设置名称为prometheus,2. 类型为prometheus,3. 网址为prometheus的clusterIP地址，因为grafana和prometheus都是在集群内通信，地址为http://prometheus:9090/，是prometheus的svc接口，4. 访问为proxy 5.跳过tls验证，6.其他默认，7. 保存和测试
+谷歌搜索grafana dashboard，打开grafana的官网
+搜索kubernetes，数据源为promethers，找到Kubernetes Cluster (Prometheus)后下载JSON文件
+最后在grafana中导入dashboard
+##HPA：水平pod自动伸缩
+3个node负载率为90%，每个pod负载率为60%，最多可运行多少个pod:90%X3/60%
+只支核心指标进行弹性缩放
+#创建HPA：
+HPAv1和HPAv2两个版本
 [root@k8s k8s-prometheus-adapter]# kubectl explain hpa
 KIND:     HorizontalPodAutoscaler
 VERSION:  autoscaling/v1
@@ -5155,7 +5247,179 @@ FIELDS:
 
    status       <Object>
      current information about the autoscaler.
-hpa来针对pod使其可以自动伸缩：kubectl autoscale deployment myapp --min=1 --max=8 --cpu-percent=60
+
+[root@k8s manifests]# kubectl api-versions  #hpa两个版本
+autoscaling/v1
+autoscaling/v2beta1
+autoscaling/v2beta2
+[root@k8s manifests]# kubectl run myapp --image=ikubernetes/myapp:v1 --replicas=1 --requests='cpu=50m,memory=256Mi' --limits='cpu=50m,memory=256Mi' --labels='app=myapp' --expose --port=80
+kubectl run --generator=deployment/apps.v1 is DEPRECATED and will be removed in a future version. Use kubectl run --generator=run-pod/v1 or kubectl create instead.
+service/myapp created
+deployment.apps/myapp created
+[root@k8s manifests]# kubectl get pods 
+NAME                     READY   STATUS    RESTARTS   AGE
+myapp-64bf6764c5-4hcp2   1/1     Running   0          49s
+[root@k8s manifests]# kubectl describe pods myapp-64bf6764c5-4hcp2
+QoS Class:       Guaranteed
+自动伸缩：[root@k8s manifests]# kubectl autoscale deployment myapp --min=1 --max=8 --cpu-percent=60 #当pod的cpu到达60%时开始自动伸缩，最小为1个，最多为8个，命令默认是v1控制器
+horizontalpodautoscaler.autoscaling/myapp autoscaled
+[root@k8s manifests]# kubectl get hpa
+NAME    REFERENCE          TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+myapp   Deployment/myapp   0%/60%    1         8         1          17s
+[root@k8s manifests]# kubectl get svc
+NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP   4d13h
+myapp        ClusterIP   10.97.143.122   <none>        80/TCP    4m54s
+[root@k8s manifests]# kubectl patch svc myapp -p '{"spec":{"type":"NodePort"}}'
+service/myapp patched
+[root@k8s manifests]# kubectl get svc
+NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
+kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP        4d13h
+myapp        NodePort    10.97.143.122   <none>        80:31857/TCP   5m47s
+[root@salt-server ~]# ab -c 100 -n 500000  http://192.168.1.31:31857/index.html  #压力测试
+[root@k8s ~]# kubectl describe hpa
+Name:                                                  myapp
+Namespace:                                             default
+Labels:                                                <none>
+Annotations:                                           <none>
+CreationTimestamp:                                     Wed, 22 May 2019 11:07:27 +0800
+Reference:                                             Deployment/myapp
+Metrics:                                               ( current / target )
+  resource cpu on pods  (as a percentage of request):  74% (37m) / 60% #cpu利用率上升
+Min replicas:                                          1
+Max replicas:                                          8
+Deployment pods:                                       2 current / 2 desired
+Conditions:
+  Type            Status  Reason              Message
+  ----            ------  ------              -------
+  AbleToScale     True    ReadyForNewScale    recommended size matches current size
+  ScalingActive   True    ValidMetricFound    the HPA was able to successfully calculate a replica count from cpu resource utilization (percentage of request)
+  ScalingLimited  False   DesiredWithinRange  the desired count is within the acceptable range
+Events:
+  Type    Reason             Age   From                       Message
+  ----    ------             ----  ----                       -------
+  Normal  SuccessfulRescale  54s   horizontal-pod-autoscaler  New size: 2; reason: cpu resource utilization (percentage of request) above target
+[root@k8s ~]# kubectl get pods 
+NAME                     READY   STATUS    RESTARTS   AGE
+myapp-64bf6764c5-4hcp2   1/1     Running   0          5h13m
+myapp-64bf6764c5-xb9wb   1/1     Running   0          58s  #自动伸缩为2个
+[root@k8s ~]# kubectl get pods 
+NAME                     READY   STATUS    RESTARTS   AGE
+myapp-64bf6764c5-4hcp2   1/1     Running   0          5h21m
+myapp-64bf6764c5-8c8xk   1/1     Running   0          7m12s
+myapp-64bf6764c5-qm9nr   1/1     Running   0          6m12s
+myapp-64bf6764c5-xb9wb   1/1     Running   0          8m13s
+[root@k8s metrics]# kubectl delete hpa myapp
+horizontalpodautoscaler.autoscaling "myapp" deleted
+
+[root@k8s metrics]# kubectl get hpa
+NAME           REFERENCE          TARGETS                         MINPODS   MAXPODS   REPLICAS   AGE
+myapp-hpa-v2   Deployment/myapp   <unknown>/50Mi, <unknown>/55%   1         10        0          43s
+[root@k8s metrics]# cat hpa-v2-demo.yaml 
+-----------
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: myapp-hpa-v2  #兼容v1,v1只支持CPU，v2只支持内存
+spec:
+  scaleTargetRef:  #自动伸缩的目标引用
+    apiVersion: apps/v1
+    kind: Deployment
+    name: myapp   #叫myapp的deployment控制器
+  minReplicas: 1
+  maxReplicas: 10  #最大副本和最小副本
+  metrics:
+  - type: Resource #引用的类型为resource
+    resource:
+      name: cpu #资源为cpu
+      targetAverageUtilization: 55 #cpu使用率最大为55m时伸缩
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageValue: 50Mi #内存使用率最大为50Mi时伸缩
+-----------
+[root@k8s metrics]# kubectl apply -f hpa-v2-demo.yaml 
+horizontalpodautoscaler.autoscaling/myapp-hpa-v2 created
+[root@k8s metrics]# kubectl get hpa
+NAME           REFERENCE          TARGETS                MINPODS   MAXPODS   REPLICAS   AGE
+myapp-hpa-v2   Deployment/myapp   2232320/50Mi, 0%/55%   1         10        1          6m17s
+[root@k8s metrics]# kubectl get pods  #通过配置清单也一样可以伸缩
+NAME                     READY   STATUS    RESTARTS   AGE
+myapp-64bf6764c5-krfz8   1/1     Running   0          5m47s
+myapp-64bf6764c5-mlhn8   1/1     Running   0          118s
+myapp-64bf6764c5-xjq2d   1/1     Running   0          2m58s
+[root@k8s metrics]# kubectl get pods
+NAME                     READY   STATUS    RESTARTS   AGE
+myapp-64bf6764c5-5zxq5   1/1     Running   0          104s
+myapp-64bf6764c5-6qghr   1/1     Running   0          4m46s
+myapp-64bf6764c5-fjc9t   1/1     Running   0          104s
+myapp-64bf6764c5-fvhk9   1/1     Running   0          44s
+myapp-64bf6764c5-krfz8   1/1     Running   0          10m
+myapp-64bf6764c5-lb4xm   1/1     Running   0          2m45s
+myapp-64bf6764c5-mdpwp   1/1     Running   0          2m45s
+myapp-64bf6764c5-mlhn8   1/1     Running   0          6m46s
+myapp-64bf6764c5-xjq2d   1/1     Running   0          7m46s
+myapp-64bf6764c5-z9mlm   1/1     Running   0          3m46s  #自动伸缩到了10个
+[root@k8s metrics]# kubectl get pods
+NAME                      READY   STATUS              RESTARTS   AGE
+myapp-64bf6764c5-6qghr    1/1     Running             0          11m
+myapp-64bf6764c5-krfz8    1/1     Running             0          16m
+myapp-64bf6764c5-lb4xm    1/1     Running             0          9m1s
+myapp-64bf6764c5-mdpwp    1/1     Running             0          9m1s
+myapp-64bf6764c5-mlhn8    1/1     Running             0          13m
+myapp-64bf6764c5-xjq2d    1/1     Running             0          14m
+myapp-64bf6764c5-z9mlm    1/1     Running             0          10m #当使用率下来后，过一段延迟时间自动缩减pod副本数
+#利用pod输出的metric指标进行自动伸缩
+[root@k8s metrics]# kubectl run myapp2 --image=ikubernetes/metrics-app --replicas=1 --requests='cpu=50m,memory=256Mi' --limits='cpu=50m,memory=256Mi' --labels='app=myapp' --expose --port=80
+kubectl run --generator=deployment/apps.v1 is DEPRECATED and will be removed in a future version. Use kubectl run --generator=run-pod/v1 or kubectl create instead.
+service/myapp2 created
+deployment.apps/myapp2 created
+[root@k8s metrics]# kubectl get pods
+NAME                      READY   STATUS    RESTARTS   AGE
+myapp-64bf6764c5-6qghr    1/1     Running   0          11m
+myapp-64bf6764c5-krfz8    1/1     Running   0          17m
+myapp-64bf6764c5-lb4xm    1/1     Running   0          9m40s
+myapp-64bf6764c5-mdpwp    1/1     Running   0          9m40s
+myapp-64bf6764c5-mlhn8    1/1     Running   0          13m
+myapp-64bf6764c5-xjq2d    1/1     Running   0          14m
+myapp-64bf6764c5-z9mlm    1/1     Running   0          10m
+myapp2-6f5c5f9c48-9sq6w   1/1     Running   0          63s
+[root@k8s metrics]# kubectl patch svc myapp2 -p '{"spec":{"type":"NodePort"}}'
+service/myapp2 patched
+[root@k8s metrics]# kubectl get svc
+NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
+kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP        4d19h
+myapp        NodePort    10.96.191.200   <none>        80:32321/TCP   18m
+myapp2       NodePort    10.104.217.75   <none>        80:32680/TCP   112s #新打补丁的nodePort端口为32680
+[root@k8s metrics]# cat hpa-v2-req-demo.yaml  
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: myapp-hpa-req-v2
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: myapp2
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Pods  #资源类型为pods
+    pods:
+      metricName: http_requests
+      targetAverageValue: 800m  #请求数为800时开始伸缩
+[root@k8s metrics]# kubectl apply -f hpa-v2-req-demo.yaml 
+horizontalpodautoscaler.autoscaling/myapp-hpa-v2 configured
+[root@k8s metrics]# kubectl get hpa
+NAME               REFERENCE          TARGETS                MINPODS   MAXPODS   REPLICAS   AGE
+myapp-hpa-req-v2   Deployment/myapp   <unknown>/800m         1         10        0          2s #新应用的hpa配置清单
+myapp-hpa-v2       Deployment/myapp   3729920/50Mi, 0%/55%   1         10        7          29s
+[root@salt-server ~]# ab -c 1000 -n 100000 http://192.168.1.31:32680/index.html  #测试没有成功，但流程是这样的
+
+
+
+
+
 
 
 
