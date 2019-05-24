@@ -5416,11 +5416,188 @@ myapp-hpa-req-v2   Deployment/myapp   <unknown>/800m         1         10       
 myapp-hpa-v2       Deployment/myapp   3729920/50Mi, 0%/55%   1         10        7          29s
 [root@salt-server ~]# ab -c 1000 -n 100000 http://192.168.1.31:32680/index.html  #测试没有成功，但流程是这样的
 
+#第二十四节：helm入门
+无状态：nginx
+有状态：tomcat,redis,mysql,etcd..
+helm是kubernetes的另外一个项目
+helm提供专门的应用程序（chart）:deployment,service,hpa，模块，值文件等打包成一个程序清单，模块和值文件是自定义应用的修改点，开发者需要更改模块，应用值只需要更改值文件。
+Chart repository:chart仓库
+helm是Tiller的客户端，helm运行在用户的pc上，Tiller是守护进程最好部署在k8s集群内。helm请求部署时先发给tiller,然后由tiler请求给API Server,实现部署pod。
+helm在用户pc上从chart repository获取chart后一般存储在用户的家目录下，当用户传入自定义参数给chart部署后就会在k8s集群运行，运行的对象叫release,不叫pod
+Helm:
+	核心术语：
+		1. Chart:一个helm程序包
+		2. Repository:Charts仓库，https/http服务器
+		3. Release:特定的Chart部署于目标集群上的一个实例
+		Chart -> Config -> Release
+	程序架构：
+		helm: 客户端，运行在用户pc,管理本地的chart仓库，管理远端的chart Repository,与Tiller服务器交互，发送chart,实例安装、查询、卸载等操作
+		Tiller：服务端，可运行在集群内或集群外，但部署在集群外非常麻烦，多数部署在集群内。接收helm发来的charts与config,合并生成release
+安装helm:
+有linux，windows、OSX的客户端，linux下载即可用。
+[root@k8s ~]# wget https://storage.googleapis.com/kubernetes-helm/helm-v2.14.0-linux-amd64.tar.gz #可运行在任意pc上
+[root@k8s ~]# tar xf helm-v2.14.0-linux-amd64.tar.gz 
+[root@k8s ~]# cd linux-amd64/
+[root@k8s linux-amd64]# ls
+helm  LICENSE  README.md  tiller
+[root@k8s linux-amd64]# mv helm /usr/bin
+[root@k8s linux-amd64]# helm --help
+#部署tiller
+部署tiller的serviceAccount:
+参考链接：https://github.com/helm/helm/blob/master/docs/rbac.md
+[root@k8s manifests]# mkdir helm
+[root@k8s manifests]# vim tiller-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tiller
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tiller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: tiller
+    namespace: kube-system
+[root@k8s manifests]# kubectl get sa -n kube-system | grep tiller
+tiller                               1         20s #已经新建
+#初始化tiller:
+[root@k8s manifests]# helm init --service-account tiller
+Creating /root/.helm 
+Creating /root/.helm/repository 
+Creating /root/.helm/repository/cache 
+Creating /root/.helm/repository/local 
+Creating /root/.helm/plugins 
+Creating /root/.helm/starters 
+Creating /root/.helm/cache/archive 
+Creating /root/.helm/repository/repositories.yaml 
+Adding stable repo with URL: https://kubernetes-charts.storage.googleapis.com 
+Adding local repo with URL: http://127.0.0.1:8879/charts 
+$HELM_HOME has been configured at /root/.helm.
+
+Tiller (the Helm server-side component) has been installed into your Kubernetes Cluster.
+
+Please note: by default, Tiller is deployed with an insecure 'allow unauthenticated users' policy.
+To prevent this, run `helm init` with the --tiller-tls-verify flag.
+For more information on securing your installation see: https://docs.helm.sh/using_helm/#securing-your-helm-installation
+[root@k8s manifests]# kubectl get pods -n kube-system
+NAME                                 READY   STATUS    RESTARTS   AGE
+coredns-fb8b8dccf-g46zw              1/1     Running   0          6d19h
+coredns-fb8b8dccf-t2cnt              1/1     Running   0          6d19h
+etcd-k8s.master                      1/1     Running   0          6d19h
+kube-apiserver-k8s.master            1/1     Running   0          6d19h
+kube-controller-manager-k8s.master   1/1     Running   0          6d19h
+kube-flannel-ds-amd64-25gjq          1/1     Running   0          6d17h
+kube-flannel-ds-amd64-67zqq          1/1     Running   0          6d19h
+kube-flannel-ds-amd64-z42rk          1/1     Running   0          6d19h
+kube-proxy-6jpf7                     1/1     Running   0          6d19h
+kube-proxy-jqcwm                     1/1     Running   0          6d19h
+kube-proxy-p7ghm                     1/1     Running   0          6d17h
+kube-scheduler-k8s.master            1/1     Running   0          6d19h
+metrics-server-5fcc554d8-ztfcp       1/1     Running   0          4d
+tiller-deploy-598f58dd45-vrjf4       1/1     Running   0          111s #已经部署成功
+[root@k8s manifests]# helm version  #查看应用程序版本
+Client: &version.Version{SemVer:"v2.14.0", GitCommit:"05811b84a3f93603dd6c2fcfe57944dfa7ab7fd0", GitTreeState:"clean"}
+Server: &version.Version{SemVer:"v2.14.0", GitCommit:"05811b84a3f93603dd6c2fcfe57944dfa7ab7fd0", GitTreeState:"clean"}
+如何卸载tiller?:删除tiller的deploy控制器和serviceaccount就可以了
+[root@k8s manifests]# helm repo update  #更新远程仓库的chart
+Hang tight while we grab the latest from your chart repositories...
+...Skip local chart repository
+...Successfully got an update from the "stable" chart repository
+Update Complete.
+helm官方网站：https://helm.sh/
+官方可用的chart列表：https://hub.kubeapps.com
+#常用操作
+[root@k8s manifests]# helm search jenkins #搜索jenkins
+NAME            CHART VERSION   APP VERSION     DESCRIPTION                                                 
+stable/jenkins  1.1.21          lts             Open source continuous integration server. It supports mu...
+[root@k8s manifests]# helm inspect stable/jenkins #查看chard的底层信息
+[root@k8s manifests]# helm inspect stable/memcached
+[root@k8s manifests]# helm install --name mem1 stable/memcached #安装memchached并且给release取名为mem1
+NAME:   mem1
+LAST DEPLOYED: Fri May 24 17:17:40 2019
+NAMESPACE: default
+STATUS: DEPLOYED
+
+RESOURCES:
+==> v1/Pod(related)
+NAME              READY  STATUS             RESTARTS  AGE
+mem1-memcached-0  0/1    ContainerCreating  0         0s #pod在创建中
+
+==> v1/Service
+NAME            TYPE       CLUSTER-IP  EXTERNAL-IP  PORT(S)    AGE
+mem1-memcached  ClusterIP  None        <none>       11211/TCP  0s #sa在创建中
+
+==> v1beta1/PodDisruptionBudget
+NAME            MIN AVAILABLE  MAX UNAVAILABLE  ALLOWED DISRUPTIONS  AGE
+mem1-memcached  2              N/A              0                    0s
+
+==> v1beta1/StatefulSet  
+NAME            READY  AGE
+mem1-memcached  0/3    0s  #有状态应用
 
 
+NOTES:
+Memcached can be accessed via port 11211 on the following DNS name from within your cluster:
+mem1-memcached.default.svc.cluster.local
 
+If you'd like to test your instance, forward the port locally:
 
+  export POD_NAME=$(kubectl get pods --namespace default -l "app=mem1-memcached" -o jsonpath="{.items[0].metadata.name}")
+  kubectl port-forward $POD_NAME 11211
 
+In another tab, attempt to set a key:
+
+  $ echo -e 'set mykey 0 60 5\r\nhello\r' | nc localhost 11211
+
+You should see:
+
+  STORED
+[root@k8s manifests]# kubectl get pods --namespace default -l "app=mem1-memcached" -o jsonpath="{.items[0].metadata.name}" #查看部署的release
+mem1-memcached-0
+[root@k8s manifests]# helm list  #查看安装的release
+NAME    REVISION        UPDATED                         STATUS          CHART             APP VERSION     NAMESPACE
+mem1    1               Fri May 24 17:17:40 2019        DEPLOYED        memcached-2.8.2   1.5.12          default  
+[root@k8s manifests]# helm delete mem1 #删除release
+release "mem1" deleted
+[root@k8s manifests]# helm list 
+helm常用命令：
+	release管理：
+		1. install
+		2. delete
+		3. upgrade/rollback
+		4. list
+		5. history：查看release的部署历史
+		6. status:获取release的状态信息
+	chart管理：
+		1. create #新建一个chart
+		2. fetch  #下载一个chart而且展开
+		3. get  #获取一个chart但并展开
+		4. inspect #查看底层信息
+		5. package ：把本地的chart打包
+		6. verify：校验
+[root@k8s archive]# pwd
+/root/.helm/cache/archive
+[root@k8s archive]# ls
+jenkins-1.1.21.tgz  memcached-2.8.2.tgz
+[root@k8s archive]# tree memcached
+memcached
+├── Chart.yaml
+├── README.md
+├── templates
+│?? ├── _helpers.tpl
+│?? ├── NOTES.txt
+│?? ├── pdb.yaml
+│?? ├── statefulset.yaml
+│?? └── svc.yaml
+└── values.yaml  #这个是自定义的值文件
+helm install --name redis1 -f values.yaml stable/redis #这个values.yaml是当前路径下的值文件，用来设定helm
 
 
 
