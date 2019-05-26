@@ -5925,4 +5925,7 @@ kubectl run cirror-$RRANDOM --rm -it --image=cirros -- /bin/sh #运行一个pod�
 
 
 
+
+
+
 </pre>
