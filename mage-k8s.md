@@ -4283,9 +4283,9 @@ resources    <Object>
 KIND:     Pod
 VERSION:  v1
 
-RESOURCE: resources Object
-limits       <map[string]string>
-requests     <map[string]string>
+RESOURCE: resources "<Object>"
+limits       "<map[string]string>"
+requests     "<map[string]string>"
 Example:
 apiVersion: v1
 kind: Pod
