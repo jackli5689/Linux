@@ -1,4 +1,4 @@
-﻿#K8S----容器编排
+#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -5598,6 +5598,329 @@ memcached
 │?? └── svc.yaml
 └── values.yaml  #这个是自定义的值文件
 helm install --name redis1 -f values.yaml stable/redis #这个values.yaml是当前路径下的值文件，用来设定helm
+
+#第二十五节：EFK日志收集系统
+kubernetes的四大附件：coreDNS(kubeDNS),dashboard,IngressConroller,Metrics-Server(HeapSter)
+#EFK日志收集系统是除开k8s四大附件外的最重要附件。
+#chart目录结构参考链接：https://helm.sh/docs/developing_charts/#charts
+helm的包结构：
+[root@k8s helm]# helm create myapp #为自己生成chart架构目录
+Creating myapp
+[root@k8s helm]# tree myapp/
+myapp/
+├── charts   #包依赖目录
+├── Chart.yaml  #chart的元数据文件，包括名称
+├── templates  #chart的清单模块
+│?? ├── deployment.yaml
+│?? ├── _helpers.tpl  #模板文件的语法
+│?? ├── ingress.yaml
+│?? ├── NOTES.txt  #这个是部署为release后的说明文件，helm status release_name可以显示，看容器不同而更改
+│?? ├── service.yaml
+│?? └── tests
+│??     └── test-connection.yaml
+└── values.yaml  #生定义值文件
+[root@k8s helm]# vim requirements.yaml  #这个也是依赖文件，只不过他写的是包信息，而不是像charts目录一样把包直接放进去
+[root@k8s helm]# pwd
+/root/manifests/helm
+[root@k8s helm]# helm lini myapp  #检查自定义的helm语法
+[root@k8s helm]# helm lint myapp
+==> Linting myapp
+[INFO] Chart.yaml: icon is recommended
+
+1 chart(s) linted, no failures
+#打包chart
+[root@k8s helm]# helm package myapp/
+Successfully packaged chart and saved it to: /root/manifests/helm/myapp-0.0.1.tgz
+[root@k8s helm]# helm repo list
+NAME    URL                                             
+stable  https://kubernetes-charts.storage.googleapis.com
+local   http://127.0.0.1:8879/charts   #本地的helm仓库
+[root@k8s ~]# helm serve #打开本地的helm仓库
+Regenerating index. This may take a moment.
+Now serving you on 127.0.0.1:8879 
+[root@k8s helm]# helm search myapp  #这个可以搜索到我们刚刚打印的chart了
+NAME            CHART VERSION   APP VERSION     DESCRIPTION
+local/myapp     0.0.1           1.0             magedu.com 
+[root@k8s templates]# helm install --name myapp local/myapp  #部署我们的myapp
+NAME:   myapp
+LAST DEPLOYED: Sun May 26 20:10:50 2019
+NAMESPACE: default
+STATUS: DEPLOYED
+
+RESOURCES:
+==> v1/Deployment
+NAME   READY  UP-TO-DATE  AVAILABLE  AGE
+myapp  0/2    2           0          0s
+
+==> v1/Pod(related)
+NAME                    READY  STATUS             RESTARTS  AGE
+myapp-576867f954-sjsg9  0/1    ContainerCreating  0         0s
+myapp-576867f954-w6b4c  0/1    ContainerCreating  0         0s
+
+==> v1/Service
+NAME   TYPE       CLUSTER-IP     EXTERNAL-IP  PORT(S)  AGE
+myapp  ClusterIP  10.106.40.200  <none>       80/TCP   0s
+
+
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/name=myapp,app.kubernetes.io/instance=myapp" -o jsonpath="{.items[0].metadata.name}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl port-forward $POD_NAME 8080:80
+[root@k8s templates]# helm status myapp #这个命令也可以获取NOTES.txt的信息
+LAST DEPLOYED: Sun May 26 20:10:50 2019
+NAMESPACE: default
+STATUS: DEPLOYED
+
+RESOURCES:
+==> v1/Deployment
+NAME   READY  UP-TO-DATE  AVAILABLE  AGE
+myapp  0/2    2           0          30s
+
+==> v1/Pod(related)
+NAME                    READY  STATUS            RESTARTS  AGE
+myapp-576867f954-sjsg9  0/1    InvalidImageName  0         30s
+myapp-576867f954-w6b4c  0/1    InvalidImageName  0         30s
+
+==> v1/Service
+NAME   TYPE       CLUSTER-IP     EXTERNAL-IP  PORT(S)  AGE
+myapp  ClusterIP  10.106.40.200  <none>       80/TCP   30s
+
+
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/name=myapp,app.kubernetes.io/instance=myapp" -o jsonpath="{.items[0].metadata.name}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl port-forward $POD_NAME 8080:80
+[root@k8s templates]# helm repo add incubator http://storage.googleapis.com/kubernetes-charts-incubator #添加incubator仓库，这个仓库是不稳定版仓库
+"incubator" has been added to your repositories
+[root@k8s templates]# helm repo list
+NAME            URL                                                      
+stable          https://kubernetes-charts.storage.googleapis.com         
+local           http://127.0.0.1:8879/charts                             
+incubator       http://storage.googleapis.com/kubernetes-charts-incubator
+##部署EFK日志系统
+ELK日志收集系统流程：logstash->logstash-Server->elasticsearch->kbana 
+#logstash做节点的agent大材小用了，所以k8s这里用轻量级的agent:Filebeat,Fluentd（k8s用的居多）....
+k8s收集日志风格：1. 外置收集日志 2. 在每pod收集日志单独发送给日志存储
+#在每个节点上部署一个agent,收集节点自身和节点上的pod的日志信息，pod的日志通过hostPath挂载主机目录/var/log/从而存储在节点上/var/log/containers/目录下，只要收集/var/log/目录日志即可收集节点和pod的日志
+
+EFK日志收集系统：Fluentd收集日志发送给logstash-server,由logstash-server把格式转换发送给elasticsearch存储，由kbana展示。
+
+x-pack的elasticsearch:logstash-server、master(查询，轻量级请求)、data(索引，构建，重量级请求)
+master是提供client端接入的，至少3个节点，达到冗余作用。data至少4个，达到冗余高可用作用。master和data都需要持久性存储。
+x-pack:把logstash-server和elasticsearch打包在一起的就叫超级包。
+通过helm获取到的elasticsearch就是用超级包来构建的
+master和后端的data都是有状态的，加起来有几个就需要几个存储卷，生产环境一定是使用存储卷的
+[root@k8s helm]# helm fetch stable/elasticsearch #先下载stable/elasticsearch
+[root@k8s helm]# tar xf elasticsearch-1.27.2.tgz
+[root@k8s helm]# cd elasticsearch/
+-------------------
+[root@k8s elasticsearch]# cat values.yaml | egrep -v '^#|^$'
+appVersion: "6.7.0"
+serviceAccounts:
+  client:
+    create: true
+    name:
+  master:
+    create: true
+    name:
+  data:
+    create: true
+    name:
+podSecurityPolicy:
+  enabled: false
+  annotations: {}
+securityContext:
+  enabled: false
+  runAsUser: 1000
+image:
+  repository: "docker.elastic.co/elasticsearch/elasticsearch-oss"
+  tag: "6.7.0"
+  pullPolicy: "IfNotPresent"
+testFramework:
+  image: "dduportal/bats"
+  tag: "0.4.0"
+initImage:
+  repository: "busybox"
+  tag: "latest"
+  pullPolicy: "Always"
+cluster:
+  name: "elasticsearch"
+  xpackEnable: false #不启用xpack包的自我内部运行逻辑，使用mastar和data分享的方式使用
+  config: {}
+  additionalJavaOpts: ""
+  bootstrapShellCommand: ""
+  env:
+    MINIMUM_MASTER_NODES: "2" #master最少为2两个副本
+  plugins: []
+client:
+  name: client
+  replicas: 2 #client为2个副本，就是logstash-serer
+  serviceType: ClusterIP
+  loadBalancerIP: {}
+  loadBalancerSourceRanges: {}
+  heapSize: "512m"
+  antiAffinity: "soft"
+  nodeAffinity: {}
+  nodeSelector: {}
+  tolerations: []
+  initResources: {}
+  resources:
+    limits:
+      cpu: "1"
+    requests:
+      cpu: "25m"
+      memory: "512Mi"
+  priorityClassName: ""
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+  ingress:
+    enabled: false
+    annotations: {}
+    path: /
+    hosts:
+      - chart-example.local
+    tls: []
+master:
+  name: master
+  exposeHttp: false
+  replicas: 3 #副本数量为3个
+  heapSize: "512m"
+  persistence:
+    enabled: false #默认是启用存储卷，由于这里测试所以不启用存储卷，生产一定要使用存储卷
+    accessMode: ReadWriteOnce
+    name: data
+    size: "4Gi"
+  readinessProbe:
+    httpGet:
+      path: /_cluster/health?local=true
+      port: 9200
+    initialDelaySeconds: 5
+  antiAffinity: "soft"
+  nodeAffinity: {}
+  nodeSelector: {}
+  tolerations: []
+  initResources: {}
+  resources:
+    limits:
+      cpu: "1"
+    requests:
+      cpu: "25m"
+      memory: "512Mi"
+  priorityClassName: ""
+  podManagementPolicy: OrderedReady
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 2  
+  updateStrategy:
+    type: OnDelete
+data:
+  name: data
+  exposeHttp: false
+  replicas: 2
+  heapSize: "1536m"
+  persistence:
+    enabled: false #默认是启用存储卷，由于这里测试所以不启用存储卷，生产一定要使用存储卷
+    accessMode: ReadWriteOnce
+    name: data
+    size: "30Gi"
+    # storageClass: "ssd"
+  readinessProbe:
+    httpGet:
+      path: /_cluster/health?local=true
+      port: 9200
+    initialDelaySeconds: 5
+  terminationGracePeriodSeconds: 3600
+  antiAffinity: "soft"
+  nodeAffinity: {}
+  nodeSelector: {}
+  tolerations: []
+  initResources: {}
+  resources:
+    limits:
+      cpu: "1"
+    requests:
+      cpu: "25m"
+      memory: "1536Mi"
+  priorityClassName: ""
+  podDisruptionBudget:
+    enabled: false
+    maxUnavailable: 1
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: OnDelete
+  hooks:  # post-start and pre-stop hooks
+    drain:  # drain the node before stopping it and re-integrate it into the cluster after start
+      enabled: true
+sysctlInitContainer:
+  enabled: true
+extraInitContainers: |
+-------------------
+[root@k8s elasticsearch]# kubectl create ns efk #新建名称空间efk
+namespace/efk created
+#安装elasticsearch:
+[root@k8s elasticsearch]# helm repo update
+[root@k8s elasticsearch]# helm install --name els1 --namespace=efk -f values.yaml stable/elasticsearch
+NAME:   els1
+LAST DEPLOYED: Sun May 26 21:23:48 2019
+NAMESPACE: efk
+STATUS: DEPLOYED
+
+RESOURCES:
+==> v1/ConfigMap
+NAME                     DATA  AGE
+els1-elasticsearch       4     1s
+els1-elasticsearch-test  1     1s
+
+==> v1/Pod(related)
+NAME                                        READY  STATUS    RESTARTS  AGE
+els1-elasticsearch-client-55696f5bdd-8x9jn  0/1    Init:0/1  0         1s
+els1-elasticsearch-client-55696f5bdd-zs88t  0/1    Init:0/1  0         1s
+els1-elasticsearch-data-0                   0/1    Init:0/2  0         1s
+els1-elasticsearch-master-0                 0/1    Init:0/2  0         0s
+
+==> v1/Service
+NAME                          TYPE       CLUSTER-IP    EXTERNAL-IP  PORT(S)   AGE
+els1-elasticsearch-client     ClusterIP  10.107.61.53  <none>       9200/TCP  1s
+els1-elasticsearch-discovery  ClusterIP  None          <none>       9300/TCP  1s
+
+==> v1/ServiceAccount
+NAME                       SECRETS  AGE
+els1-elasticsearch-client  1        1s
+els1-elasticsearch-data    1        1s
+els1-elasticsearch-master  1        1s
+
+==> v1beta1/Deployment
+NAME                       READY  UP-TO-DATE  AVAILABLE  AGE
+els1-elasticsearch-client  0/2    2           0          1s
+
+==> v1beta1/StatefulSet
+NAME                       READY  AGE
+els1-elasticsearch-data    0/2    1s
+els1-elasticsearch-master  0/3    1s
+
+
+NOTES:
+The elasticsearch cluster has been installed.
+
+Elasticsearch can be accessed:
+
+  * Within your cluster, at the following DNS name at port 9200:
+
+    els1-elasticsearch-client.efk.svc
+
+  * From outside the cluster, run these commands in the same shell:
+
+    export POD_NAME=$(kubectl get pods --namespace efk -l "app=elasticsearch,component=client,release=els1" -o jsonpath="{.items[0].metadata.name}")
+    echo "Visit http://127.0.0.1:9200 to use Elasticsearch"
+    kubectl port-forward --namespace efk $POD_NAME 9200:9200
+
+kubectl run cirror-$RRANDOM --rm -it --image=cirros -- /bin/sh #运行一个pod来测试
+
+
+
 
 
 
