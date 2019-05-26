@@ -4283,7 +4283,7 @@ resources    <Object>
 KIND:     Pod
 VERSION:  v1
 
-RESOURCE: resources <Object>
+RESOURCE: resources Object
 limits       <map[string]string>
 requests     <map[string]string>
 Example:
