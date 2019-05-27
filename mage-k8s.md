@@ -1,4 +1,4 @@
-#K8S----容器编排
+﻿#K8S----容器编排
 <pre>
 #第一节：Devops核心要点及kubernetes架构
 #k8s是什么？
@@ -5600,6 +5600,10 @@ memcached
 helm install --name redis1 -f values.yaml stable/redis #这个values.yaml是当前路径下的值文件，用来设定helm
 
 #第二十五节：EFK日志收集系统
+注：下载镜像需要科学上网
+export https_proxy=http://192.168.1.235:8118/
+export http_proxy=http://192.168.1.235:8118/
+export no_proxy='127.0.0.1,192.168.0.0/16'
 kubernetes的四大附件：coreDNS(kubeDNS),dashboard,IngressConroller,Metrics-Server(HeapSter)
 #EFK日志收集系统是除开k8s四大附件外的最重要附件。
 #chart目录结构参考链接：https://helm.sh/docs/developing_charts/#charts
@@ -5705,7 +5709,7 @@ ELK日志收集系统流程：logstash->logstash-Server->elasticsearch->kbana
 k8s收集日志风格：1. 外置收集日志 2. 在每pod收集日志单独发送给日志存储
 #在每个节点上部署一个agent,收集节点自身和节点上的pod的日志信息，pod的日志通过hostPath挂载主机目录/var/log/从而存储在节点上/var/log/containers/目录下，只要收集/var/log/目录日志即可收集节点和pod的日志
 
-EFK日志收集系统：Fluentd收集日志发送给logstash-server,由logstash-server把格式转换发送给elasticsearch存储，由kbana展示。
+EFK日志收集系统：Fluentd收集日志发送给logstash-server,由logstash-server把格式转换发送给elasticsearch存储，由kibana展示。
 
 x-pack的elasticsearch:logstash-server、master(查询，轻量级请求)、data(索引，构建，重量级请求)
 master是提供client端接入的，至少3个节点，达到冗余作用。data至少4个，达到冗余高可用作用。master和data都需要持久性存储。
@@ -5862,44 +5866,46 @@ extraInitContainers: |
 namespace/efk created
 #安装elasticsearch:
 [root@k8s elasticsearch]# helm repo update
-[root@k8s elasticsearch]# helm install --name els1 --namespace=efk -f values.yaml stable/elasticsearch
-NAME:   els1
-LAST DEPLOYED: Sun May 26 21:23:48 2019
+[root@k8s elasticsearch]# helm status els1
+LAST DEPLOYED: Mon May 27 12:03:55 2019
 NAMESPACE: efk
 STATUS: DEPLOYED
 
 RESOURCES:
 ==> v1/ConfigMap
 NAME                     DATA  AGE
-els1-elasticsearch       4     1s
-els1-elasticsearch-test  1     1s
+els1-elasticsearch       4     60m
+els1-elasticsearch-test  1     60m
 
 ==> v1/Pod(related)
-NAME                                        READY  STATUS    RESTARTS  AGE
-els1-elasticsearch-client-55696f5bdd-8x9jn  0/1    Init:0/1  0         1s
-els1-elasticsearch-client-55696f5bdd-zs88t  0/1    Init:0/1  0         1s
-els1-elasticsearch-data-0                   0/1    Init:0/2  0         1s
-els1-elasticsearch-master-0                 0/1    Init:0/2  0         0s
+NAME                                        READY  STATUS   RESTARTS  AGE
+els1-elasticsearch-client-55696f5bdd-ws9jv  1/1    Running  0         60m
+els1-elasticsearch-client-55696f5bdd-zgw2m  1/1    Running  0         60m
+els1-elasticsearch-data-0                   1/1    Running  0         60m
+els1-elasticsearch-data-1                   1/1    Running  0         59m
+els1-elasticsearch-master-0                 1/1    Running  0         60m
+els1-elasticsearch-master-1                 1/1    Running  0         59m
+els1-elasticsearch-master-2                 1/1    Running  0         58m
 
 ==> v1/Service
-NAME                          TYPE       CLUSTER-IP    EXTERNAL-IP  PORT(S)   AGE
-els1-elasticsearch-client     ClusterIP  10.107.61.53  <none>       9200/TCP  1s
-els1-elasticsearch-discovery  ClusterIP  None          <none>       9300/TCP  1s
+NAME                          TYPE       CLUSTER-IP     EXTERNAL-IP  PORT(S)   AGE
+els1-elasticsearch-client     ClusterIP  10.96.101.227  <none>       9200/TCP  60m
+els1-elasticsearch-discovery  ClusterIP  None           <none>       9300/TCP  60m
 
 ==> v1/ServiceAccount
 NAME                       SECRETS  AGE
-els1-elasticsearch-client  1        1s
-els1-elasticsearch-data    1        1s
-els1-elasticsearch-master  1        1s
+els1-elasticsearch-client  1        60m
+els1-elasticsearch-data    1        60m
+els1-elasticsearch-master  1        60m
 
 ==> v1beta1/Deployment
 NAME                       READY  UP-TO-DATE  AVAILABLE  AGE
-els1-elasticsearch-client  0/2    2           0          1s
+els1-elasticsearch-client  2/2    2           2          60m
 
 ==> v1beta1/StatefulSet
 NAME                       READY  AGE
-els1-elasticsearch-data    0/2    1s
-els1-elasticsearch-master  0/3    1s
+els1-elasticsearch-data    2/2    60m
+els1-elasticsearch-master  3/3    60m
 
 
 NOTES:
@@ -5909,23 +5915,261 @@ Elasticsearch can be accessed:
 
   * Within your cluster, at the following DNS name at port 9200:
 
-    els1-elasticsearch-client.efk.svc
+    els1-elasticsearch-client.efk.svc  #svc的地址
 
   * From outside the cluster, run these commands in the same shell:
 
     export POD_NAME=$(kubectl get pods --namespace efk -l "app=elasticsearch,component=client,release=els1" -o jsonpath="{.items[0].metadata.name}")
     echo "Visit http://127.0.0.1:9200 to use Elasticsearch"
     kubectl port-forward --namespace efk $POD_NAME 9200:9200
+[root@k8s elasticsearch]# kubectl get pods -n efk 
+NAME                                         READY   STATUS    RESTARTS   AGE
+els1-elasticsearch-client-55696f5bdd-ws9jv   1/1     Running   0          60m
+els1-elasticsearch-client-55696f5bdd-zgw2m   1/1     Running   0          60m
+els1-elasticsearch-data-0                    1/1     Running   0          60m
+els1-elasticsearch-data-1                    1/1     Running   0          59m
+els1-elasticsearch-master-0                  1/1     Running   0          60m
+els1-elasticsearch-master-1                  1/1     Running   0          59m
+els1-elasticsearch-master-2                  1/1     Running   0          58m
+[root@k8s elasticsearch]# kubectl run cirror-$RANDOM --rm -it --image=cirros -- /bin/sh   #运行一个pod来测试
+kubectl run --generator=deployment/apps.v1 is DEPRECATED and will be removed in a future version. Use kubectl run --generator=run-pod/v1 or kubectl create instead.
+If you don't see a command prompt, try pressing enter.
+/ # nslookup els1-elasticsearch-client.efk.svc
+Server:    10.96.0.10
+Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
 
-kubectl run cirror-$RRANDOM --rm -it --image=cirros -- /bin/sh #运行一个pod来测试
+Name:      els1-elasticsearch-client.efk.svc
+Address 1: 10.96.101.227 els1-elasticsearch-client.efk.svc.cluster.local
+/ # curl els1-elasticsearch-client.efk.svc:9200
+curl: (6) Couldn't resolve host 'els1-elasticsearch-client.efk.svc'
+/ # curl els1-elasticsearch-client.efk.svc.cluster.local:9200
+{
+  "name" : "els1-elasticsearch-client-55696f5bdd-ws9jv",
+  "cluster_name" : "elasticsearch",
+  "cluster_uuid" : "O8A37-xGSH6C1EW1SfabSA",
+  "version" : {
+    "number" : "6.7.0",
+    "build_flavor" : "oss",
+    "build_type" : "docker",
+    "build_hash" : "8453f77",
+    "build_date" : "2019-03-21T15:32:29.844721Z",
+    "build_snapshot" : false,
+    "lucene_version" : "7.7.0",
+    "minimum_wire_compatibility_version" : "5.6.0",
+    "minimum_index_compatibility_version" : "5.0.0"
+  },
+  "tagline" : "You Know, for Search"
+}
+/ # curl els1-elasticsearch-client.efk.svc.cluster.local:9200/_cat/nodes  #查看有多少个节点，分别是client3个,master2个和data2个
+10.244.1.66 29 65 3 0.15 0.13 0.09 i  - els1-elasticsearch-client-55696f5bdd-zgw2m
+10.244.1.69 27 65 3 0.15 0.13 0.09 mi - els1-elasticsearch-master-2
+10.244.2.50  5 98 6 0.10 0.19 0.21 di - els1-elasticsearch-data-1
+10.244.2.51 25 98 6 0.10 0.19 0.21 mi * els1-elasticsearch-master-1
+10.244.2.49 30 98 6 0.10 0.19 0.21 i  - els1-elasticsearch-client-55696f5bdd-ws9jv
+10.244.1.67  9 65 3 0.15 0.13 0.09 di - els1-elasticsearch-data-0
+10.244.1.68 29 65 3 0.15 0.13 0.09 mi - els1-elasticsearch-master-0
+#部署Fluentd收集节点和pod的日志
+[root@k8s helm]# helm repo add kiwigrid https://kiwigrid.github.io #添加kiwigrid
+"kiwigrid" has been added to your repositories
+[root@k8s helm]# helm fetch kiwigrid/fluentd-elasticsearch
+[root@k8s helm]# tar xf fluentd-elasticsearch-3.0.0.tgz 
+[root@k8s helm]# cd fluentd-elasticsearch/
+[root@k8s fluentd-elasticsearch]# vim values.yaml 
+---------------
+elasticsearch:
+  auth:
+    enabled: false
+    user: "yourUser"
+    password: "yourPass"
+  buffer_chunk_limit: 2M
+  buffer_queue_limit: 8
+  host: 'els1-elasticsearch-client.efk.svc.cluster.local' #把elasticsearch的svc地址拿过来
+  logstash_prefix: 'logstash'
+  port: 9200
+  scheme: 'http'
+  ssl_version: TLSv1_2
+tolerations:
+  - key: node-role.kubernetes.io/master #设置容忍主节点的污点，使主节点日志被收集
+    operator: Exists
+    effect: NoSchedule
+podAnnotations:  #开启Fluentd被promesheus监控，开启annotations
+  prometheus.io/scrape: "true"  #设置prometheus抓内部自建的指标数据
+  prometheus.io/port: "24231" #指定特定端口
+service: #创建fluentd的service,使promesheus知道找哪个fluentd
+  type: ClusterIP
+  ports:
+    - name: "monitor-agent"
+      port: 24231
+---------------
+[root@k8s fluentd-elasticsearch]# helm install --name flu1 --namespace efk -f values.yaml kiwigrid/fluentd-elasticsearch #部署fluentd
+NAME:   flu1
+LAST DEPLOYED: Mon May 27 13:41:19 2019
+NAMESPACE: efk
+STATUS: DEPLOYED
+
+RESOURCES:
+==> v1/ClusterRole
+NAME                        AGE
+flu1-fluentd-elasticsearch  0s
+
+==> v1/ClusterRoleBinding
+NAME                        AGE
+flu1-fluentd-elasticsearch  0s
+
+==> v1/ConfigMap
+NAME                        DATA  AGE
+flu1-fluentd-elasticsearch  6     0s
+
+==> v1/DaemonSet
+NAME                        DESIRED  CURRENT  READY  UP-TO-DATE  AVAILABLE  NODE SELECTOR  AGE
+flu1-fluentd-elasticsearch  3        3        0      3           0          <none>         0s
+
+==> v1/Pod(related)
+NAME                              READY  STATUS             RESTARTS  AGE
+flu1-fluentd-elasticsearch-bt6zx  0/1    ContainerCreating  0         0s
+flu1-fluentd-elasticsearch-ft45h  0/1    ContainerCreating  0         0s
+flu1-fluentd-elasticsearch-mpg76  0/1    ContainerCreating  0         0s
+
+==> v1/Service
+NAME                        TYPE       CLUSTER-IP    EXTERNAL-IP  PORT(S)    AGE
+flu1-fluentd-elasticsearch  ClusterIP  10.97.62.194  <none>       24231/TCP  0s
+
+==> v1/ServiceAccount
+NAME                        SECRETS  AGE
+flu1-fluentd-elasticsearch  1        0s
 
 
+NOTES:
+1. To verify that Fluentd has started, run:
+
+  kubectl --namespace=efk get pods -l "app.kubernetes.io/name=fluentd-elasticsearch,app.kubernetes.io/instance=flu1"
+
+THIS APPLICATION CAPTURES ALL CONSOLE OUTPUT AND FORWARDS IT TO elasticsearch . Anything that might be identifying,
+including things like IP addresses, container images, and object names will NOT be anonymized.
+2. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace efk -l "app.kubernetes.io/name=fluentd-elasticsearch,app.kubernetes.io/instance=flu1" -o jsonpath="{.items[0].metadata.name}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl port-forward $POD_NAME 8080:80
+[root@k8s fluentd-elasticsearch]# kubectl get pods -n efk -o wide
+NAME                                         READY   STATUS    RESTARTS   AGE     IP            NODE         NOMINATED NODE   READINESS GATES
+els1-elasticsearch-client-55696f5bdd-ws9jv   1/1     Running   0          101m    10.244.2.49   k8s.node2    <none>           <none>
+els1-elasticsearch-client-55696f5bdd-zgw2m   1/1     Running   0          101m    10.244.1.66   k8s.node1    <none>           <none>
+els1-elasticsearch-data-0                    1/1     Running   0          101m    10.244.1.67   k8s.node1    <none>           <none>
+els1-elasticsearch-data-1                    1/1     Running   0          100m    10.244.2.50   k8s.node2    <none>           <none>
+els1-elasticsearch-master-0                  1/1     Running   0          101m    10.244.1.68   k8s.node1    <none>           <none>
+els1-elasticsearch-master-1                  1/1     Running   0          100m    10.244.2.51   k8s.node2    <none>           <none>
+els1-elasticsearch-master-2                  1/1     Running   0          99m     10.244.1.69   k8s.node1    <none>           <none>
+flu1-fluentd-elasticsearch-bt6zx             1/1     Running   0          3m58s   10.244.2.52   k8s.node2    <none>           <none> #已经部署成功
+flu1-fluentd-elasticsearch-ft45h             1/1     Running   0          3m58s   10.244.0.4    k8s.master   <none>           <none>
+flu1-fluentd-elasticsearch-mpg76             1/1     Running   0          3m58s   10.244.1.71   k8s.node1    <none>           <none>
 
 
+/ # curl els1-elasticsearch-client.efk.svc.cluster.local:9200/_cat/indices  #现在可以从elasticsearch中获取数据了
+green open logstash-2019.05.27 oUVb9wMrS5GKJt49_oCvOA 5 1 440083 0 513.9mb 257.1mb
+#部署kibana
+#注意：kibana版本号一定要和elasticsearch版本号一致，不一致没法结合运行的
+[root@k8s helm]# helm fetch stable/kibana
+[root@k8s helm]# tar xf kibana-3.0.0.tgz 
+[root@k8s kibana]# vim values.yaml 
+----------
+files:
+  kibana.yml:
+    server.name: kibana
+    server.host: "0"
+    elasticsearch.hosts: http://els1-elasticsearch-client.efk.svc.cluster.local:9200 #指定elasticsearch的地址，使kibana连接
+service:
+  type: NodePort #改成nodePort,方便集群外访问 
+----------
+[root@k8s kibana]# helm install --name kbn1 --namespace efk -f values.yaml stable/kibana #部署kibana
+NAME:   kbn1
+LAST DEPLOYED: Mon May 27 13:55:43 2019
+NAMESPACE: efk
+STATUS: DEPLOYED
+
+RESOURCES:
+==> v1/ConfigMap
+NAME              DATA  AGE
+kbn1-kibana       1     0s
+kbn1-kibana-test  1     0s
+
+==> v1/Pod(related)
+NAME                          READY  STATUS             RESTARTS  AGE
+kbn1-kibana-6b66496d67-ftwk7  0/1    ContainerCreating  0         0s
+
+==> v1/Service
+NAME         TYPE      CLUSTER-IP   EXTERNAL-IP  PORT(S)        AGE
+kbn1-kibana  NodePort  10.106.1.86  <none>       443:32023/TCP  0s
+
+==> v1beta1/Deployment
+NAME         READY  UP-TO-DATE  AVAILABLE  AGE
+kbn1-kibana  0/1    1           0          0s
 
 
+NOTES:
+To verify that kbn1-kibana has started, run:
 
+  kubectl --namespace=efk get pods -l "app=kibana"
 
+Kibana can be accessed:
 
+  * From outside the cluster, run these commands in the same shell:
+
+    export NODE_PORT=$(kubectl get --namespace efk -o jsonpath="{.spec.ports[0].nodePort}" services kbn1-kibana)
+    export NODE_IP=$(kubectl get nodes --namespace efk -o jsonpath="{.items[0].status.addresses[0].address}")
+    echo http://$NODE_IP:$NODE_PORT
+
+[root@k8s kibana]# kubectl get svc -n efk
+NAME                           TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)         AGE
+els1-elasticsearch-client      ClusterIP   10.96.101.227   <none>        9200/TCP        112m
+els1-elasticsearch-discovery   ClusterIP   None            <none>        9300/TCP        112m
+flu1-fluentd-elasticsearch     ClusterIP   10.97.62.194    <none>        24231/TCP       15m
+kbn1-kibana                    NodePort    10.106.1.86     <none>        443:32023/TCP   52s  #NodePort端口为32023
+[root@k8s kibana]# kubectl get pods -n efk 
+NAME                                         READY   STATUS    RESTARTS   AGE
+els1-elasticsearch-client-55696f5bdd-ws9jv   1/1     Running   0          114m
+els1-elasticsearch-client-55696f5bdd-zgw2m   1/1     Running   0          114m
+els1-elasticsearch-data-0                    1/1     Running   0          114m
+els1-elasticsearch-data-1                    1/1     Running   0          113m
+els1-elasticsearch-master-0                  1/1     Running   0          114m
+els1-elasticsearch-master-1                  1/1     Running   0          113m
+els1-elasticsearch-master-2                  1/1     Running   0          112m
+flu1-fluentd-elasticsearch-bt6zx             1/1     Running   0          16m
+flu1-fluentd-elasticsearch-ft45h             1/1     Running   0          16m
+flu1-fluentd-elasticsearch-mpg76             1/1     Running   0          16m
+kbn1-kibana-6b66496d67-ftwk7                 1/1     Running   0          2m25s  #kibana已经运行了
+#在集群外访问kibana:  http://192.168.1.31:32023
+1. 创建索引源：选择management->index patterns(索引匹配)->logstash*->next->@timestamp(时间序列)->createindex patterns
+2. 创建visualize
+3. 把visualiza聚合到dashboard中
+4. 多关注error的字段
+
+#第二十六节：基于Kubernetes的PaaS概述
+部署工具：ansible,saltstack
+公建仓库：github,dockerhub
+运行环境：Iaas,aws
+openstack(iaas)
+openshift(paas):把k8s二次封装，
+#自动化流程：
+	1. 开发人员push代码到gitlab上，由jenkins再pull下来进行构建测试并生成程序。
+	2. 开发人员push Dockerfile到gitlab上，由Jenkins结合Dockerfile和程序生成镜像,再push到harbor镜像仓库上。
+	3. 开发人员push配置清单(manifests)到gitlab上，由ansible或saltstack通过kubectl来部署k8s集群。
+#生产环境中部署k8s应该拥有哪些组件：
+1. 部署要么在裸机上，要么在虚拟机上，要么在公有云上，要么在私有云上。（有云环境尽量使用云环境）
+2. 网络工程师部署好网络环境(SDN)，存储工程师部署存储环境(Storage)
+3. 然后构建Kubernetes Cluster,
+4. Containized Worlad(容器化负载，容器运行环境)，
+5. 第三层和第四层需要image registry,第一层和第二层需要基本的工具和组件，需要Provisioning Configuration(salt,ansible部署)
+6. 部署日志系统、监控系统
+7. 发布出去需要负载均衡器，公建仓库、自动化构建、自动化发布（Jenkins）
+把这一整套环境部署完成叫PaaS。
+#Openshift是k8s二次封装的。用oc来控制k8s的
+
+#未讲解要点：
+master节点高可用
+Kubernetes Federation:双k8s群集进行联帮，使k8s多个集群进行结合使用
+priorityClass：定义优先级类别，优先运行，1.10+才支持
+limitRange:资源限制范围，给一个名称空间设定一个资源限制
+PSP：pod secret policy（pod安装策略）
+securityContext:安全上下文，类似PSP
 
 </pre>
