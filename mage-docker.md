@@ -1,4 +1,4 @@
-#马哥docker
+﻿#马哥docker
 <pre>
 1.容器隔离什么：
 UTS:主机名和域名
@@ -33,7 +33,7 @@ latest为最新标签，stable为最新稳定版
 清华大学镜像站：https://mirrors.tuna.tsinghua.edu.cn/
 wget https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/centos/docker-ce.repo #下载docker-ce镜像
 https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/centos/7/x86_64/stable/Packages/  #这个是清华大学docker的包rpm路径
-刚才下载的docker-ce是从dockerhub上下载的，太慢，所以把dockerhub的路径换成上在的rpm路径，如：
+刚才下载的docker-ce是从dockerhub上下载的，太慢，所以把yum文件中的dockerhub的路径换成上面的rpm路径，如：
 https://download.docker.com/全部换成https://mirrors.tuna.tsinghua.edu.cn/docker-ce/即可
 [root@lamp yum.repos.d]# yum install docker-ce -y  #安装 
 docker的主配置文件是json格式的配置文件，位于/etc/docker/daemon.json,默认不存在，可以新建，也可以运行docker的时候生成这个配置文件
@@ -169,7 +169,7 @@ vim /etc/docker/daemon.json
 [root@lamp docker]# systemctl reset-failed docker
 [root@lamp docker]# systemctl start docker
 Network: bridge host macvlan null overlay #常用的 bridge host null 3种网络模式
-[root@lamp docker]# docker network create --subnet "10.10.10.1/24" -d bridge mybg #创建一个nat桥
+[root@lamp docker]# docker network create --subnet "10.10.10.1/24" -d bridge mybg #创建一个bridge桥
 [root@lamp docker]# docker network rm mybr #删除一个网络桥
 [root@lamp docker]# docker run --name t3 -it --net mybr busybox:latest
 [root@lamp docker]# docker network ls
@@ -206,9 +206,11 @@ CMD  /bin/sh    #指定在run时执行的默认命令
 ENTRYPOINT   #这个命令跟CMD一样，只是这个命令不会被用户手动指定的命令覆盖，如果非要被用户覆盖可以在docker run时指定--entrypoint
 注意：如果CMD和ENTRYPOINT一起使用时，CMD会被参数给ENTRYPOINT使用，在使用命令时一定要用双引号括起来使用，不能使用单引号来使用
 HEALTHCHECK     #健康检查，--start-period=3s表示运行3秒后开始检查，--timeout=30s超时30s为不正常，interval=30s每间隔30s检查一次，--retries=3重试3次后确定是否成功
-HEALTHCHECK --start-period=3s --timeout=30s interval=30s --retries=3 CMD wget -O - -Q http://${IP:-0.0.0.0}:${PORT:-80}/ || exit 1
+HEALTHCHECK --start-period=3s --timeout=30s interval=30s --retries=3 CMD wget -O - -q http://${IP:-0.0.0.0}:${PORT:-80}/ || exit 1
 ARG     #在build时可以使用build-arg传变量，在运行容器时可以使用env来传变量
 ONBUILD wget https://www.baidu.com   #当Dockerfile使用ONBUILD时，别人以你这个Dockerfile生成的镜像为基础镜像时，都会执行ONBUILD后面的指令    
+
+docker build -t tinyhttpd:v0.1 . #在Dockerfile目录下运行此命令构建镜像
 
 [root@lamp ~]# docker run --name tiny1 --rm tinyhttpd:v0.1 printenv #打印变量 
 Dockerfile中的环境变量在build时已经执行了，在run时可以改变环境变量，只会改变变量值不会影响Dockerfile的变量，加-e时可指定变量
@@ -274,7 +276,7 @@ LISTEN     0      128         :::4443                    :::*
 vim /etc/docker/daemon.json
 "insecure-registries": ["lamp.jack.com"]  #加入这行指定不安全的私有仓库
 harbor脚本执行是执行docker-compose create和docker-compose start的
-如果要停止harbor，需要在docker-compose.yml的目录下执行docker-compose stop，这个指令是云找docker-compose.yml这个文件去停止相关的容器的
+如果要停止harbor，需要在docker-compose.yml的目录下执行docker-compose stop，这个指令是去找docker-compose.yml这个文件去停止相关的容器的
 启动则是 docker-compose start 
 暂停是docker-compose pause  #unpause为恢复
 
