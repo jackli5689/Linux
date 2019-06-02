@@ -680,19 +680,75 @@ echo -e "\tWelcome to \033[31mMagEdu Team\033[0m Linux."
 
 
 
+#Linux高级
+#nginx:
+io复用
+作业：
+	keepalivd+nginx：实现高可用
+	corosync+nginx：也可以实现高可用
+nginx的应用：
+	web服务器
+	反向代理：web、mail
+nginx优势：
+File AIO
+Asynchronous
+Event-driven edge trigger
+淘宝封装nginx:Tengines
+支持FastCGI(php),uwsgi(python),SCGI
+事件驱动模型：epoll(linux2.6+),kqueue(freeBSD4.1+),/dev/poll(solaris7 11/99+)
+sendfile,sendfile64:支持将文件通过内核封装直接响应客户端。
+部署nginx:
+groupadd -r -g 1000 nginx
+useradd -r -g 1000 -u 1000 nginx 
+yum install -y pcre-devel
+nginx配置文件解析：
+process 1 ;表示进程数，cpu密集型的为cpu个数相头，非密集型的为cpu个数的1.5-2倍
+worker_connections 1024 ;每个工作进程最大请求数
+tcp_nopush或tcp_nodelay off ;表示关闭http的nagle算法
+对于nginx而言，每一个server断为一个虚拟主机;
+location /URI/ { #对当前的URI及其子目录都生效
+	root /web/www #表示/URI路径是本地文件系统路径/web/www/下的所有文件
+	index index.html #默认页面
+}
+error_page 500 502 503 504 /50x.html; #返回500 502 503 504错误代码时读取/50x.html文件
+location = URI {}： #只对当前的URI生效，不包括子目录 
+location ~ URI {}： #精确匹配，区分大小写，URI可以为正则表达式
+location ~* URI {}： #精确匹配，不区分大小写，URI可以为正则表达式
+location ^~ URI {}： #不使用正则表达式
+= ^~ ~*，~ URI #4个优先级顺序
+location / {
+	allow 192.168.1.1;
+	deny all; 
+}
+location / {
+	auth_basic	"htpasswd" ; #开户用户认证，借助httpd的htpasswd来创建用户密码，nginx无，htpasswd -c -m /etc/nginx/.users tom，第二次不能使用-c选项再创建文件
+	auth_basic_user_file /etc/nginx.users ;
+}
+location / {
+	autoindex on ; 为打开目录索引
+}
+location /status｛
+	stub_status on ; #开启nginx状态
+｝
 
+ssl 跟httpd一样
 
+##LEMP或LNMP:
+NGINX支持FastCGI
+mysql使用通用二进制安装
+php安装：
+	如果想让编译的php支持mcrypt、myhash扩展和libevent,需要安装下包几个包：
+	libmcrypt.rpm、libmcrypt-devel.rpm、mhash.rpm、mhash-devel.rpm、mcrypt.rpm
+编辑nginx.conf配置文件：
+location ~ \.php$ {
+	root html;
+	fastcgi_pass	127.0.0.1;
+	fastcgi_index	index.php;
+	fastcgi_param	SCRIPT_FILENAME /script$fastcgi_script_name;
+	include			fastcgi_parames;
+}
 
-
-
-
-
-
-
-
-
-
-
+作业：redhat6.4+nginx1.4.1+mysql5.6+php5.4.13+xcache3.0
 
 
 
