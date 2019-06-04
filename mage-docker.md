@@ -1,5 +1,12 @@
 ﻿#马哥docker
 <pre>
+-----------
+安装docker-compose:
+sudo curl -L "https://github.com/docker/compose/releases/download/1.23.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+docker-compose --version
+-----------
+
 1.容器隔离什么：
 UTS:主机名和域名
 IPC:共享内存，消息队列

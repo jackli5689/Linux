@@ -596,5 +596,27 @@ iptables -t nat -A PREROUTING -d 180.1.1.1 -p tcp --dport 80 -j DNAT --to-destin
 iptables -t nat -R PREROUTING -d 180.1.1.1 -p tcp --dport 80 -j DNAT --to-destination 192.168.1.1:8080  #目标地址转换，PAT,用于互联网访问局域网的服务器的，外网地址为180.1.1.1:80，内网地址为192.168.1.1:8080,
 iptables -A FORWARD -m string --algo kmp --string "h7n9" -j DROP #丢弃带"h7n9"信息的请求
 
+#"$@"与"$*"的区别：
+------------
+[root@lamp ~]# bash test.sh a 'b c d ' e
+3
+a b c d  e
+1
+a b c d  e
+[root@lamp ~]# cat test.sh 
+#!/bin/bash
+#
+fun(){
+        echo $#
+}
+
+fun "$@"
+echo "$@"
+fun "$*"
+echo "$*"
+------------
+
+
+
 
 </pre>
