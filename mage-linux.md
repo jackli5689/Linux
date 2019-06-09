@@ -1250,6 +1250,28 @@ IncludeOptional conf.d/*.conf
 [root@lamp logs]# cat a.access_log 
 192.168.2.153:50424 - - [04/Jun/2019:10:46:29 +0800] "GET / HTTP/1.0" 304 - "-" "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"  #这个是客户端真实地址
 ------------------
+nginx:
+	round-robin;
+	ip_hash;
+	least_conn;
+
+开启会话保持：
+    upstream webserver {
+		ip_hash;  #开启会话保持
+        server 192.168.1.239 weight=5;  #上游服务器1，轮询
+        server 127.0.0.1:8080 backup;  #开启会话保持后不能使用backup
+        server 192.168.1.239:8080 weight=5; #上游服务器2，轮询
+    }
+
+[root@smb-server ~]# netstat -ant | awk '/:80\>/{S[$NF]++} END{for(A in S) {print A,S[A]}}' #查看连接某个端口的状态数量，:80\>为:80结尾的，\>为词尾
+TIME_WAIT 3
+LISTEN 1
+
+nginx缓存：
+	cache:共享内存：存储键和缓存对象元数据
+		  磁盘空间：存储数据
+	proxy_cache_path:不能定义在server{}上下文中;
+proxy_cache_path /nginx/cache/first levels=1:2:1    #缓存等级最多为3级，这里第一级为1个字符名称，第二级为2个字符名称，第三级为1个字符名称，字符等级越高查找缓存越快
 
 
 
