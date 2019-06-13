@@ -1,4 +1,4 @@
-#LAMP
+﻿#LAMP
 <pre>
 ###一、WEB服务及http协议
 
@@ -1872,6 +1872,7 @@ chmod +x /etc/rc.d/init.d/php-fpm
 chkconfig --add php-fpm
 chkconfig php-fpm on
 #为php-fpm提供配置文件
+[root@lamp php-5.4.24]#cp php.ini-production /etc/php.ini
 cp /usr/local/php/etc/php-fpm.conf.default /usr/local/php/etc/php-fpm.conf
 #编辑php-fpm的配置文件
 #php-5.4.13的/usr/local/php/etc/php-fpm.conf配置：

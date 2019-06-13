@@ -146,6 +146,232 @@ mysql支持插件式存储引擎
 	被钉住的块不被置换出来
 
 
+#第三节：数据库基础及编译安装
+mysql前途未卜，所以有了mariaDB,percona是为mysql提供优化方案的
+安装方式：
+	1. 基于软件包发行商格式的包。dep,rpm
+	2. 通用二进制安装，是gcc,icc编译安装的，用得最多的是gcc
+	3. 编译安装。5.1及以前是make安装的，后面的是cmake安装的，可以编译成32位或64位平台。
+1. 基于软件包发行商格式的包安装的包：MySQL-client,MySQL-devel,MySQL-shared,MySQL-shared-compat。-----MySQL-test测试组件偶尔会装
+2. 通信二进制安装之前做过
+修改密码3种方式：
+	1. mysqladmin -u root -h host -p password 'new-password'
+	2. set password for 'root'@'localhost'=password('new-password');
+	3. update user set password=password('new-password') where user=root and host=localhost;
+###3. 编译安装mysql5.6：
+1. 确保已经安装了cmake:[root@localhost yum.repos.d]# yum install cmake -y
+cmake用法：
+./configure    cmake .
+./configure --help    cmake . LH   or   ccmake .
+make && make install     make && make install
+[root@localhost yum.repos.d]# yum groupinstall "Development Tools" "RPM Development Tools" -y  #安装开发环境
+编译参数：
+默认编译的存储引擎包括：csv、myisam、myisammrt和heap
+-DWITH_READLINE=1  #开启批量导入功能
+-DWITH_SSL=system #开启ssl,对于复制功能至关重要
+-DWITH_ZLIB=system #压缩库
+-DSYSCONFDIR=/etc #配置文件路径
+-DMYSQL_DATADIR=/mydata/data #数据库路径
+-DCMAKE_INSTALL_PREFIX=/usr/local/mysql #安装路径
+-DWITH_INNOBASE_STORAGE_ENGINE=1 #打开innoDB存储引擎
+-DWITH_ARCHIVE_STORAGE_ENGINE=1 #打开archive存储引擎
+-DWITH_BLACKHOLE_STORAGE_ENGINE=1 #打开mysql黑洞存储引擎
+-DMYSQL_UNIX_ADDR=/tmp/mysql.sock #指定mysql套接字路径
+-DDEFAULT_CHARSET=utf-8 #默认字符集
+-DDEFAULT_COLLATION=utf8_general_ci #字符集默认排序规则，例如拼音排序，笔画排序
+-DWITH_LIBWRAP=0  #禁用tcp_wrap访问
+[root@localhost download]# mkdir /mydata/data -pv
+[root@localhost data]# useradd -r -g 3306 -u 3306 -s /sbin/nologin mysql
+[root@localhost data]# chown -R mysql.mysql /mydata/data/
+[root@lnmp mysql-5.5.37]# cmake . -LH
+[root@lnmp mysql-5.5.37]# cmake . -DCMAKE_INSTALL_PREFIX=/usr/local/mysql -DMYSQL_DATADIR=/mydata/data -DSYSCONFDIR=/etc -DWITH_INNOBASE_STORAGE_ENGINE=1 -DWITH_ARCHIVE_STORAGE_ENGINE=1 -DWITH_BLACKHOLE_STORAGE_ENGINE=1 -DWITH_READLINE=1 -DWITH_SSL=system -DWITH_ZLIB=system -DWITH_LIBWRAP=0 -DMYSQL_UNIX_ADDR=/tmp/mysql.sock -DDEFAULT_CHARSET=utf-8 -DDEFAULT_COLLATION=utf8_general_ci
+/down/mysql-5.5.37/sql/sql_yacc.yy:14770:23: note: in expansion of macro ‘Lex’
+             LEX *lex= Lex;
+                       ^
+make[2]: *** [sql/CMakeFiles/sql.dir/sql_yacc.cc.o] Error 1
+make[1]: *** [sql/CMakeFiles/sql.dir/all] Error 2
+make: *** [all] Error 2
+[root@lnmp mysql-5.5.37]# echo $? #编辑报错
+2
+[root@lnmp ~]# rpm -qa | grep bison
+bison-3.0.4-2.el7.x86_64  #版本太高
+[root@lnmp ~]# rpm -e bison
+[root@lnmp ~]# rpm -qa | grep bison
+[root@lnmp ~]# wget ftp://ftp.gnu.org/gnu/bison/bison-2.5.1.tar.xz #下载2.5.1低版本
+tar xf bison-2.5.1.tar 
+cd bison-2.5.1/
+./configure && make && make install
+[root@lnmp mysql-5.5.37]# make && make install
+[root@lnmp mysql-5.5.37]# cd /usr/local/
+[root@lnmp local]# chown -R :mysql mysql/
+[root@lnmp mysql]# ./scripts/mysql_install_db --user=mysql --datadir=/mydata/data
+Installing MySQL system tables...
+OK
+Filling help tables...
+OK
+[root@lnmp mysql]# cp support-files/my-large.cnf /etc/my.cnf
+cp: overwrite ‘/etc/my.cnf’? y
+[root@lnmp mysql]# cp support-files/mysql.server /etc/init.d/mysqld
+[root@lnmp mysql]# chkconfig --add mysqld
+[root@lnmp mysql]# chkconfig --list mysqld
+mysqld          0:off   1:off   2:on    3:on    4:on    5:on    6:off
+[root@lnmp mysql]# vim /etc/profile.d/mysql.sh
+export PATH=$PATH:/usr/local/mysql/bin
+[root@lnmp mysql]# . /etc/profile
+[root@lnmp etc]# service mysqld start
+Starting MySQL.. SUCCESS! 
+
+#在同一台主机上，mysql和mysqld是如何进行通信的：
+linux:
+	mysql-->mysql.sock-->mysqld  #套接字
+windows:
+	mysql-->memory(pipe)-->mysqld   #共享内存或管道
+mysql客户端工具：mysql、mysqldump、mysqladmin、mysqlcheck、mysqlimport   #my.cnf中client字段的配置都会对这些客户端工具生效
+mysql非客户端工具：myisamchk、myisampark
+mysql客户端使用参数：
+	-u -h -p --protocal --port
+	默认使用socket,其它protocol有tcp、memory、pipe
+
+[root@lnmp etc]# mysql
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 1
+Server version: 5.5.37-log Source distribution  #这里显示源码安装的
+
+Copyright (c) 2000, 2014, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> show engines;
++--------------------+---------+----------------------------------------------------------------+--------------+------+------------+
+| Engine             | Support | Comment                                                        | Transactions | XA   | Savepoints |
++--------------------+---------+----------------------------------------------------------------+--------------+------+------------+
+| CSV                | YES     | CSV storage engine                                             | NO           | NO   | NO         |
+| InnoDB             | DEFAULT | Supports transactions, row-level locking, and foreign keys     | YES          | YES  | YES        |
+| MyISAM             | YES     | MyISAM storage engine                                          | NO           | NO   | NO         |
+| BLACKHOLE          | YES     | /dev/null storage engine (anything you write to it disappears) | NO           | NO   | NO         |
+| MRG_MYISAM         | YES     | Collection of identical MyISAM tables                          | NO           | NO   | NO         |
+| PERFORMANCE_SCHEMA | YES     | Performance Schema                                             | NO           | NO   | NO         |
+| ARCHIVE            | YES     | Archive storage engine                                         | NO           | NO   | NO         |
+| MEMORY             | YES     | Hash based, stored in memory, useful for temporary tables      | NO           | NO   | NO         |
++--------------------+---------+----------------------------------------------------------------+--------------+------+------------+
+8 rows in set (0.00 sec) 
+注：默认存储引擎为InnoDB
+
+
+[root@lnmp etc]# vim /etc/my.cnf
+thread_concurrency = 4 #4个并发线程
+datadir = /mydata/data  #源码编译安装的mysql没有这个路径，但不报错，因为编译的时候已经指定了，为了保险起见，写上这行
+[root@lnmp etc]# service mysqld restart
+[root@lnmp etc]# mysql
+mysql> select User,Host,Password from user;
++------+---------------+----------+
+| User | Host          | Password |
++------+---------------+----------+
+| root | localhost     |          |
+| root | lnmp.jack.com |          |
+| root | 127.0.0.1     |          |
+| root | ::1           |          |
+|      | localhost     |          |  #有两个匿名用户，需要删除
+|      | lnmp.jack.com |          |
++------+---------------+----------+
+mysql> drop user ''@localhost;
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> drop user ''@lnmp.jack.com;
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> drop user 'root'@'::1';
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> select User,Host,Password from user;
++------+---------------+----------+
+| User | Host          | Password |
++------+---------------+----------+
+| root | localhost     |          |
+| root | lnmp.jack.com |          |
+| root | 127.0.0.1     |          |
++------+---------------+----------+
+3 rows in set (0.00 sec)
+mysql> update user set password=password('root123') where user='root';  #设置保留的三个用户密码
+Query OK, 3 rows affected (0.00 sec)
+Rows matched: 3  Changed: 3  Warnings: 0
+
+mysql> select User,Host,Password from user;
++------+---------------+-------------------------------------------+
+| User | Host          | Password                                  |
++------+---------------+-------------------------------------------+
+| root | localhost     | *FAAFFE644E901CFAFAEC7562415E5FAEC243B8B2 |
+| root | lnmp.jack.com | *FAAFFE644E901CFAFAEC7562415E5FAEC243B8B2 |
+| root | 127.0.0.1     | *FAAFFE644E901CFAFAEC7562415E5FAEC243B8B2 |
++------+---------------+-------------------------------------------+
+[root@lnmp etc]# mysql -u root -h 192.168.1.233 -p  #登录报错，因为只允许本机访问，而本机访问是通过socket访问的，现在指明ip地址，则mysql认为是使用tcp连接的，所以用root用户tcp连接跟设置的root用户socket连接不符，所以报错
+Enter password: 
+ERROR 1130 (HY000): Host 'linux-node1-salt.jack.com' is not allowed to connect to this MySQL server
+
+如何在本机上不指定用户名主机密码登录mysql:
+[root@lnmp ~]# cat .my.cnf 
+[client]  #client为所有客户端生效，当为mysql时只针对mysql客户端
+user = 'root'
+password = 'root123'
+host = 'localhost'
+[root@lnmp ~]# chmod 600 .my.cnf 
+[root@lnmp ~]# service mysqld restart #重启即可
+Shutting down MySQL. SUCCESS! 
+Starting MySQL.. SUCCESS! 
+#认识数据库文件：
+[root@lnmp mysql]# cd /mydata/data/mysql/ #进入系统数据库mysql
+[root@lnmp mysql]# ls  #对于myISAM来说每个表有3个文件 
+db.frm  #对于MyISAM存储引擎来说这个是表结构文件
+db.MYD  #对于MyISAM存储引擎来说这个是表存储文件
+db.MYI  #对于MyISAM存储引擎来说这个是表索引文件
+InnoDB:
+	所有表共享一个表空间文件，不好
+	建议：每表一个独立的表空间文件
+mysql> show variables like '%innodb%';
+innodb_file_per_table           | OFF #把这个打开就可以支持每张表生成一个表空间文件
+#为了永久生效，编辑 vim /etc/my.cnf文件
+[mysqld]
+innodb_file_per_table = 1
+[root@lnmp bison-2.5.1]# service mysqld restart #重启服务
+mysql> show global variables like '%innodb_file_per_table%';
++-----------------------+-------+
+| Variable_name         | Value |
++-----------------------+-------+
+| innodb_file_per_table | ON    |
++-----------------------+-------+
+
+##例：创建一张表
+mysql> create database mydb;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> use mydb;
+Database changed
+mysql> create table testdb(
+    -> id int not null,
+    -> name char(30));
+Query OK, 0 rows affected (0.00 sec)
+[root@lnmp bison-2.5.1]# cd /mydata/data/mydb/
+[root@lnmp mydb]# ll
+total 208
+-rw-rw---- 1 mysql mysql    65 Jun 13 17:27 db.opt #当前数据默认的字符集和排序规则
+-rw-rw---- 1 mysql mysql  8586 Jun 13 17:27 testdb.frm #innoDB的.frm为表结构
+-rw-rw---- 1 mysql mysql 98304 Jun 13 17:27 testdb.ibd #innoDB的.ibd为表空间，存储了表的数据
+
+##第四节：客户端工具的使用
+
+
+
+
+
+
+
+
+
+
 
 
 </pre>

@@ -1,4 +1,4 @@
-#nginx 
+﻿#nginx 
 <pre>
 #nginx:
 io复用
@@ -234,6 +234,8 @@ ln -sv /usr/local/mysql/include/ /usr/include/mysql
 [root@lamp php-5.4.24]# chkconfig --add php-fpm
 [root@lamp local]# ln -sv /usr/local/php-5.4.24/ /usr/local/php
 ‘/usr/local/php’ -> ‘/usr/local/php-5.4.24/’
+[root@lamp php]# cp /down/php-5.4.24/php.ini-production /etc/php.ini
+[root@lamp php]# mkdir /etc/php.d
 [root@lamp php]# cp etc/php-fpm.conf.default etc/php-fpm.conf
 #vim /usr/local/php/etc/php-fpm.conf
 pm.max_children = 50 #最多几个子进程
@@ -355,6 +357,40 @@ $conn=mysql_connect('192.168.1.233','jack','jack123');
                 echo "Faild.....";
 phpinfo()
 ?>
+#编译zendopcache:
+[root@lnmp down]# wget http://pecl.php.net/get/zendopcache-7.0.5.tgz
+[root@lnmp down]# gzip -d zendopcache-7.0.5.tgz 
+[root@lnmp down]# tar xf zendopcache-7.0.5.tar
+[root@lnmp down]# cd zendopcache-7.0.5/
+[root@lnmp zendopcache-7.0.5]# /usr/local/php/bin/phpize 
+[root@lnmp zendopcache-7.0.5]# ./configure --with-php-config=/usr/local/php/bin/php-config
+[root@lnmp zendopcache-7.0.5]# make && make install
+--------
+ vi  /etc/php.ini
+zend_extension=/usr/local/php/lib/php/extensions/no-debug-non-zts-20121212/opcache.so
+opcache.enable=1
+opcache.memory_consumption=128
+opcache.interned_strings_buffer=8
+opcache.max_accelerated_files=4000
+opcache.revalidate_freq=60
+opcache.fast_shutdown=1
+opcache.enable_cli=1
+--------
+#php5.6开启opcache不用单独编译zendopcache,只需要编译php时开启 --enable-opcache即可
+例：./configure --prefix=/usr/local/php-5.4.24 --with-mysql=/usr/local/mysql --with-openssl --with-mysqli=/usr/local/mysql/bin/mysql_config --enable-mbstring --with-freetype-dir --with-jpeg-dir --with-png-dir --with-zlib --with-libxml-dir=/usr --enable-xml --enable-sockets --enable-fpm --with-mcrypt --with-config-file-path=/etc --with-config-file-scan-dir=/etc/php.d --with-bz2 --enable-opcache
+[root@lnmp zendopcache-7.0.5]# make && make install
+--------
+ vi  /etc/php.ini
+zend_extension=/usr/local/php/lib/php/extensions/no-debug-non-zts-20121212/opcache.so
+opcache.enable=1
+opcache.memory_consumption=128
+opcache.interned_strings_buffer=8
+opcache.max_accelerated_files=4000
+opcache.revalidate_freq=60
+opcache.fast_shutdown=1
+opcache.enable_cli=1
+--------
+http://localhost/index.php   #显示Zend Memory Manager	enabled则为已经开启
 
 #下载phpMyAdmin：
 参考链接：https://www.phpmyadmin.net/files
