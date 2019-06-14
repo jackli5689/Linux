@@ -362,15 +362,108 @@ total 208
 -rw-rw---- 1 mysql mysql 98304 Jun 13 17:27 testdb.ibd #innoDB的.ibd为表空间，存储了表的数据
 
 ##第四节：客户端工具的使用
+mysql登入参数：
+	1. -u or user
+	2. -p or password
+	3. -h or host
+	4. --protocol
+	5. --port
+	6. --database or -D 
 
+mysql两种交换模式
+	1. 交互式模式
+	2. 批处理模式  #mysql < init.sql  #sql文件为sql语句 
 
+mysql提示符：
+	1. ->
+	2. '>
+	3. ">
+	4. /*>
+	5. `>
 
+#mysql命令分为两种
+	1. 客户端命令
+	2. 服务器命令
+	
+#mysql的客户端命令的使用：
+mysql> \?  #获取客户端命令帮助
 
+For information about MySQL products and services, visit:
+   http://www.mysql.com/
+For developer information, including the MySQL Reference Manual, visit:
+   http://dev.mysql.com/
+To buy MySQL Enterprise support, training, or other products, visit:
+   https://shop.mysql.com/
 
+List of all MySQL commands:
+Note that all text commands must be first on line and end with ';'
+?         (\?) Synonym for `help'.
+clear     (\c) Clear the current input statement.
+connect   (\r) Reconnect to the server. Optional arguments are db and host.
+delimiter (\d) Set statement delimiter.  #设置服务器结束符
+edit      (\e) Edit command with $EDITOR.
+ego       (\G) Send command to mysql server, display result vertically. #以列方式显示表
+exit      (\q) Exit mysql. Same as quit. #退出客户端
+go        (\g) Send command to mysql server. #默认以行显示
+help      (\h) Display this help.
+nopager   (\n) Disable pager, print to stdout.
+notee     (\t) Don't write into outfile.
+pager     (\P) Set PAGER [to_pager]. Print the query results via PAGER.
+print     (\p) Print current command.
+prompt    (\R) Change your mysql prompt.
+quit      (\q) Quit mysql.
+rehash    (\#) Rebuild completion hash. #打开名称补全
+source    (\.) Execute an SQL script file. Takes a file name as an argument.  #读取服务器上sql文件
+status    (\s) Get status information from the server. #查看状态信息
+system    (\!) Execute a system shell command. #执行系统命令
+tee       (\T) Set outfile [to_outfile]. Append everything into given outfile.
+use       (\u) Use another database. Takes database name as argument.  #切换数据库
+charset   (\C) Switch to another charset. Might be needed for processing binlog with multi-byte charsets. #切换字符集
+warnings  (\W) Show warnings after every statement. #开启警告信息
+nowarning (\w) Don't show warnings after every statement. #关闭警告信息
 
+For server side help, type 'help contents'
 
+#mysql的服务器命令使用：
+help KEYWORD ＃help关键字
 
+##mysqladmin客户端工具的使用
+[root@lnmp ~]# mysqladmin --help
+Usage: mysqladmin [OPTIONS] command command....
+mysqladmin -u root -p password "NEW_PASSWORD" #更改root密码
+mysqladmin参数：
+	--compress #发送接收数据时都进行压缩
+	--ssl-ca=name   #指定ca路径及名称
+	--ssl-capath=name  #指定多个ca路径
+	--ssl-cert=name  #指定证书路径及名称
+	--ssl-cipher=name  #指定加密算法列表
+	--ssl-key=name  #指定key路径及名称
+	--ssl-verify-server-cert #是否验证服务器证书
+	create DATABASE
+	drop DATABASE
+	processlist   #查看mysql服务器当前执行的命令进程
+	status  #查看服务器状态
+		--sleep 2 #每隔2秒显示一次
+		--count 2 #总共显示两次
+	extended-status  #显示服务器状态变量信息
+	variables  #显示服务器变量
+	flush-privileges #重读mysql授权表，
+	flush-status  #重置服务器的大多数变量
+	flush-logs  #二进制和中继日志滚动
+	flush-hosts #重置计数器可以让失误次数过多而被禁止登录的用户登录
+	kill #杀死一个线程
+	reload  #等同于flush-privileges 
+	refresh #相同于同时执行flush-hosts和flush-logs
+	shutdown #关闭mysql服务
+	version #显示服务器版本及当前状态信息
+	start-slave:启动从服务器复制线程
+		SQL thread
+		IO thread
+	stop-slave:关闭从服务器复制线程
 
+另外mysql客户端工具：mysqldump,mysqlimport,mysqlcheck
+
+#第五节：
 
 
 
