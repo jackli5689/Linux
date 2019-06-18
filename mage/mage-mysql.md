@@ -1,4 +1,4 @@
-﻿#Mysql数据库
+#Mysql数据库
 
 <pre>
 #第一节：关系型数据体系结构
@@ -53,7 +53,7 @@ RDB约束(constraint)：
 文件：
 	表示层：文件
 	逻辑层：文件系统（类似存储引擎）
-	物理层：无数据，数据（存储为数据块）
+	物理层：元数据，数据（存储为数据块）
 关系型数据：
 	表示层：表
 	逻辑层：存储引擎
@@ -160,9 +160,9 @@ mysql前途未卜，所以有了mariaDB,percona是为mysql提供优化方案的
 	3. update user set password=password('new-password') where user=root and host=localhost;
 ###3. 编译安装mysql5.6：
 1. 确保已经安装了cmake:[root@localhost yum.repos.d]# yum install cmake -y
-cmake用法：
+#cmake用法：
 ./configure    cmake .
-./configure --help    cmake . LH   or   ccmake .
+./configure --help    cmake . -LH   or   ccmake .
 make && make install     make && make install
 [root@localhost yum.repos.d]# yum groupinstall "Development Tools" "RPM Development Tools" -y  #安装开发环境
 编译参数：
@@ -184,7 +184,7 @@ make && make install     make && make install
 [root@localhost data]# useradd -r -g 3306 -u 3306 -s /sbin/nologin mysql
 [root@localhost data]# chown -R mysql.mysql /mydata/data/
 [root@lnmp mysql-5.5.37]# cmake . -LH
-[root@lnmp mysql-5.5.37]# cmake . -DCMAKE_INSTALL_PREFIX=/usr/local/mysql -DMYSQL_DATADIR=/mydata/data -DSYSCONFDIR=/etc -DWITH_INNOBASE_STORAGE_ENGINE=1 -DWITH_ARCHIVE_STORAGE_ENGINE=1 -DWITH_BLACKHOLE_STORAGE_ENGINE=1 -DWITH_READLINE=1 -DWITH_SSL=system -DWITH_ZLIB=system -DWITH_LIBWRAP=0 -DMYSQL_UNIX_ADDR=/tmp/mysql.sock -DDEFAULT_CHARSET=utf-8 -DDEFAULT_COLLATION=utf8_general_ci
+[root@lnmp mysql-5.5.37]# cmake . -DCMAKE_INSTALL_PREFIX=/usr/local/mysql -DMYSQL_DATADIR=/mydata/ -DSYSCONFDIR=/etc -DWITH_INNOBASE_STORAGE_ENGINE=1 -DWITH_ARCHIVE_STORAGE_ENGINE=1 -DWITH_BLACKHOLE_STORAGE_ENGINE=1 -DWITH_READLINE=1 -DWITH_SSL=system -DWITH_ZLIB=system -DWITH_LIBWRAP=0 -DMYSQL_UNIX_ADDR=/tmp/mysql.sock -DDEFAULT_CHARSET=utf-8 -DDEFAULT_COLLATION=utf8_general_ci  #当后面mysql无法启动时，可以不单独设置-DDEFAULT_CHARSET=utf-8 -DDEFAULT_COLLATION=utf8_general_ci参数
 /down/mysql-5.5.37/sql/sql_yacc.yy:14770:23: note: in expansion of macro ‘Lex’
              LEX *lex= Lex;
                        ^
@@ -220,6 +220,11 @@ export PATH=$PATH:/usr/local/mysql/bin
 [root@lnmp mysql]# . /etc/profile
 [root@lnmp etc]# service mysqld start
 Starting MySQL.. SUCCESS! 
+注：当上面所有设置过，启动不成功一般有4点原因：
+	1. 此前服务未关闭端口占用，关闭之前的服务
+	2. 数据初始化失败,查看数据目录/mydata下的$HOST.err错误文件
+	3. 数据目录位置错误，数据目录/mydata下无$HOST.err错误文件，在my.cnf中明确定义datadir = /mydata
+	4. 数据目录权限问题
 
 #在同一台主机上，mysql和mysqld是如何进行通信的：
 linux:
@@ -308,7 +313,7 @@ mysql> select User,Host,Password from user;
 | root | lnmp.jack.com | *FAAFFE644E901CFAFAEC7562415E5FAEC243B8B2 |
 | root | 127.0.0.1     | *FAAFFE644E901CFAFAEC7562415E5FAEC243B8B2 |
 +------+---------------+-------------------------------------------+
-[root@lnmp etc]# mysql -u root -h 192.168.1.233 -p  #登录报错，因为只允许本机访问，而本机访问是通过socket访问的，现在指明ip地址，则mysql认为是使用tcp连接的，所以用root用户tcp连接跟设置的root用户socket连接不符，所以报错
+[root@lnmp etc]# mysql -u root -h 192.168.1.233 -p  #登录报错，因为只允许本机访问，而且本机访问只能是通过socket访问的，现在指明ip地址，则mysql认为是使用tcp连接的，所以用root用户tcp连接跟设置的root用户socket连接不符，所以报错
 Enter password: 
 ERROR 1130 (HY000): Host 'linux-node1-salt.jack.com' is not allowed to connect to this MySQL server
 
@@ -463,7 +468,446 @@ mysqladmin参数：
 
 另外mysql客户端工具：mysqldump,mysqlimport,mysqlcheck
 
-#第五节：
+#第五节：mysql数据类型及sql模型
+myISAM:
+	.frm  #表结构文件
+	.MYD  #表数据文件
+	.MYI  #表索引文件
+InnoDB
+	.frm  #表结构文件
+	.ibd  #表空间(数据和索引)
+大多数情况下使用的是myISAM和InnoDB存储引擎，其它存储引擎为抚助存储引擎
+
+客户端：mysql,mysqladmin,mysqldump,mysqlcheck,mysqlimport
+服务器：mysqld,mysqld_safe(安全线程启动，mysql真正启动时是这个启动的),mysqld_multi(多实例)
+mysqlbinlog #查看mysql二进制日志的
+#my.cnf配置文件顺序：
+	/etc/my.cnf,/etc/mysql/my.cnf,$MYSQL_HOME/my.cnf,--default-extra-file=/pth/to/somefile,~/.my.cnf  #后面的会覆盖前面的配置
+
+[mysqld] #mysqld服务端配置
+[mysql] #mysql客户端
+[client】#所有客户端
+注：所有命令行的命令都可以写到my.cnf配置文件中，也可以把my.cnf文件写在命令行中，在命令行中的_下划线和-横线在配置中一样，
+#mysql配置文件帮助信息：
+mysqld --help --verbose  #查看配置文件可用的参数
+
+mysql> help show table status; #查看表的状态信息
+Name: 'SHOW TABLE STATUS'
+Description:
+Syntax:
+SHOW TABLE STATUS [{FROM | IN} db_name]
+    [LIKE 'pattern' | WHERE expr]
+
+SHOW TABLE STATUS works likes SHOW TABLES, but provides a lot of
+information about each non-TEMPORARY table. You can also get this list
+using the mysqlshow --status db_name command. The LIKE clause, if
+present, indicates which table names to match. The WHERE clause can be
+given to select rows using more general conditions, as discussed in
+http://dev.mysql.com/doc/refman/5.5/en/extended-show.html.
+
+URL: http://dev.mysql.com/doc/refman/5.5/en/show-table-status.html
+mysql> show table status from mysql like 'user' \G ;
+*************************** 1. row ***************************
+           Name: user
+         Engine: MyISAM  #表类型为MyISAM
+        Version: 10
+     Row_format: Dynamic
+           Rows: 3
+ Avg_row_length: 126
+    Data_length: 380
+Max_data_length: 281474976710655
+   Index_length: 2048
+      Data_free: 0
+ Auto_increment: NULL
+    Create_time: 2019-06-18 21:57:30
+    Update_time: 2019-06-18 22:34:55
+     Check_time: NULL
+      Collation: utf8_bin
+       Checksum: NULL
+ Create_options: 
+        Comment: Users and global privileges
+1 row in set (0.00 sec)
+
+DBA:
+	开发DBA:数据库设计、SQL语句、存储过程，存储函数，触发器
+	管理DBA：安装、升级、备份、恢复、用户管理、权限管理、监控、性能分析、基准测试
+
+###mysql开发
+1. mysql数据类型
+2. mysql SQL语句
+
+1.mysql数据类型：
+	数值型：
+		精确数值：
+			1. int 
+			2. decimal #十进制
+		近似数值：
+			1. fload
+			2. double
+			3. real #实数
+	字符型：
+		定长：CHAR(N) #不区分大小写，BINARY  #BINARY区分大小写
+		变长：VARCHAR(N) #不区分大小写，VARBINARY #VARBINARY可变长的区分大小写
+		大字符：text #不区分大小写   blob #区分大小写
+		内置类型：ENUM  #枚举型,SET #集合型
+	日期时间型：
+		date,time,datatime,timestamp(时间戳)，year(N)#可为2位或4位
+域属性，修改符：（进行域限制的）	
+数据类型：
+1. 存储的值类型：
+2. 占据的存储空间：
+3. 定长还是变长：
+4. 如何比较及排序：
+5. 是否能够索引：
+#不区分大小写：
+char #最大255个字符，能索引整个字段
+varchar #最大65535个字符，每一个varchar将至少多占一个字符空间，超过255后需要占用两个结束符，低于255时只占用1个结束符
+tinytext #255个字符，不能索引整个字段
+text #65535
+mediumtext #16777215
+longtext  #4294967295
+#区分大小写：
+binary #255个字节
+varbinary #65535个字节
+tinyblob #255个字节，blob中为文本大对象
+blob #64k
+mediumblob  #16Mb空间
+longblog #4G空间
+
+tinyint(1) #括号里面的数字并不会改变数据类型的大小，只是显示数值位数，例如值为123，则这里显示个位3
+date #3个字节
+time #3个字节
+datetime #8个字节
+year #1个字节
+ENUM  #枚举型，字符型，65535个字符
+SET #集合型，存储的是位图，64个字符
+
+#字段后面的限定：
+1. NOTNULL
+2. NULL
+3. DEFAULT
+4. CHARACTER SET #字符集
+5. COLLATION  #排序规则
+6. AUTO_INCREMENT #自增长，必须为正整形（UNSIGNED），这个字段定义为这个类型后不能为空，一定要创建索引(PRIMARY KEY或UNIQUE index)
+7. ZEROFILL #多一位用0填充
+mysql> select last_insert_id();
++------------------+
+| last_insert_id() |
++------------------+
+|                0 |
++------------------+
+#所有存储函数使用select执行，存储过程使用call来调用 
+#字符集和排序规则：字段从表继承，表从数据库继承，数据库从服务器继承
+mysql> SHOW CHARACTER SET;  #查看当前服务器的所有字符集
++----------+-----------------------------+---------------------+--------+
+| Charset  | Description                 | Default collation   | Maxlen |
++----------+-----------------------------+---------------------+--------+
+| big5     | Big5 Traditional Chinese    | big5_chinese_ci     |      2 |
+| dec8     | DEC West European           | dec8_swedish_ci     |      1 |
+| cp850    | DOS West European           | cp850_general_ci    |      1 |
+| hp8      | HP West European            | hp8_english_ci      |      1 |
+| koi8r    | KOI8-R Relcom Russian       | koi8r_general_ci    |      1 |
+| latin1   | cp1252 West European        | latin1_swedish_ci   |      1 |
+| latin2   | ISO 8859-2 Central European | latin2_general_ci   |      1 |
+| swe7     | 7bit Swedish                | swe7_swedish_ci     |      1 |
+| ascii    | US ASCII                    | ascii_general_ci    |      1 |
+| ujis     | EUC-JP Japanese             | ujis_japanese_ci    |      3 |
+| sjis     | Shift-JIS Japanese          | sjis_japanese_ci    |      2 |
+| hebrew   | ISO 8859-8 Hebrew           | hebrew_general_ci   |      1 |
+| tis620   | TIS620 Thai                 | tis620_thai_ci      |      1 |
+| euckr    | EUC-KR Korean               | euckr_korean_ci     |      2 |
+| koi8u    | KOI8-U Ukrainian            | koi8u_general_ci    |      1 |
+| gb2312   | GB2312 Simplified Chinese   | gb2312_chinese_ci   |      2 |
+| greek    | ISO 8859-7 Greek            | greek_general_ci    |      1 |
+| cp1250   | Windows Central European    | cp1250_general_ci   |      1 |
+| gbk      | GBK Simplified Chinese      | gbk_chinese_ci      |      2 |
+| latin5   | ISO 8859-9 Turkish          | latin5_turkish_ci   |      1 |
+| armscii8 | ARMSCII-8 Armenian          | armscii8_general_ci |      1 |
+| utf8     | UTF-8 Unicode               | utf8_general_ci     |      3 |
+| ucs2     | UCS-2 Unicode               | ucs2_general_ci     |      2 |
+| cp866    | DOS Russian                 | cp866_general_ci    |      1 |
+| keybcs2  | DOS Kamenicky Czech-Slovak  | keybcs2_general_ci  |      1 |
+| macce    | Mac Central European        | macce_general_ci    |      1 |
+| macroman | Mac West European           | macroman_general_ci |      1 |
+| cp852    | DOS Central European        | cp852_general_ci    |      1 |
+| latin7   | ISO 8859-13 Baltic          | latin7_general_ci   |      1 |
+| utf8mb4  | UTF-8 Unicode               | utf8mb4_general_ci  |      4 |
+| cp1251   | Windows Cyrillic            | cp1251_general_ci   |      1 |
+| utf16    | UTF-16 Unicode              | utf16_general_ci    |      4 |
+| cp1256   | Windows Arabic              | cp1256_general_ci   |      1 |
+| cp1257   | Windows Baltic              | cp1257_general_ci   |      1 |
+| utf32    | UTF-32 Unicode              | utf32_general_ci    |      4 |
+| binary   | Binary pseudo charset       | binary              |      1 |
+| geostd8  | GEOSTD8 Georgian            | geostd8_general_ci  |      1 |
+| cp932    | SJIS for Windows Japanese   | cp932_japanese_ci   |      2 |
+| eucjpms  | UJIS for Windows Japanese   | eucjpms_japanese_ci |      3 |
++----------+-----------------------------+---------------------+--------+
+39 rows in set (0.00 sec)
+
+mysql> show collation;  #查看各个字符集下的排序规则 
++--------------------------+----------+-----+---------+----------+---------+
+| Collation                | Charset  | Id  | Default | Compiled | Sortlen |
++--------------------------+----------+-----+---------+----------+---------+
+| big5_chinese_ci          | big5     |   1 | Yes     | Yes      |       1 |
+| big5_bin                 | big5     |  84 |         | Yes      |       1 |
+| dec8_swedish_ci          | dec8     |   3 | Yes     | Yes      |       1 |
+| dec8_bin                 | dec8     |  69 |         | Yes      |       1 |
+| cp850_general_ci         | cp850    |   4 | Yes     | Yes      |       1 |
+| cp850_bin                | cp850    |  80 |         | Yes      |       1 |
+| hp8_english_ci           | hp8      |   6 | Yes     | Yes      |       1 |
+| hp8_bin                  | hp8      |  72 |         | Yes      |       1 |
+| koi8r_general_ci         | koi8r    |   7 | Yes     | Yes      |       1 |
+| koi8r_bin                | koi8r    |  74 |         | Yes      |       1 |
+| latin1_german1_ci        | latin1   |   5 |         | Yes      |       1 |
+| latin1_swedish_ci        | latin1   |   8 | Yes     | Yes      |       1 |
+| latin1_danish_ci         | latin1   |  15 |         | Yes      |       1 |
+| latin1_german2_ci        | latin1   |  31 |         | Yes      |       2 |
+| latin1_bin               | latin1   |  47 |         | Yes      |       1 |
+| latin1_general_ci        | latin1   |  48 |         | Yes      |       1 |
+| latin1_general_cs        | latin1   |  49 |         | Yes      |       1 |
+| latin1_spanish_ci        | latin1   |  94 |         | Yes      |       1 |
+| latin2_czech_cs          | latin2   |   2 |         | Yes      |       4 |
+| latin2_general_ci        | latin2   |   9 | Yes     | Yes      |       1 |
+| latin2_hungarian_ci      | latin2   |  21 |         | Yes      |       1 |
+| latin2_croatian_ci       | latin2   |  27 |         | Yes      |       1 |
+| latin2_bin               | latin2   |  77 |         | Yes      |       1 |
+| swe7_swedish_ci          | swe7     |  10 | Yes     | Yes      |       1 |
+| swe7_bin                 | swe7     |  82 |         | Yes      |       1 |
+| ascii_general_ci         | ascii    |  11 | Yes     | Yes      |       1 |
+| ascii_bin                | ascii    |  65 |         | Yes      |       1 |
+| ujis_japanese_ci         | ujis     |  12 | Yes     | Yes      |       1 |
+| ujis_bin                 | ujis     |  91 |         | Yes      |       1 |
+| sjis_japanese_ci         | sjis     |  13 | Yes     | Yes      |       1 |
+| sjis_bin                 | sjis     |  88 |         | Yes      |       1 |
+| hebrew_general_ci        | hebrew   |  16 | Yes     | Yes      |       1 |
+| hebrew_bin               | hebrew   |  71 |         | Yes      |       1 |
+| tis620_thai_ci           | tis620   |  18 | Yes     | Yes      |       4 |
+| tis620_bin               | tis620   |  89 |         | Yes      |       1 |
+| euckr_korean_ci          | euckr    |  19 | Yes     | Yes      |       1 |
+| euckr_bin                | euckr    |  85 |         | Yes      |       1 |
+| koi8u_general_ci         | koi8u    |  22 | Yes     | Yes      |       1 |
+| koi8u_bin                | koi8u    |  75 |         | Yes      |       1 |
+| gb2312_chinese_ci        | gb2312   |  24 | Yes     | Yes      |       1 |
+| gb2312_bin               | gb2312   |  86 |         | Yes      |       1 |
+| greek_general_ci         | greek    |  25 | Yes     | Yes      |       1 |
+| greek_bin                | greek    |  70 |         | Yes      |       1 |
+| cp1250_general_ci        | cp1250   |  26 | Yes     | Yes      |       1 |
+| cp1250_czech_cs          | cp1250   |  34 |         | Yes      |       2 |
+| cp1250_croatian_ci       | cp1250   |  44 |         | Yes      |       1 |
+| cp1250_bin               | cp1250   |  66 |         | Yes      |       1 |
+| cp1250_polish_ci         | cp1250   |  99 |         | Yes      |       1 |
+| gbk_chinese_ci           | gbk      |  28 | Yes     | Yes      |       1 |
+| gbk_bin                  | gbk      |  87 |         | Yes      |       1 |
+| latin5_turkish_ci        | latin5   |  30 | Yes     | Yes      |       1 |
+| latin5_bin               | latin5   |  78 |         | Yes      |       1 |
+| armscii8_general_ci      | armscii8 |  32 | Yes     | Yes      |       1 |
+| armscii8_bin             | armscii8 |  64 |         | Yes      |       1 |
+| utf8_general_ci          | utf8     |  33 | Yes     | Yes      |       1 |
+| utf8_bin                 | utf8     |  83 |         | Yes      |       1 |
+| utf8_unicode_ci          | utf8     | 192 |         | Yes      |       8 |
+| utf8_icelandic_ci        | utf8     | 193 |         | Yes      |       8 |
+| utf8_latvian_ci          | utf8     | 194 |         | Yes      |       8 |
+| utf8_romanian_ci         | utf8     | 195 |         | Yes      |       8 |
+| utf8_slovenian_ci        | utf8     | 196 |         | Yes      |       8 |
+| utf8_polish_ci           | utf8     | 197 |         | Yes      |       8 |
+| utf8_estonian_ci         | utf8     | 198 |         | Yes      |       8 |
+| utf8_spanish_ci          | utf8     | 199 |         | Yes      |       8 |
+| utf8_swedish_ci          | utf8     | 200 |         | Yes      |       8 |
+| utf8_turkish_ci          | utf8     | 201 |         | Yes      |       8 |
+| utf8_czech_ci            | utf8     | 202 |         | Yes      |       8 |
+| utf8_danish_ci           | utf8     | 203 |         | Yes      |       8 |
+| utf8_lithuanian_ci       | utf8     | 204 |         | Yes      |       8 |
+| utf8_slovak_ci           | utf8     | 205 |         | Yes      |       8 |
+| utf8_spanish2_ci         | utf8     | 206 |         | Yes      |       8 |
+| utf8_roman_ci            | utf8     | 207 |         | Yes      |       8 |
+| utf8_persian_ci          | utf8     | 208 |         | Yes      |       8 |
+| utf8_esperanto_ci        | utf8     | 209 |         | Yes      |       8 |
+| utf8_hungarian_ci        | utf8     | 210 |         | Yes      |       8 |
+| utf8_sinhala_ci          | utf8     | 211 |         | Yes      |       8 |
+| utf8_general_mysql500_ci | utf8     | 223 |         | Yes      |       1 |
+| ucs2_general_ci          | ucs2     |  35 | Yes     | Yes      |       1 |
+| ucs2_bin                 | ucs2     |  90 |         | Yes      |       1 |
+| ucs2_unicode_ci          | ucs2     | 128 |         | Yes      |       8 |
+| ucs2_icelandic_ci        | ucs2     | 129 |         | Yes      |       8 |
+| ucs2_latvian_ci          | ucs2     | 130 |         | Yes      |       8 |
+| ucs2_romanian_ci         | ucs2     | 131 |         | Yes      |       8 |
+| ucs2_slovenian_ci        | ucs2     | 132 |         | Yes      |       8 |
+| ucs2_polish_ci           | ucs2     | 133 |         | Yes      |       8 |
+| ucs2_estonian_ci         | ucs2     | 134 |         | Yes      |       8 |
+| ucs2_spanish_ci          | ucs2     | 135 |         | Yes      |       8 |
+| ucs2_swedish_ci          | ucs2     | 136 |         | Yes      |       8 |
+| ucs2_turkish_ci          | ucs2     | 137 |         | Yes      |       8 |
+| ucs2_czech_ci            | ucs2     | 138 |         | Yes      |       8 |
+| ucs2_danish_ci           | ucs2     | 139 |         | Yes      |       8 |
+| ucs2_lithuanian_ci       | ucs2     | 140 |         | Yes      |       8 |
+| ucs2_slovak_ci           | ucs2     | 141 |         | Yes      |       8 |
+| ucs2_spanish2_ci         | ucs2     | 142 |         | Yes      |       8 |
+| ucs2_roman_ci            | ucs2     | 143 |         | Yes      |       8 |
+| ucs2_persian_ci          | ucs2     | 144 |         | Yes      |       8 |
+| ucs2_esperanto_ci        | ucs2     | 145 |         | Yes      |       8 |
+| ucs2_hungarian_ci        | ucs2     | 146 |         | Yes      |       8 |
+| ucs2_sinhala_ci          | ucs2     | 147 |         | Yes      |       8 |
+| ucs2_general_mysql500_ci | ucs2     | 159 |         | Yes      |       1 |
+| cp866_general_ci         | cp866    |  36 | Yes     | Yes      |       1 |
+| cp866_bin                | cp866    |  68 |         | Yes      |       1 |
+| keybcs2_general_ci       | keybcs2  |  37 | Yes     | Yes      |       1 |
+| keybcs2_bin              | keybcs2  |  73 |         | Yes      |       1 |
+| macce_general_ci         | macce    |  38 | Yes     | Yes      |       1 |
+| macce_bin                | macce    |  43 |         | Yes      |       1 |
+| macroman_general_ci      | macroman |  39 | Yes     | Yes      |       1 |
+| macroman_bin             | macroman |  53 |         | Yes      |       1 |
+| cp852_general_ci         | cp852    |  40 | Yes     | Yes      |       1 |
+| cp852_bin                | cp852    |  81 |         | Yes      |       1 |
+| latin7_estonian_cs       | latin7   |  20 |         | Yes      |       1 |
+| latin7_general_ci        | latin7   |  41 | Yes     | Yes      |       1 |
+| latin7_general_cs        | latin7   |  42 |         | Yes      |       1 |
+| latin7_bin               | latin7   |  79 |         | Yes      |       1 |
+| utf8mb4_general_ci       | utf8mb4  |  45 | Yes     | Yes      |       1 |
+| utf8mb4_bin              | utf8mb4  |  46 |         | Yes      |       1 |
+| utf8mb4_unicode_ci       | utf8mb4  | 224 |         | Yes      |       8 |
+| utf8mb4_icelandic_ci     | utf8mb4  | 225 |         | Yes      |       8 |
+| utf8mb4_latvian_ci       | utf8mb4  | 226 |         | Yes      |       8 |
+| utf8mb4_romanian_ci      | utf8mb4  | 227 |         | Yes      |       8 |
+| utf8mb4_slovenian_ci     | utf8mb4  | 228 |         | Yes      |       8 |
+| utf8mb4_polish_ci        | utf8mb4  | 229 |         | Yes      |       8 |
+| utf8mb4_estonian_ci      | utf8mb4  | 230 |         | Yes      |       8 |
+| utf8mb4_spanish_ci       | utf8mb4  | 231 |         | Yes      |       8 |
+| utf8mb4_swedish_ci       | utf8mb4  | 232 |         | Yes      |       8 |
+| utf8mb4_turkish_ci       | utf8mb4  | 233 |         | Yes      |       8 |
+| utf8mb4_czech_ci         | utf8mb4  | 234 |         | Yes      |       8 |
+| utf8mb4_danish_ci        | utf8mb4  | 235 |         | Yes      |       8 |
+| utf8mb4_lithuanian_ci    | utf8mb4  | 236 |         | Yes      |       8 |
+| utf8mb4_slovak_ci        | utf8mb4  | 237 |         | Yes      |       8 |
+| utf8mb4_spanish2_ci      | utf8mb4  | 238 |         | Yes      |       8 |
+| utf8mb4_roman_ci         | utf8mb4  | 239 |         | Yes      |       8 |
+| utf8mb4_persian_ci       | utf8mb4  | 240 |         | Yes      |       8 |
+| utf8mb4_esperanto_ci     | utf8mb4  | 241 |         | Yes      |       8 |
+| utf8mb4_hungarian_ci     | utf8mb4  | 242 |         | Yes      |       8 |
+| utf8mb4_sinhala_ci       | utf8mb4  | 243 |         | Yes      |       8 |
+| cp1251_bulgarian_ci      | cp1251   |  14 |         | Yes      |       1 |
+| cp1251_ukrainian_ci      | cp1251   |  23 |         | Yes      |       1 |
+| cp1251_bin               | cp1251   |  50 |         | Yes      |       1 |
+| cp1251_general_ci        | cp1251   |  51 | Yes     | Yes      |       1 |
+| cp1251_general_cs        | cp1251   |  52 |         | Yes      |       1 |
+| utf16_general_ci         | utf16    |  54 | Yes     | Yes      |       1 |
+| utf16_bin                | utf16    |  55 |         | Yes      |       1 |
+| utf16_unicode_ci         | utf16    | 101 |         | Yes      |       8 |
+| utf16_icelandic_ci       | utf16    | 102 |         | Yes      |       8 |
+| utf16_latvian_ci         | utf16    | 103 |         | Yes      |       8 |
+| utf16_romanian_ci        | utf16    | 104 |         | Yes      |       8 |
+| utf16_slovenian_ci       | utf16    | 105 |         | Yes      |       8 |
+| utf16_polish_ci          | utf16    | 106 |         | Yes      |       8 |
+| utf16_estonian_ci        | utf16    | 107 |         | Yes      |       8 |
+| utf16_spanish_ci         | utf16    | 108 |         | Yes      |       8 |
+| utf16_swedish_ci         | utf16    | 109 |         | Yes      |       8 |
+| utf16_turkish_ci         | utf16    | 110 |         | Yes      |       8 |
+| utf16_czech_ci           | utf16    | 111 |         | Yes      |       8 |
+| utf16_danish_ci          | utf16    | 112 |         | Yes      |       8 |
+| utf16_lithuanian_ci      | utf16    | 113 |         | Yes      |       8 |
+| utf16_slovak_ci          | utf16    | 114 |         | Yes      |       8 |
+| utf16_spanish2_ci        | utf16    | 115 |         | Yes      |       8 |
+| utf16_roman_ci           | utf16    | 116 |         | Yes      |       8 |
+| utf16_persian_ci         | utf16    | 117 |         | Yes      |       8 |
+| utf16_esperanto_ci       | utf16    | 118 |         | Yes      |       8 |
+| utf16_hungarian_ci       | utf16    | 119 |         | Yes      |       8 |
+| utf16_sinhala_ci         | utf16    | 120 |         | Yes      |       8 |
+| cp1256_general_ci        | cp1256   |  57 | Yes     | Yes      |       1 |
+| cp1256_bin               | cp1256   |  67 |         | Yes      |       1 |
+| cp1257_lithuanian_ci     | cp1257   |  29 |         | Yes      |       1 |
+| cp1257_bin               | cp1257   |  58 |         | Yes      |       1 |
+| cp1257_general_ci        | cp1257   |  59 | Yes     | Yes      |       1 |
+| utf32_general_ci         | utf32    |  60 | Yes     | Yes      |       1 |
+| utf32_bin                | utf32    |  61 |         | Yes      |       1 |
+| utf32_unicode_ci         | utf32    | 160 |         | Yes      |       8 |
+| utf32_icelandic_ci       | utf32    | 161 |         | Yes      |       8 |
+| utf32_latvian_ci         | utf32    | 162 |         | Yes      |       8 |
+| utf32_romanian_ci        | utf32    | 163 |         | Yes      |       8 |
+| utf32_slovenian_ci       | utf32    | 164 |         | Yes      |       8 |
+| utf32_polish_ci          | utf32    | 165 |         | Yes      |       8 |
+| utf32_estonian_ci        | utf32    | 166 |         | Yes      |       8 |
+| utf32_spanish_ci         | utf32    | 167 |         | Yes      |       8 |
+| utf32_swedish_ci         | utf32    | 168 |         | Yes      |       8 |
+| utf32_turkish_ci         | utf32    | 169 |         | Yes      |       8 |
+| utf32_czech_ci           | utf32    | 170 |         | Yes      |       8 |
+| utf32_danish_ci          | utf32    | 171 |         | Yes      |       8 |
+| utf32_lithuanian_ci      | utf32    | 172 |         | Yes      |       8 |
+| utf32_slovak_ci          | utf32    | 173 |         | Yes      |       8 |
+| utf32_spanish2_ci        | utf32    | 174 |         | Yes      |       8 |
+| utf32_roman_ci           | utf32    | 175 |         | Yes      |       8 |
+| utf32_persian_ci         | utf32    | 176 |         | Yes      |       8 |
+| utf32_esperanto_ci       | utf32    | 177 |         | Yes      |       8 |
+| utf32_hungarian_ci       | utf32    | 178 |         | Yes      |       8 |
+| utf32_sinhala_ci         | utf32    | 179 |         | Yes      |       8 |
+| binary                   | binary   |  63 | Yes     | Yes      |       1 |
+| geostd8_general_ci       | geostd8  |  92 | Yes     | Yes      |       1 |
+| geostd8_bin              | geostd8  |  93 |         | Yes      |       1 |
+| cp932_japanese_ci        | cp932    |  95 | Yes     | Yes      |       1 |
+| cp932_bin                | cp932    |  96 |         | Yes      |       1 |
+| eucjpms_japanese_ci      | eucjpms  |  97 | Yes     | Yes      |       1 |
+| eucjpms_bin              | eucjpms  |  98 |         | Yes      |       1 |
++--------------------------+----------+-----+---------+----------+---------+
+197 rows in set (0.00 sec)
+
+##mysql的SQL模型：
+违反了SQL规定时进行SQL的模型设置
+mysql觉的mysql模型：
+	1. ANSI QUOTES
+	2. IGNORE_SPACE
+	3. STRICT_ALL_TABLES
+	4. STRICT_TRANS_TABLES
+	5. TRADITIONAL
+mysql> show global variables like 'sql_mode'; #查看服务器模型
++---------------+-------+
+| Variable_name | Value |
++---------------+-------+
+| sql_mode      |       |
++---------------+-------+
+1 row in set (0.00 sec)
+
+MYSQL服务器变量：
+	作用域：
+	1. 全局变量 #服务一启动时启动，show global variables; 
+	2. 会话变量  #用户连入mysql时设置的变量，当连接断掉时会话变量也会断掉, show [session] variables;
+#注意：全局变量和会话变量类似/etc/my.cnf和~/.my.cnf，后者可覆盖前者
+生效时间分为两类：
+	动态：可即时修改，即时生效。
+	静态：写在配置文件中，有的不能写在配置文件时通过参数传递给mysqld或mysql_safe
+动态调整参数的生效方式：
+	全局变量：对当前会话无效，只对新建立会话生效，类似/etc/profile一样，重新建立shell才生效
+	会话变量：即时生效，但只对当前会话有效。会话断掉即失效。
+#注：默认会话变量从全局变量继承的
+
+服务器变量：@@变量名
+	显示：select
+	设定：set global|session 变量名='value'
+
+
+mysql> select  @@global.sql_mode; #查看全局变量mysql的mode
++-------------------+
+| @@global.sql_mode |
++-------------------+
+|                   |
++-------------------+
+1 row in set (0.00 sec)
+mysql> set global sql_mode='strict_all_tables'; #设置全局变量mode
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> select @@global.sql_mode; 查看全局变量mode
++-------------------+
+| @@global.sql_mode |
++-------------------+
+| STRICT_ALL_TABLES |
++-------------------+
+1 row in set (0.00 sec)
+mysql> select @@sql_mode;
++------------+
+| @@sql_mode |
++------------+
+|            |
++------------+
+1 row in set (0.00 sec)
+#注：全局变量只对下次登入时生效，对当前会话不生效。局部变量对当前会话生效，会话断掉时失效。
+
 
 
 
