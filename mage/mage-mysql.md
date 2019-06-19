@@ -908,7 +908,156 @@ mysql> select @@sql_mode;
 1 row in set (0.00 sec)
 #注：全局变量只对下次登入时生效，对当前会话不生效。局部变量对当前会话生效，会话断掉时失效。
 
+#第六节：MYSQL管理表和索引
+#新建数据库：
+help create database #获取帮助信息
+mysql> create schema students character set 'utf8' collate utf8_general_ci;
+Query OK, 1 row affected (0.49 sec)
+alter database  #修改数据库
+drop database  #删除数据库
+#新建表：
+1. 直接定义一张空表
+2. 从其它表中查询出数据，并以之创建新表
+3. 以其它表为模板创建一个空表
+help create table  #获取帮助信息
+create table courses(CID TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,Couse VARCHAR(50) NOT NULL，Age TINYINT,PRIMARY KEY(CID),UNIQUE KEY(Course),INDEX(Age)); #另外一种设立主键方法
+#键也称为约束，可用作索引，属于特殊索引（有特殊限定）：是BTree结构，另外一种结构为HASH
+#第一种创建表的方法
+mysql> create table courses(CID TINYINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,Couse VARCHAR(50) NOT NULL); #新建表
+Query OK, 0 rows affected (0.20 sec)
+mysql> show table status from students like 'courses'\G; #查看表状态
+*************************** 1. row ***************************
+           Name: courses
+         Engine: InnoDB #不指定存储引擎默认从数据库继承
+        Version: 10
+     Row_format: Compact
+           Rows: 0
+ Avg_row_length: 0
+    Data_length: 16384
+Max_data_length: 0
+   Index_length: 0
+      Data_free: 0
+ Auto_increment: 1
+    Create_time: 2019-06-19 22:31:48
+    Update_time: NULL
+     Check_time: NULL
+      Collation: utf8_general_ci
+       Checksum: NULL
+ Create_options: 
+        Comment: 
+1 row in set (0.00 sec)
+mysql> drop table courses; #删除表
+Query OK, 0 rows affected (0.02 sec)
 
+mysql> create table courses(CID TINYINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,Couse VARCHAR(50) NOT NULL)ENGINE MyISAM; #新建表并设立存储引擎MyISAM
+Query OK, 0 rows affected (0.04 sec)
+mysql> show table status like 'courses'\G';
+*************************** 1. row ***************************
+           Name: courses
+         Engine: MyISAM #MyISAM存储引擎
+        Version: 10
+     Row_format: Dynamic
+           Rows: 0
+ Avg_row_length: 0
+    Data_length: 0
+Max_data_length: 281474976710655
+   Index_length: 1024
+      Data_free: 0
+ Auto_increment: 1
+    Create_time: 2019-06-19 22:34:32
+    Update_time: 2019-06-19 22:34:32
+     Check_time: NULL
+      Collation: utf8_general_ci
+       Checksum: NULL
+ Create_options: 
+        Comment: 
+1 row in set (0.00 sec)
+mysql> insert into courses (Couse) value ('hamagong'),('pixiejianfa'),('kuihuabaodian');
+Query OK, 3 rows affected (0.00 sec)
+Records: 3  Duplicates: 0  Warnings: 0
+mysql> select * from courses;
++-----+---------------+
+| CID | Couse         |
++-----+---------------+
+|   1 | hamagong      |
+|   2 | pixiejianfa   |
+|   3 | kuihuabaodian |
++-----+---------------+
+3 rows in set (0.00 sec)
+
+mysql> show index from courses; #显示表的索引
++---------+------------+----------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+| Table   | Non_unique | Key_name | Seq_in_index | Column_name | Collation | Cardinality | Sub_part | Packed | Null | Index_type | Comment | Index_comment |
++---------+------------+----------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+| courses |          0 | PRIMARY  |            1 | CID         | A         |           3 |     NULL | NULL   |      | BTREE      |         |               |
++---------+------------+----------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+                                                  #CID为索引
+1 row in set (0.00 sec)  
+#第二种创建表的方法
+mysql> create table testcourses select * from courses where CID <= 3;
+Query OK, 3 rows affected (0.33 sec) #复制表
+mysql> desc testcourses; #通过查询新建的表表结构也会发生改变
++-------+---------------------+------+-----+---------+-------+
+| Field | Type                | Null | Key | Default | Extra |
++-------+---------------------+------+-----+---------+-------+
+| CID   | tinyint(3) unsigned | NO   |     | 0       |       |
+| Couse | varchar(50)         | NO   |     | NULL    |       |
++-------+---------------------+------+-----+---------+-------+
+2 rows in set (0.00 sec)
+
+mysql> desc courses;
++-------+---------------------+------+-----+---------+----------------+
+| Field | Type                | Null | Key | Default | Extra          |
++-------+---------------------+------+-----+---------+----------------+
+| CID   | tinyint(3) unsigned | NO   | PRI | NULL    | auto_increment |
+| Couse | varchar(50)         | NO   |     | NULL    |                |
++-------+---------------------+------+-----+---------+----------------+
+2 rows in set (0.00 sec)
+#第三种创建表的方法
+mysql> create table test like courses; #复制表的结构为空表
+Query OK, 0 rows affected (0.04 sec)
+
+mysql> desc courses;
++-------+---------------------+------+-----+---------+----------------+
+| Field | Type                | Null | Key | Default | Extra          |
++-------+---------------------+------+-----+---------+----------------+
+| CID   | tinyint(3) unsigned | NO   | PRI | NULL    | auto_increment |
+| Couse | varchar(50)         | NO   |     | NULL    |                |
++-------+---------------------+------+-----+---------+----------------+
+2 rows in set (0.00 sec)
+
+mysql> desc test;
++-------+---------------------+------+-----+---------+----------------+
+| Field | Type                | Null | Key | Default | Extra          |
++-------+---------------------+------+-----+---------+----------------+
+| CID   | tinyint(3) unsigned | NO   | PRI | NULL    | auto_increment |
+| Couse | varchar(50)         | NO   |     | NULL    |                |
++-------+---------------------+------+-----+---------+----------------+
+2 rows in set (0.01 sec)
+
+mysql> insert into test select * from courses; #复制表数据
+Query OK, 3 rows affected (0.00 sec)
+Records: 3  Duplicates: 0  Warnings: 0
+
+mysql> select * from courses;
++-----+---------------+
+| CID | Couse         |
++-----+---------------+
+|   1 | hamagong      |
+|   2 | pixiejianfa   |
+|   3 | kuihuabaodian |
++-----+---------------+
+3 rows in set (0.00 sec)
+
+mysql> select * from test;
++-----+---------------+
+| CID | Couse         |
++-----+---------------+
+|   1 | hamagong      |
+|   2 | pixiejianfa   |
+|   3 | kuihuabaodian |
++-----+---------------+
+3 rows in set (0.00 sec)
 
 
 </pre>
