@@ -135,6 +135,7 @@ vim httpd.conf;配置文件中有#号的都为注释,#号后面没有空格的�
 具体指令说明可以访问官网：httpd.apache.org查看帮助手册。也可以在系统中安装手册:yum install -y httpd-manual;重启httpd服务即可访问http://localhost/manual
 属性配置：
 ServerToken OS #在错误页显示错误信息，生产环境应当是关闭的
+ServerSignature Off #关闭服务器显示信息
 ServerRoot "/etc/httpd" #httpd服务的根目录
 pidfile run/httpd.pid #pid目录
 timeout 120 #tcp超时时间
@@ -1361,6 +1362,7 @@ Configuring for:
 PHP Api Version:         20100412
 Zend Module Api No:      20100525
 Zend Extension Api No:   220100525
+  ##Cannot find autoconf. Please check your autoconf installation and the $PHP_AUTOCONF environment vari  #如何错错安装yum install autoconf
 #编译xcache:
 [root@Linux-node5-master-mysql xcache-3.1.2]# ./configure --enable-xcache --with-php-config=/usr/local/php/bin/php-config
 注：

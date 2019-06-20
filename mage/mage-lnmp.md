@@ -377,7 +377,7 @@ opcache.fast_shutdown=1
 opcache.enable_cli=1
 --------
 #php5.6开启opcache不用单独编译zendopcache,只需要编译php时开启 --enable-opcache即可
-例：./configure --prefix=/usr/local/php-5.4.24 --with-mysql=/usr/local/mysql --with-openssl --with-mysqli=/usr/local/mysql/bin/mysql_config --enable-mbstring --with-freetype-dir --with-jpeg-dir --with-png-dir --with-zlib --with-libxml-dir=/usr --enable-xml --enable-sockets --enable-fpm --with-mcrypt --with-config-file-path=/etc --with-config-file-scan-dir=/etc/php.d --with-bz2 --enable-opcache
+例：./configure --prefix=/usr/local/php-5.4.24 --with-mysql=/usr/local/mysql --with-openssl --with-mysqli=/usr/local/mysql/bin/mysql_config --enable-mbstring --with-freetype-dir --with-jpeg-dir --with-png-dir --with-zlib --with-libxml-dir=/usr --enable-xml --enable-sockets --enable-fpm --with-mcrypt --with-config-file-path=/etc --with-config-file-scan-dir=/etc/php.d --with-bz2 --enable-opcache  #如果显示mysql lib报错时，可把--with-mysqli=/usr/local/mysql/bin/mysql_config的=/usr/local/mysql/bin/mysql_config去掉
 [root@lnmp zendopcache-7.0.5]# make && make install
 --------
  vi  /etc/php.ini

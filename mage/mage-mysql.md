@@ -1,4 +1,4 @@
-#Mysql数据库
+﻿#Mysql数据库
 
 <pre>
 #第一节：关系型数据体系结构
@@ -1058,6 +1058,143 @@ mysql> select * from test;
 |   3 | kuihuabaodian |
 +-----+---------------+
 3 rows in set (0.00 sec)
+#ALTER修改表
+help alter table #查看修改帮助
+BTREE索引和HASH索引对表查询优化有很大影响
+mysql> create table student(SID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY ,Name varchar(30) NOT NULL,CID TINYINT unsigned NOT NULL);
+Query OK, 0 rows affected (0.33 sec)
+mysql> desc courses;
++-------+---------------------+------+-----+---------+----------------+
+| Field | Type                | Null | Key | Default | Extra          |
++-------+---------------------+------+-----+---------+----------------+
+| CID   | tinyint(3) unsigned | NO   | PRI | NULL    | auto_increment |
+| Couse | varchar(50)         | NO   |     | NULL    |                |
++-------+---------------------+------+-----+---------+----------------+
+2 rows in set (0.00 sec)
+
+mysql> desc student;
++-------+---------------------+------+-----+---------+----------------+
+| Field | Type                | Null | Key | Default | Extra          |
++-------+---------------------+------+-----+---------+----------------+
+| SID   | int(10) unsigned    | NO   | PRI | NULL    | auto_increment |
+| CID   | tinyint(3) unsigned | NO   | MUL | NULL    |                |
+| name  | varchar(30)         | NO   |     | NULL    |                |
++-------+---------------------+------+-----+---------+----------------+
+3 rows in set (0.00 sec)
+mysql> insert into student (Name,CID) values ('zwj',2),('lhc',3);
+mysql> select * from student;
++-----+-----+------+
+| SID | CID | name |
++-----+-----+------+
+|   1 |   2 | zwj  |
+|   2 |   3 | lhc  |
++-----+-----+------+
+2 rows in set (0.00 sec)
+
+mysql> select Name,Couse from courses,student where courses.CID=student.CID;  #多表查询
++------+---------------+
+| Name | Couse         |
++------+---------------+
+| zwj  | pixiejianfa   |
+| lhc  | kuihuabaodian |
++------+---------------+
+2 rows in set (0.01 sec)
+mysql> insert into student (Name,CID) values ('zhangwuji',5); #现在这个student表没有外键约束所以可以插入主表中没有的CID
+Query OK, 1 row affected (0.05 sec)
+#建立外键：
+mysql> alter table student add FOREIGN KEY(CID) REFERENCES courses(CID) ;  #插入外键时报错，原因在于外键不允许在InnoDB外的存储引擎上使用
+ERROR 1005 (HY000): Can't create table 'students.#sql-63d8_9' (errno: 150)
+mysql> show table status like 'student'\G;
+*************************** 1. row ***************************
+           Name: student
+         Engine: InnoDB
+        Version: 10
+     Row_format: Compact
+           Rows: 3
+ Avg_row_length: 5461
+    Data_length: 16384
+Max_data_length: 0
+   Index_length: 0
+      Data_free: 0
+ Auto_increment: NULL
+    Create_time: 2019-06-20 08:56:54
+    Update_time: NULL
+     Check_time: NULL
+      Collation: utf8_general_ci
+       Checksum: NULL
+ Create_options: 
+        Comment: 
+1 row in set (0.00 sec)
+
+ERROR: 
+No query specified
+
+mysql> show table status like 'courses'\G;
+*************************** 1. row ***************************
+           Name: courses
+         Engine: MyISAM   #因为主键表是MyISAM存储引擎的
+        Version: 10
+     Row_format: Dynamic
+           Rows: 3
+ Avg_row_length: 20
+    Data_length: 60
+Max_data_length: 281474976710655
+   Index_length: 2048
+      Data_free: 0
+ Auto_increment: 4
+    Create_time: 2019-06-19 22:34:32
+    Update_time: 2019-06-19 22:45:38
+     Check_time: NULL
+      Collation: utf8_general_ci
+       Checksum: NULL
+ Create_options: 
+        Comment: 
+1 row in set (0.00 sec)
+
+ERROR: 
+No query specified
+mysql> alter table courses ENGINE=InnoDB; #更改表存储引擎
+Query OK, 3 rows affected (0.22 sec)
+Records: 3  Duplicates: 0  Warnings: 0
+mysql> alter table student add FOREIGN KEY foreign_id (CID) REFERENCES courses (CID) ; 
+Query OK, 2 rows affected (0.51 sec)
+Records: 2  Duplicates: 0  Warnings: 0
+mysql> insert into student (Name,CID) values ('zhangwuji',6); #此时报错，因为有外键限制
+ERROR 1452 (23000): Cannot add or update a child row: a foreign key constraint fails (`students`.`student`, CONSTRAINT `student_ibfk_1` FOREIGN KEY (`CID`) REFERENCES `courses` (`CID`))
+mysql> insert into student (Name,CID) values ('zhangwuji',1); #这个主键有，所以成功
+Query OK, 1 row affected (0.06 sec)
+
+#索引：
+索引只能增加、查询、删除，不能修改索引。
+mysql> show indexes from student;
++---------+------------+------------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+| Table   | Non_unique | Key_name   | Seq_in_index | Column_name | Collation | Cardinality | Sub_part | Packed | Null | Index_type | Comment | Index_comment |
++---------+------------+------------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+| student |          0 | PRIMARY    |            1 | SID         | A         |           2 |     NULL | NULL   |      | BTREE      |         |               |
+| student |          1 | foreign_id |            1 | CID         | A         |           2 |     NULL | NULL   |      | BTREE      |         |               |
++---------+------------+------------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+2 rows in set (0.00 sec)
+mysql> create index name_on_student on student (name) using btree; #新建索引并使用btree索引，默认是btree索引，可以省略不写
+Query OK, 0 rows affected (0.23 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+mysql> show indexes from student;
++---------+------------+-----------------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+| Table   | Non_unique | Key_name        | Seq_in_index | Column_name | Collation | Cardinality | Sub_part | Packed | Null | Index_type | Comment | Index_comment |
++---------+------------+-----------------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+| student |          0 | PRIMARY         |            1 | SID         | A         |           2 |     NULL | NULL   |      | BTREE      |         |               |
+| student |          1 | foreign_id      |            1 | CID         | A         |           2 |     NULL | NULL   |      | BTREE      |         |               |
+| student |          1 | name_on_student |            1 | name        | A         |           2 |     NULL | NULL   |      | BTREE      |         |               |
++---------+------------+-----------------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+3 rows in set (0.00 sec)
+mysql> drop index name_on_student on student; #删除索引
+Query OK, 0 rows affected (0.27 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+mysql> create index name_on_student on student (name(5) desc) using btree; #新建索引并且只引用从左到右五位，后面的不参加索引，可能节约资源有很大帮助，desc是降序，asc是降序。
+Query OK, 0 rows affected (0.09 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+
 
 
 </pre>
