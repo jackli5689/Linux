@@ -1,4 +1,4 @@
-﻿#Mysql数据库
+#Mysql数据库
 
 <pre>
 #第一节：关系型数据体系结构
@@ -1193,6 +1193,78 @@ Records: 0  Duplicates: 0  Warnings: 0
 mysql> create index name_on_student on student (name(5) desc) using btree; #新建索引并且只引用从左到右五位，后面的不参加索引，可能节约资源有很大帮助，desc是降序，asc是降序。
 Query OK, 0 rows affected (0.09 sec)
 Records: 0  Duplicates: 0  Warnings: 0
+
+#第七节：单表查询、多表查询和子查询
+查询语句类型：
+	1. 简单查询
+	2. 多表查询
+	3. 子查询
+select语句：投影、选择、别名
+SELECT DISTINCT Gender FROM students;  #Gender中有好多M和F行，这条语句查出来结果只显示两行，一行为M一行为F，只显示不同行的,去重
+
+#简单查询
+FROM子句：要查询的关系，可以是表、多个表、其它SELECT语句
+WHERE子句：布尔关系表达式，判断是否的，=、>、>=、<、<=、<>|!=、<=>  #<=>是对空值时运行比较的，而<>|!=是对所有数据进行比较的
+逻辑关系：AND,OR,NOT，BETWEEN，LIKE(_单个字符，%任意字符),REGEXP|RLIKE(正则表达式)，IN，IS NULL|NOT NULL,AS，LIMIT
+排序：ORDER BY field_name {ASC|DESC} #默认是ASC升序
+聚合：AVG(age),MAX(age),MIN(age),SUM(age),COUNT(age),
+分组：GROUP BY，，HAVING(对使用分组的语句最后再进行一次筛选)
+
+##SELECT语句样例：
+SELECT Name,Age FROM students WHERE Age<=25 AND Age>=20; #查询20到25的用户
+SELECT Name,Age FROM students WHERE Age BETWEEN 20 AND 25; #查询20到25之间
+SELECT Name FROM students WHERE Name LIKE '%ing%' #模糊搜索
+SELECT Name FROM students WHERE Name RLIKE '^[XP].*$'; #以正则表达式模糊搜索
+SELECT Name FROM students WHERE Age IN (18,20,25); #查找年龄为18，20，25的用户
+SELECT Name FROM students WHERE CID2 IS NULL; #查询课程2为家的用户
+SELECT Name FROM students WHERE CID2 IS NULL ORDER BY Name DESC; #降序排序
+SELECT Name AS Student_Name FROM students; #将显示的字段Name重合名为Student_Name
+SELECT Name FROM students LIMIT 2; #显示前两行
+SELECT Name FROM students LIMIT 2，3;  #从最前面偏移两个，第三个开始显示3行
+SELECT Avg(Age) FROM students GROUP BY Gender; #先对Gender进行分组，然后对每个分组进行求平均值
+SELECT COUNT(CID1) AS Persons,CID1 FROM students GROUP BY CID1 HAVING Persons>=2; #查找分组CID1课程的每门人数，并最后使用HAVING进行筛选大于等于2个人的，也可以在关联查询中使用别名进行查询
+
+mysql> SELECT 2+1;
++-----+
+| 2+1 |
++-----+
+|   3 |
++-----+
+mysql> SELECT 2+1 AS sum;
++-----+
+| sum |
++-----+
+|   3 |
++-----+
+
+#复合查询或多表查询：
+多表查询：
+	连接：
+		1. 交叉连接：笛卡尔乘积（不会这样使用）
+		2. 自然连接：建立主外键关系进行查询，有的才显示，没有的不显示
+		3. 外连接：有的显示值，没有的显示NULL
+			1. 左外连接：... LEFT JOIN ... ON ... #省略号依次为左表，右表，条件，以左表为基准
+			2. 右外连接：... RIGHT JOIN ... ON ...#省略号依次为左表，右表，条件，在名表为基准
+		4. 自连接：对同一张表当作两张表进行查询
+
+SELECT s.Name,c.Cname FROM students AS s,courses AS c WHERE s.CID1=c.CID; #自然连接并给表取别名
+SELEECT s.Name,c.Cname FROM students AS s LEFT JOIN courses AS c ON s.CID1=c.CID;  #左外连接，以左表为基准，右表有值的显示，无值的也显示，显示为NULL
+SELEECT s.Name,c.Cname FROM students AS s RIGHT JOIN courses AS c ON s.CID1=c.CID;  #右外连接，以右表为基准，左表有值的显示，无值的也显示，显示为NULL
+SELECT c.Name AS student,s.Name AS tearcher FROM students AS c,student AS c WHERE c.TID=s.SID; #自连接
+
+#子查询：
+子查询：比较操作中使用时只能返回单个值
+IN():在IN中使用子查询
+在FROM中使用子查询
+例：
+SELECT Name FROM students WHERE Age > (SELECT AVG(Age) FROM students); #子查询，查询年龄大于平均年龄的用户
+SELECT Name FROM students WHERE Age IN (SELECT Age FROM students);
+SELECT Name,Age FROM (SELECT Name,Age FROM students) AS t WHERE t.Age >= 20; #将子查询看作一张临时表
+
+#联合查询：UNION关键字
+（SELECT Name,Age FROM students) UNION (SELECT Tname,Age FROM tutors); #联合查询
+
+
 
 
 
