@@ -157,7 +157,7 @@ esac
 --------------
 
 nginx配置文件解析：
-process 1 ;表示进程数，cpu密集型的为cpu个数相头，非密集型的为cpu个数的1.5-2倍
+process 1 ;表示进程数，cpu密集型的为cpu个数相等，非密集型的为cpu个数的1.5-2倍
 worker_connections 1024 ;每个工作进程最大请求数
 tcp_nopush或tcp_nodelay off ;表示关闭http的nagle算法
 对于nginx而言，每一个server断为一个虚拟主机;
@@ -170,7 +170,7 @@ location = URI {}： #只对当前的URI生效，不包括子目录
 location ~ URI {}： #精确匹配，区分大小写，URI可以为正则表达式
 location ~* URI {}： #精确匹配，不区分大小写，URI可以为正则表达式
 location ^~ URI {}： #不使用正则表达式
-= ^~ ~*,~ URI #4个优先级顺序
+=,^~，~*|~,/ URI #4个优先级顺序
 location / {
 	allow 192.168.1.1;
 	deny all; 
