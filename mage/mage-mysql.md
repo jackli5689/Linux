@@ -1794,6 +1794,603 @@ MEMORY：内存存储引擎
 BLACKHOLE：级联复制，多级复制时再说
 #不建议使用混合存储引擎，如果以后对事务进行rollback时MYISAM不支持，会出问题。
 
+#第十四节：MYSQL备份和还原
+RAID1,RAID10：保证硬件损坏而业务不会中止
+备份是为了数据不丢失，跟硬件RAID是两个不同的概念
+#备份类型：
+	热备份、温备份、冷备份：
+		1. 热备份：读写不受影响 
+		2. 温备份：可读不可写
+		3. 冷备份：离线备份，读写操作均中止
+	物理备份和逻辑备份：
+		1. 物理备份：复制数据文件
+		2. 逻辑备份：将数据导出至文本文件中
+	完全备份、增量备份、差异备份：
+		1. 完全备份：备份完全数据
+		2. 增量备份：仅备份上次完全备份或增量备份以后变化的数据
+		3. 差异备份：仅备份上次完全备份以后变化的数据
+
+#还原：
+	要进行还原预演。不然到还原的时候还原会出问题
+
+备份什么：
+	数据、配置文件、二进制日志、事务日志
+
+热备份：
+	MYISAM:在线热备份几乎不可能，除非借助LVM快照进行热备份，否则最好的是温备份，用读锁锁定备份的所有表
+	InnoDB:xtrabackup,mysqldump来进行热备份
+
+MYSQL可以借助从服务器来进行温备份。从服务器停掉从服务器进程，此时从服务器只能读，就可进行温备份
+
+物理备份：速度快
+逻辑备份：速度慢、丢失浮点数精度，方便使用文本处理工具直接对其处理、可移植能力强;
+
+备份策略：完全+增量;完全+差异
+
+MySQ备份工具：
+	1. mysqldump:逻辑备份工具，MyISAM(温备份)，InnoDB(热备份)
+	2. mysqlhotcopy：物理备份工具、温备份
+文件系统备份工具：
+	1. cp:只能实现冷备，基于lv可以实现热备
+	2. lv:逻辑卷的快照功能，几乎热备;
+		mysql>FLUSH TABLES;
+		mysql>LOCK TABLES;
+		创建快照，释放锁，而后复制数据
+		注：基于lv快照来说，对于MyISAM存储引擎来说几乎可以实现热备，但是InnoDB就不行了，因为可能还有部分数据正从事务日志写入数据文件中，所以得监控InnoDB的缓冲区是否全部复制完成。
+第三组备份工具：
+	ibbackup:针对InnoDB存储引擎的商业工具
+	xtrabackup:开源工具
+
+mysqldump备份：
+	1. 先打开一个mysql终端进行锁所有表并刷新所有表：FLUSH TABLES WITH READ LOCK;
+	2. 并对二进制日志进行滚动：FLUSH LOGS;SHOW BINARY LOGS;查看当前的二进制日志是哪个文件，记录稍后备份是截止到哪个二进制日志文件，但这个方式太麻烦，可在备份数据是使用[mysqldump --master-data=2 students > /root/stu-`date +%Y-%m-%d-%H:%M:%S`.sql]命令进行备份，--master-data=2表示记录你备份到二进制日志文件的哪个地方了,从备份的sql文本文件中可查看，下次从提示地方进行备份即可[CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000010', MASTER_LOG_POS=348;
+]。#--master-data=0表示不记录位置，--master-data=1表示记录位置，恢复后直接启动从服务器。
+	2. 再进行备份：mysqldump -uroot -p students > /root/students.sql
+	3. 在另外一个mysql终端进行解锁表：UNLOCK TABLES;
+
+--lock-all-tables #锁定所有表
+--master-data={0|1|2} #记录二进制日志位置 
+--flush-logs #执行二进制日志滚动
+--single-transaction #如果库中的表类型为InnoDB,可使用这个参数备份，会自动锁InnoDB的表，不可与--lock-all-tables一起使用
+--all-databases #备份所有库，命令会自动创建数据库，在还原的时候就不用创建库了
+--databases DB_NAME,DB_NAME #备份指定库，命令会自动创建数据库，在还原的时候就不用创建库了
+--events #备份事件
+--routines #备份存储过程和存储函数
+--triggers #备份触发器
+
+mysqldump --lock-all-tables --master-data=2 students > /root/stu-`date +%Y-%m-%d-%H:%M:%S`.sql
+
+备份策略：周完全+每日增量
+	完全备份：mysqldump --lock-all-tables --master-data=2 students > /root/stu-`date +%Y-%m-%d-%H:%M:%S`.sql
+	增量备份：备份二进制日志文件(flush logs)
+例：
+1. [root@lnmp ~]# mysqldump -uroot -p --flush-logs --master-data=2 --lock-all-tables --all-databases > /root/alldatabases.sql
+2. [root@lnmp ~]# less alldatabases.sql 
+CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000014', MASTER_LOG_POS=107;
+3.mysql> show binary logs;
++------------------+-----------+
+| Log_name         | File_size |
++------------------+-----------+
+| mysql-bin.000012 |       150 |
+| mysql-bin.000013 |       352 |
+| mysql-bin.000014 |       107 |
++------------------+-----------+
+3 rows in set (0.00 sec)
+4. mysql> purge binary logs to 'mysql-bin.000014'; #腾出二进制空间，以后会越来越大，建议先备份老的二进制然后再清理
+
+5. mysql> show binary logs;
++------------------+-----------+
+| Log_name         | File_size |
++------------------+-----------+
+| mysql-bin.000014 |       107 |
++------------------+-----------+
+1 row in set (0.00 sec)
+
+6. mysql> select * from student;
++-----+------+-------+
+| SID | CID  | name  |
++-----+------+-------+
+|   2 |    3 | lhc   |
+|   8 |    1 | tom   |
+|   9 |   10 | jack  |
+|  10 |   11 | candy |
+|  11 |   12 | bob   |
++-----+------+-------+
+5 rows in set (0.00 sec)
+7. mysql> delete from student where CID=3 OR CID=1; #删除两行 
+
+8.mysql> select * from student;
++-----+------+-------+
+| SID | CID  | name  |
++-----+------+-------+
+|   9 |   10 | jack  |
+|  10 |   11 | candy |
+|  11 |   12 | bob   |
++-----+------+-------+
+3 rows in set (0.00 sec)
+mysql> \q  #假如一天过去了，做了删除两行的操作
+
+9. mysql> flush logs; #进行日志滚动
+Query OK, 0 rows affected (0.01 sec)
+
+10. mysql> show master status; #当时的二进制日志
++------------------+----------+--------------+------------------+
+| File             | Position | Binlog_Do_DB | Binlog_Ignore_DB |
++------------------+----------+--------------+------------------+
+| mysql-bin.000015 |      107 |              |                  |
++------------------+----------+--------------+------------------+
+1 row in set (0.00 sec)
+11. mysql> show binary logs;
++------------------+-----------+
+| Log_name         | File_size |
++------------------+-----------+
+| mysql-bin.000014 |       717 | #这个二进制日志就是上一次完全备份后到当前期间的二进制日志
+| mysql-bin.000015 |       107 |
++------------------+-----------+
+2 rows in set (0.00 sec) 
+12. [root@lnmp mydata]# cp mysql-bin.000012 /root/ #备份增量到/root目录下
+13. [root@lnmp mydata]# mysqlbinlog mysql-bin.000014 > /root/mon-incrementa1.sql #或者这样先读出来二进制文件重定向到新建文件进行增量备份也行，12步和13步选其一即可
+14. mysql> insert into student (CID,name) value (88,'ll'); #到第二天操作增加了一行
+Query OK, 1 row affected (0.00 sec)
+15. mysql> select * from student;
++-----+------+-------+
+| SID | CID  | name  |
++-----+------+-------+
+|   9 |   10 | jack  |
+|  10 |   11 | candy |
+|  11 |   12 | bob   |
+|  12 |   88 | ll    |
++-----+------+-------+
+4 rows in set (0.00 sec)
+16. 假如服务器崩溃了或者整个数据库删除了，但是日志文件在
+17. [root@lnmp mydata]# cp mysql-bin.000015 /root #假如日志文件在别的目录
+18. [root@lnmp mydata]# rm -rf ./* #整个数据库删了
+19. [root@lnmp mydata]# killall mysqld #终止mysqld
+20. [root@lnmp mysql]# scripts/mysql_install_db --user=mysql --datadir=/mydata #重新初始化mysql库
+21. [root@lnmp mysql]# service mysql start #启动mysqld服务
+Starting MySQL.. SUCCESS! 
+22. [root@lnmp ~]# mysql -uroot -p < alldatabases.sql  #还原完全备份
+Enter password: 
+23. mysql> select * from student; #先查看表
++-----+------+-------+
+| SID | CID  | name  |
++-----+------+-------+
+|   2 |    3 | lhc   |
+|   8 |    1 | tom   |
+|   9 |   10 | jack  |
+|  10 |   11 | candy |
+|  11 |   12 | bob   |
++-----+------+-------+
+5 rows in set (0.00 sec)
+24. [root@lnmp ~]# mysql -uroot -p < mon-incrementa1.sql  #还原我们的第一次增量数据
+Enter password: 
+25. mysql> select * from  student; #此时还原了我们删除两行的状态，但是我们插入的那行还未还原，我们刚才备份mysql-bin.000015的文件就有插入那行的数据
++-----+------+-------+
+| SID | CID  | name  |
++-----+------+-------+
+|   9 |   10 | jack  |
+|  10 |   11 | candy |
+|  11 |   12 | bob   |
++-----+------+-------+
+3 rows in set (0.00 sec)
+26. [root@lnmp ~]# mysqlbinlog mysql-bin.000015 > temp.sql #生成临时文件
+27. [root@lnmp ~]# mysql -uroot -p < temp.sql  #导入数据库，也可使用mysqlbinlog mysql-bin.000015 | mysql -uroot -p
+Enter password: 
+28. mysql> select * from  student;
++-----+------+-------+
+| SID | CID  | name  |
++-----+------+-------+
+|   9 |   10 | jack  |
+|  10 |   11 | candy |
+|  11 |   12 | bob   |
+|  12 |   88 | ll    |  #已经即时点还原成功
++-----+------+-------+
+4 rows in set (0.00 sec)
+
+---------------mysql备份脚本-------------
+#!/bin/bash  
+#Shell Command For Backup MySQL Database Everyday Automatically By Crontab  
+   
+USER=root  
+PASSWORD="123.com"  
+DATABASE="yzm"  
+HOSTNAME="localhost"  
+   
+WEBMASTER=test@qq.com  
+   
+BACKUP_DIR=/home/backup/mysql/ #备份文件存储路径  
+LOGFILE=/home/backup/mysql/data_backup.log #日记文件路径  
+DATE=`date '+%Y%m%d-%H%M'` #日期格式（作为文件名）  
+DUMPFILE=$DATE.sql #备份文件名  
+ARCHIVE=$DATE.sql.tgz #压缩文件名  
+OPT='--lock-all-tables --flush-logs --master-data=2'
+OPTIONS="-h$HOSTNAME -u$USER -p$PASSWORD $OPT $DATABASE"  
+#mysqldump －help  
+   
+#判断备份文件存储目录是否存在，否则创建该目录  
+if [ ! -d $BACKUP_DIR ] ;  
+then  
+        mkdir -p "$BACKUP_DIR"  
+fi  
+   
+#开始备份之前，将备份信息头写入日记文件  
+echo " " >> $LOGFILE  
+echo " " >> $LOGFILE  
+echo "———————————————–" >> $LOGFILE  
+echo "BACKUP DATE:" $(date +"%y-%m-%d %H:%M:%S") >> $LOGFILE  
+echo "———————————————– " >> $LOGFILE  
+   
+#切换至备份目录  
+cd $BACKUP_DIR  
+#使用mysqldump 命令备份制定数据库，并以格式化的时间戳命名备份文件  
+mysqldump $OPTIONS > $DUMPFILE  
+#判断数据库备份是否成功  
+if [[ $? == 0 ]]; then  
+    #创建备份文件的压缩包  
+    tar czvf $ARCHIVE $DUMPFILE >> $LOGFILE 2>&1  
+    #输入备份成功的消息到日记文件  
+    echo “[$ARCHIVE] Backup Successful!” >> $LOGFILE  
+    #删除原始备份文件，只需保 留数据库备份文件的压缩包即可  
+    rm -f $DUMPFILE  
+else  
+    echo “Database Backup Fail!” >> $LOGFILE  
+fi  
+#输出备份过程结束的提醒消息  
+echo “Backup Process Done
+---------------
+
+
+
+#第十五节：使用LVM快照进行数据备份 
+SET sql_log_bin=0;
+#在数据库导入恢复的时候不应该记录二进制日志文件，会产生大量IO，所以在恢复期间应该关闭记录二进制日志，恢复后开启二进制日志
+mysql -u root -p  #进入mysql终端 
+set sql_log_bin=0; #临时关闭记录二进制日志开关
+source /root/data.sql;  #导入数据库
+set sql_log_bin=1; #临时开启记录二进制日志开关
+逻辑备份：
+	1. 浮点数据丢失精度;
+	2. 备份出的数据更占用存储空间，压缩后可大大节省空间。
+	3. 不适合对大数据库做完全备份。
+#innodb跟myisam同样逻辑备份时的不一样操作
+mysql> flush tables with read lock; #对innodb存储引擎进行加锁
+mysql> show engine innodb status; #这个地方是不一样操作。。。查看innodb存储引擎缓冲区是否还有数据写入，等缓冲区无数据时才可对数据库进行备份
+
+MVCC：REPEATABLE-READ(可重读)时，使用--single-transaction对innoDB可做热备份原因。
+#select INTO OUTFILE跟mysqldump也是裸备份
+#使用SELECT * INTO OUTFILE /tmp/test.txt FROM tb_name [WHERE clause];备份某些表
+#create table tb1 liki tutors; #先访造tutors生成一样的表结构
+#使用LOAD DATA INFILE '/tmp/test.txt INTO TABLE tb_name;#然后恢复备份的某些表
+mysqlbinlog --start-position=605 /mydata/mysql-bin.000001 > /tmp/my.sql #对二进制日志文件进行位置选定导出为sql文件
+truncate table tutor; #清空表数据
+
+
+#几乎热备：LVM
+	快照：snapshot
+	前提：
+		1. 数据文件要在逻辑卷上
+		2. 此逻辑卷所在卷组必须有足够空间使用快照卷
+		3. 数据文件和事务日志要在同一个逻辑卷上
+
+
+如果二进制日志文件跨文件了需要基于开始时间保存
+
+LVM卷进行步骤：
+	1. 打开会话，施加读锁，锁定所有表：
+		mysql> FLUSH TABLES WITH READ LOCK;
+		mysql> FLUSH LOGS;
+	2. 在shell终端上，保存二进制日志文件信息
+		# mysql -u roo -p -e 'SHOW MASTER STATUS \G' >/backup/binlog-info-`date +%Y-%m-%d-%H:%M:%S`.txt
+	3. 创建lvm快照
+		# lvcreate -L 50M -s -p r -n data-snap /dev/myvg/mylv
+	4. 释放锁
+		mysql> UNLOCK TABLES;
+	5. 挂载快照卷，备份
+		# mount /dev/myvg/data-snap /mnt -o ro 
+		# cp /mnt/* /backup/all-database-`date +%Y-%m-%d-%H:%M:%S`/
+	6. 删除LVM快照卷
+		lvremove
+	7. 查看保存的二进制日志文件信息，增量备份数据库目录下二进制日志文件
+		mysqlbinlog --start-datetime='2019-06-23 17:00:00' mysql-bin.000004 mysql-bin.000005 > /backup/binlog01-`date +%Y-%m-%d-%H:%M:%S`.sql
+		注：如果innodb打开了innodb_file_per_table=1，则只需要按需复制数据库文件夹即可，不需要全部复制。
+	8. 如果数据库全部坏了，停掉mysql服务，复制/backup/all-database-`date +%Y-%m-%d-%H:%M:%S`/下的数据库文件[除开旧的二进制文件]到数据库目录下/mydata,并重启服务
+	9. 进入mysql终端，临时关闭二进制日志写入功能SET sql_log_bin=0;，然后导入增量备份数据source /backup/binlog01-`date +%Y-%m-%d-%H:%M:%S`.sql
+	10. 打开二进制日志写入功能SET sql_log_bin=1
+
+例：
+1. mysql> flush tables with read lock;
+Query OK, 0 rows affected (0.01 sec)
+2. mysql> flush logs;
+Query OK, 0 rows affected (0.01 sec)
+3. [root@lnmp ~]# mysql -e 'show master status '> binlog.txt 
+4. [root@lnmp ~]# lvcreate -L 50M -s -p r -n mydata-snap /dev/myvg/mylv
+  Rounding up size to full physical extent 52.00 MiB
+  Logical volume "mydata-snap" created.
+5. mysql> unlock tables; 
+6. [root@lnmp mnt]#  mount /dev/myvg/mydata-snap /mnt && mkdir /backup/alldata -pv && cp -a ./* /backup/alldata/
+Query OK, 0 rows affected (0.00 sec)
+7. [root@lnmp ~]# umount /mnt/
+8. [root@lnmp ~]# lvremove /dev/myvg/mydata-snap 
+Do you really want to remove active logical volume myvg/mydata-snap? [y/n]: y
+  Logical volume "mydata-snap" successfully removed
+9. [root@lnmp alldata]# rm -rf mysql-bin.* #整理完全备份文件
+[root@lnmp alldata]# ls
+ibdata1      ib_logfile1        lnmp.jack.com.pid  mydb   performance_schema  wordpress
+ib_logfile0  lnmp.jack.com.err  lost+found         mysql  test
+10. [root@lnmp mydata]# mysqlbinlog --start-datetime='2019-06-23 18:59:54' mysql-bin.000006 mysql-bin.000007 > /root/a.sql #整理增量文件，时间从之前导出的binlog.txt文件看出
+11. [root@lnmp alldata]# service mysql stop
+Shutting down MySQL.... SUCCESS!
+12. [root@lnmp mydata]# ls
+ibdata1      lnmp.jack.com.err  mysql             mysql-bin.000006  performance_schema
+ib_logfile0  lost+found         mysql-bin.000004  mysql-bin.000007  test
+ib_logfile1  mydb               mysql-bin.000005  mysql-bin.index   wordpress
+13. [root@lnmp mydata]# rm -rf ./* #模拟整个数据库崩溃
+14. [root@lnmp mydata]# cp -a /backup/alldata/* /mydata #复制完全备份文件到数据库目录
+15. [root@lnmp mydata]# service mysql start #可正常启动了,先要在mysql脚本上start()段 加入--skip-networking参数断网启动mysql,防止恢复时别人连入数据库
+Starting MySQL SUCCESS! 
+16. mysql> show databases;
++---------------------+
+| Database            |
++---------------------+
+| information_schema  |
+| #mysql50#lost+found |
+| mydb                |
+| mysql               |
+| performance_schema  |
+| test                |
+| wordpress           |
++---------------------+
+7 rows in set (0.00 sec)
+17. mysql> select * from stu; #完全备份后进行新添加的数据没有，需要增量还原后才可见
++----+-------+------+
+| ID | Name  | Age  |
++----+-------+------+
+|  1 | bob   |   21 |
+|  2 | jack  |   25 |
+|  3 | candy |   24 |
+|  4 | aa    | NULL |
++----+-------+------+
+4 rows in set (0.00 sec)
+18. mysql> set sql_log_bin=0; #临时关闭二进制写入功能
+19. [root@lnmp ~]# mysql < a.sql  #还原增量文件
+19. mysql> select * from stu;
++----+-------+------+
+| ID | Name  | Age  |
++----+-------+------+
+|  1 | bob   |   21 |
+|  2 | jack  |   25 |
+|  3 | candy |   24 |
+|  4 | aa    | NULL |
+|  5 | bb    | NULL |  #这4行添加的数据正常了
+|  6 | cc    | NULL |
+|  7 | dd    | NULL |
+|  8 | ee    | NULL |
++----+-------+------+
+8 rows in set (0.00 sec)
+20. mysql> set sql_log_bin=1; #开启二进制写入功能
+21. [root@lnmp mydata]# service mysql stop #停止
+22. [root@lnmp mydata]# service mysql start #先要在mysql脚本上start()段去掉--skip-networking参数,再启动mysql正常提供服务
+##注：LVM-->有一个mylvmbackup(perl scripts)，有单独的配置，提供LVM快照的。
+
+#第十六节：使用xtrabackup进行数据备份
+innodb_support_xa               | ON  #开启innodb分布式事务的，建议开启
+sync_binlog            | 0  #建议设置为1，每1次写操作将同步二进制日志到磁盘
+
+#percona提供的xtrabackup备份工具
+	xtrabackup:
+		xtradb:innodb的增强版
+		innodb
+注：如果是源码编译mysql时，建议把mysql中innodb存储引擎源码删了，去percona官方下xtradb源码放到innodb存储引擎的位置，并更名xtradb为innodb即可编译。
+
+参考链接：https://www.percona.com/downloads/
+参考链接：https://www.percona.com/downloads/XtraBackup/Percona-XtraBackup-2.4.9/binary/redhat/6/x86_64/Percona-XtraBackup-2.4.9-ra467167cdd4-el6-x86_64-bundle.tar
+#使用Xtrabackup进行mysql备份
+##安装xtrabackup
+[root@lnmp download]# wget https://www.percona.com/downloads/XtraBackup/Percona-XtraBackup-2.4.9/binary/redhat/6/x86_64/Percona-XtraBackup-2.4.9-ra467167cdd4-el6-x86_64-bundle.tar
+[root@lnmp download]# rpm -ivh  rpm -ivh percona-xtrabackup-24-2.4.9-1.el6.x86_64.rpm 
+[root@lnmp download]# yum install -y libev libev-devel perl perl-devel perl-DBD-MySQL #如果依赖需要安装
+[root@lnmp download]# rpm -ql percona-xtrabackup-24-2.4.9-1.el6.x86_64
+/usr/bin/innobackupex #备份工具
+/usr/bin/xbcloud
+/usr/bin/xbcloud_osenv
+/usr/bin/xbcrypt
+/usr/bin/xbstream
+/usr/bin/xtrabackup
+/usr/share/doc/percona-xtrabackup-24-2.4.9
+/usr/share/doc/percona-xtrabackup-24-2.4.9/COPYING
+/usr/share/man/man1/innobackupex.1.gz
+/usr/share/man/man1/xbcrypt.1.gz
+/usr/share/man/man1/xbstream.1.gz
+/usr/share/man/man1/xtrabackup.1.gz
+#第一阶段：备份
+[root@lnmp download]# innobackupex --user=root --password=root123 /backup #备份
+[root@lnmp 2019-06-23_21-25-52]# ls
+backup-my.cnf  lost+found  mysql               test       xtrabackup_binlog_info  xtrabackup_info
+ibdata1        mydb        performance_schema  wordpress  xtrabackup_checkpoints  xtrabackup_logfile
+[root@lnmp 2019-06-23_21-25-52]# pwd
+/backup/2019-06-23_21-25-52
+[root@lnmp 2019-06-23_21-25-52]# cat xtrabackup_checkpoints #用记增量备份的检查点文件
+backup_type = full-backuped
+from_lsn = 0
+to_lsn = 2245016
+last_lsn = 2245016
+compact = 0
+recover_binlog_info = 0
+[root@lnmp 2019-06-23_21-25-52]# cat xtrabackup_info #xtrabackup备份的信息
+uuid = 6d2b0eba-95ba-11e9-8344-005056ad0d3c
+name = 
+tool_name = innobackupex
+tool_command = --user=root --password=... /backup
+tool_version = 2.4.9
+ibbackup_version = 2.4.9
+server_version = 5.5.37-log
+start_time = 2019-06-23 21:25:52
+end_time = 2019-06-23 21:25:53
+lock_time = 0
+binlog_pos = filename 'mysql-bin.000001', position '801'
+innodb_from_lsn = 0
+innodb_to_lsn = 2245016
+partial = N
+incremental = N
+format = file
+compact = N
+compressed = N
+encrypted = N
+[root@lnmp 2019-06-23_21-25-52]# cat xtrabackup_binlog_info  #xtrabckup备份的二进制文件状态
+mysql-bin.000001        801
+#第二阶段：准备工作，将事务日志进行重读和撤销到数据文件
+[root@lnmp 2019-06-23_21-25-52]# innobackupex --apply-log /backup/2019-06-23_21-25-52/ #进行事务日志写入数据文件，后面给一个路径，这个准备工作必须做，做完才可进行恢复
+mysql> insert into stu (Name) value ('abcd'); #模拟在mysql做插入动作
+Query OK, 1 row affected (0.00 sec)
+
+mysql> insert into stu (Name) value ('abcd12');
+Query OK, 1 row affected (0.00 sec)
+mysql> flush logs; #滚动二进制日志
+[root@lnmp mydata]# cp mysql-bin.000001 /root #复制完全备份后更改的二进制日志文件信息
+[root@lnmp mydata]# service mysql stop 
+[root@lnmp mydata]# rm -rf ./* #模拟删除全部数据
+[root@lnmp mydata]# ls /mydata/
+[root@lnmp backup]# innobackupex --copy-back /backup/2019-06-23_21-25-52/ #恢复全量备份
+[root@lnmp mydata]# ll #恢复成功，但是属主属组不是mysql.mysql，必须改正
+total 41056
+-rw-r----- 1 root root 18874368 Jun 23 21:43 ibdata1
+-rw-r----- 1 root root  5242880 Jun 23 21:43 ib_logfile0
+-rw-r----- 1 root root  5242880 Jun 23 21:43 ib_logfile1
+-rw-r----- 1 root root 12582912 Jun 23 21:43 ibtmp1
+drwxr-x--- 2 root root     4096 Jun 23 21:43 lost+found
+drwxr-x--- 2 root root     4096 Jun 23 21:43 mydb
+drwxr-x--- 2 root root     4096 Jun 23 21:43 mysql
+drwxr-x--- 2 root root     4096 Jun 23 21:43 performance_schema
+drwxr-x--- 2 root root     4096 Jun 23 21:43 test
+drwxr-x--- 2 root root     4096 Jun 23 21:43 wordpress
+-rw-r----- 1 root root       23 Jun 23 21:43 xtrabackup_binlog_pos_innodb
+-rw-r----- 1 root root      463 Jun 23 21:43 xtrabackup_info
+[root@lnmp mydata]# chown -R mysql.mysql /mydata/
+[root@lnmp mydata]# service mysql start #启动mysql
+Starting MySQL.. SUCCESS! 
+[root@lnmp 2019-06-23_21-25-52]# cat xtrabackup_binlog_info 
+mysql-bin.000001        801
+[root@lnmp ~]# mysqlbinlog --start-position=801 mysql-bin.000001 > a.sql
+mysql> select * from stu;
++----+-------+------+
+| ID | Name  | Age  |
++----+-------+------+
+|  1 | bob   |   21 |
+|  2 | jack  |   25 |
+|  3 | candy |   24 |
+|  4 | aa    | NULL |
+|  5 | bb    | NULL |
+|  6 | cc    | NULL |
+|  7 | dd    | NULL |
+|  8 | ee    | NULL |
++----+-------+------+
+8 rows in set (0.00 sec)
+[root@lnmp ~]# mysql < a.sql  #恢复增量备份数据
+mysql> select * from stu;
++----+--------+------+
+| ID | Name   | Age  |
++----+--------+------+
+|  1 | bob    |   21 |
+|  2 | jack   |   25 |
+|  3 | candy  |   24 |
+|  4 | aa     | NULL |
+|  5 | bb     | NULL |
+|  6 | cc     | NULL |
+|  7 | dd     | NULL |
+|  8 | ee     | NULL |
+|  9 | abcd   | NULL | #已经恢复
+| 10 | abcd12 | NULL |
++----+--------+------+
+10 rows in set (0.00 sec)
+#已经增量恢复了，所以现在重新做完全备份
+mysql> insert stu (Name) value ('aa1'),('aa2'); #新插入两条数据
+Query OK, 2 rows affected (0.02 sec)
+Records: 2  Duplicates: 0  Warnings: 0
+[root@lnmp ~]# innobackupex --user=root --password=root123 /backup #重做完全备份
+[root@lnmp ~]# innobackupex --incremental /backup --incremental-basedir=/backup/2019-06-23_21-52-24 #做第一次增量备份，--incremental表示增量，/backup表示备份的目录，--incremental-basedir=/backup/2019-06-23_21-52-24表示在这个基础上做增量备份
+[root@lnmp backup]# ll
+total 0 
+drwxr-x--- 8 root root 249 Jun 23 21:52 2019-06-23_21-52-24 #这个是完全
+drwxr-x--- 8 root root 275 Jun 23 21:55 2019-06-23_21-55-32 #这个是增量
+mysql> insert stu (Name) value ('aa1'),('cc1');
+mysql> insert stu (Name) value ('aa1'),('cc2');
+[root@lnmp ~]# innobackupex --incremental /backup --incremental-basedir=/backup/2019-06-23_21-55-32 #我的天第二次增量备份
+[root@lnmp backup]# ll
+total 0
+drwxr-x--- 8 root root 249 Jun 23 21:52 2019-06-23_21-52-24
+drwxr-x--- 8 root root 275 Jun 23 21:55 2019-06-23_21-55-32
+drwxr-x--- 8 root root 275 Jun 23 22:00 2019-06-23_22-00-13
+[root@lnmp 2019-06-23_21-52-24]# cat xtrabackup_checkpoints 
+backup_type = full-backuped
+from_lsn = 0
+to_lsn = 2246096
+last_lsn = 2246096 #完全备份的最后lsn
+compact = 0
+recover_binlog_info = 0
+[root@lnmp 2019-06-23_21-55-32]# cat xtrabackup_checkpoints 
+backup_type = incremental
+from_lsn = 2246096
+to_lsn = 2246774
+last_lsn = 2246774 #增量备份的最后lsn
+compact = 0
+recover_binlog_info = 0
+[root@lnmp 2019-06-23_22-00-13]# cat xtrabackup_checkpoints 
+backup_type = incremental
+from_lsn = 2246774
+to_lsn = 2247436
+last_lsn = 2247436 #增量备份的最后lsn
+compact = 0
+recover_binlog_info = 0
+#让事务日志写入数据文件
+[root@lnmp ~]# innobackupex --apply-log --redo-only /backup/2019-06-23_21-52-24/ #对完全备份操作，让事务日志写入数据文件，并且只做重读操作，不做撤销，因为如果撤销会影响后面的重读操作
+[root@lnmp ~]# innobackupex --apply-log --redo-only /backup/2019-06-23_21-52-24/ --incremental-dir=/backup/2019-06-23_21-55-32/ #对增量备份1进行事务日志操作，/backup/2019-06-23_21-52-24/为写入数据文件路径，--incremental-dir=/backup/2019-06-23_21-55-32/是第1次增量备份事务日志路径
+[root@lnmp ~]# innobackupex --apply-log --redo-only /backup/2019-06-23_21-52-24/ --incremental-dir=/backup/2019-06-23_22-00-13/ #对增量备份2进行事务日志操作，/backup/2019-06-23_21-52-24/为写入数据文件路径，--incremental-dir=/backup/2019-06-23_21-55-32/是第2次增量备份事务日志路径
+[root@lnmp ~]# service mysql stop #停止mysql
+Shutting down MySQL... SUCCESS!  
+[root@lnmp mydata]# rm -rf /mydata/* #模拟崩溃
+[root@lnmp mydata]# ls
+[root@lnmp backup]# innobackupex --copy-back /backup/2019-06-23_21-52-24/ #完全加增量恢复
+[root@lnmp mydata]# ll /mydata/
+total 18488
+-rw-r----- 1 root root 18874368 Jun 23 22:41 ibdata1
+drwxr-x--- 2 root root     4096 Jun 23 22:41 lost+found
+drwxr-x--- 2 root root     4096 Jun 23 22:41 mydb
+drwxr-x--- 2 root root     4096 Jun 23 22:41 mysql
+drwxr-x--- 2 root root     4096 Jun 23 22:41 performance_schema
+drwxr-x--- 2 root root     4096 Jun 23 22:41 test
+drwxr-x--- 2 root root     4096 Jun 23 22:41 wordpress
+-rw-r----- 1 root root       24 Jun 23 22:41 xtrabackup_binlog_pos_innodb
+-rw-r----- 1 root root      507 Jun 23 22:41 xtrabackup_info
+[root@lnmp mydata]# chown -R mysql.mysql /mydata/
+[root@lnmp mydata]# service mysql start #启动mysql
+Starting MySQL.. SUCCESS! 
+mysql> select * from stu;
++----+--------+------+
+| ID | Name   | Age  |
++----+--------+------+
+|  1 | bob    |   21 |
+|  2 | jack   |   25 |
+|  3 | candy  |   24 |
+|  4 | aa     | NULL |
+|  5 | bb     | NULL |
+|  6 | cc     | NULL |
+|  7 | dd     | NULL |
+|  8 | ee     | NULL |
+|  9 | abcd   | NULL |
+| 10 | abcd12 | NULL |
+| 11 | aa1    | NULL |
+| 12 | aa2    | NULL |
+| 13 | aa1    | NULL |
+| 14 | bb1    | NULL |
+| 15 | aa1    | NULL |
+| 16 | bb2    | NULL |
+| 17 | aa1    | NULL |
+| 18 | cc1    | NULL |
+| 19 | aa1    | NULL |
+| 20 | cc2    | NULL |  #cc2为第二次增量备份前插入的，事实证明成功
++----+--------+------+
+20 rows in set (0.00 sec)
+#注：innodb_file_per_table=1必须启用每表一个表空间，innodb_expand_import=1启用导入功能
 
 
 
