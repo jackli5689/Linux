@@ -1,4 +1,4 @@
-#Mysql数据库
+﻿#Mysql数据库
 
 <pre>
 #第一节：关系型数据体系结构
@@ -1532,10 +1532,10 @@ mysql> select * from student;
 
 ####验证隔离级别：
 先启动两个mysql会话：
-1. SET tx_isolation=READ-UNCOMMITTED;两个会话隔离性都为读未提交时，当一个会话启动事务进行增删改操作时，未使用COMMIT提交，另外一个会话也会看到同样的结果，这就是读未提交隔离的效果。但是会产生换影问题
-2. SET tx_isolation=READ-COMMITTED;两个会话隔离性都为读提交时，当一个会话启动事务进行增删改操作时，使用COMMIT提交，另外一个会话也会看到同样的结果，这就是读提交隔离的效果。如果未提交则另外一个会话看不到改变的数据，但是会产生换影问题
-3. SET tx_isolation=REPEATABLE-READ;两个会话隔离性都为可重读时，当一个会话启动事务进行增删改操作时，使用COMMIT提交，另外一个会话不会看到同样的结果，此时另外一个会话看到的一直都是另外会话自己看到的结果，当另外一个会话也COMMIT时才会看到当前同样的结果，这就是可重读隔离的效果。但是会产生换影问题
-4. SET tx_isolation=SEREALABLE;两个会话隔离性都为可串行时，当一个会话启动事务进行增删改操作时，未使用COMMIT提交，另外一个会话查询时不会有任何结果显示且会卡住查询会话，当当前会话COMMIT时，另外一个会话查询才会有结果显示。
+1. SET tx_isolation=READ-UNCOMMITTED(读未提交);两个会话隔离性都为读未提交时，当一个会话启动事务进行增删改操作时，未使用COMMIT提交，另外一个会话也会看到同样的结果，这就是读未提交隔离的效果。但是会产生幻影问题
+2. SET tx_isolation=READ-COMMITTED(读提交);两个会话隔离性都为读提交时，当一个会话启动事务进行增删改操作时，使用COMMIT提交，另外一个会话也会看到同样的结果，这就是读提交隔离的效果。如果未提交则另外一个会话看不到改变的数据，但是会产生幻影问题
+3. SET tx_isolation=REPEATABLE-READ(可重读);两个会话隔离性都为可重读时，当一个会话启动事务进行增删改操作时，使用COMMIT提交，另外一个会话不会看到同样的结果，此时另外一个会话看到的一直都是另外会话自己看到的结果，当另外一个会话也COMMIT时才会看到当前同样的结果，这就是可重读隔离的效果。但是会产生幻影问题
+4. SET tx_isolation=SEREALABLE(可串行);两个会话隔离性都为可串行时，当一个会话启动事务进行增删改操作时，未使用COMMIT提交，另外一个会话查询时不会有任何结果显示且会卡住查询会话，当当前会话COMMIT时，另外一个会话查询才会有结果显示。
 #注：如果不是银行证券行业，可以适当降低隔离级别，提升性能是相当明显的
 
 #第十一节：MYSQL用户和权限管理
@@ -1769,7 +1769,7 @@ mysql> show engines;
 | MEMORY             | YES     | Hash based, stored in memory, useful for temporary tables      | NO           | NO   | NO         |
 +--------------------+---------+----------------------------------------------------------------+--------------+------+------------+
 8 rows in set (0.00 sec)
-MYSQL存储引擎：
+MYISAM存储引擎：
 	1. 不支持事务
 	2. 只支持表锁
 	3. 不支持外键
@@ -2113,11 +2113,11 @@ Query OK, 0 rows affected (0.00 sec)
 8. [root@lnmp ~]# lvremove /dev/myvg/mydata-snap 
 Do you really want to remove active logical volume myvg/mydata-snap? [y/n]: y
   Logical volume "mydata-snap" successfully removed
-9. [root@lnmp alldata]# rm -rf mysql-bin.* #整理完全备份文件
+9. [root@lnmp alldata]# rm -rf mysql-bin.* #整理完全备份文件，删除快照无效二进制日志文件
 [root@lnmp alldata]# ls
 ibdata1      ib_logfile1        lnmp.jack.com.pid  mydb   performance_schema  wordpress
 ib_logfile0  lnmp.jack.com.err  lost+found         mysql  test
-10. [root@lnmp mydata]# mysqlbinlog --start-datetime='2019-06-23 18:59:54' mysql-bin.000006 mysql-bin.000007 > /root/a.sql #整理增量文件，时间从之前导出的binlog.txt文件看出
+10. [root@lnmp mydata]# mysqlbinlog --start-datetime='2019-06-23 18:59:54' mysql-bin.000006 mysql-bin.000007 > /root/a.sql #整理增量文件，时间从之前导出的binlog.txt文件看出，假如mysql服务已经断状态执行
 11. [root@lnmp alldata]# service mysql stop
 Shutting down MySQL.... SUCCESS!
 12. [root@lnmp mydata]# ls
@@ -2125,7 +2125,7 @@ ibdata1      lnmp.jack.com.err  mysql             mysql-bin.000006  performance_
 ib_logfile0  lost+found         mysql-bin.000004  mysql-bin.000007  test
 ib_logfile1  mydb               mysql-bin.000005  mysql-bin.index   wordpress
 13. [root@lnmp mydata]# rm -rf ./* #模拟整个数据库崩溃
-14. [root@lnmp mydata]# cp -a /backup/alldata/* /mydata #复制完全备份文件到数据库目录
+14. [root@lnmp mydata]# cp -a /backup/alldata/* /mydata #复制完全备份文件到数据库目录，因为是快照，所以可以全部复制回来
 15. [root@lnmp mydata]# service mysql start #可正常启动了,先要在mysql脚本上start()段 加入--skip-networking参数断网启动mysql,防止恢复时别人连入数据库
 Starting MySQL SUCCESS! 
 16. mysql> show databases;
@@ -2285,7 +2285,9 @@ mysql> select * from stu;
 |  8 | ee    | NULL |
 +----+-------+------+
 8 rows in set (0.00 sec)
+mysql> set sql_log_bin=0;
 [root@lnmp ~]# mysql < a.sql  #恢复增量备份数据
+mysql> set sql_log_bin=1;
 mysql> select * from stu;
 +----+--------+------+
 | ID | Name   | Age  |
@@ -2303,10 +2305,10 @@ mysql> select * from stu;
 +----+--------+------+
 10 rows in set (0.00 sec)
 #已经增量恢复了，所以现在重新做完全备份
+[root@lnmp ~]# innobackupex --user=root --password=root123 /backup #重做完全备份
 mysql> insert stu (Name) value ('aa1'),('aa2'); #新插入两条数据
 Query OK, 2 rows affected (0.02 sec)
 Records: 2  Duplicates: 0  Warnings: 0
-[root@lnmp ~]# innobackupex --user=root --password=root123 /backup #重做完全备份
 [root@lnmp ~]# innobackupex --incremental /backup --incremental-basedir=/backup/2019-06-23_21-52-24 #做第一次增量备份，--incremental表示增量，/backup表示备份的目录，--incremental-basedir=/backup/2019-06-23_21-52-24表示在这个基础上做增量备份
 [root@lnmp backup]# ll
 total 0 
@@ -2314,7 +2316,7 @@ drwxr-x--- 8 root root 249 Jun 23 21:52 2019-06-23_21-52-24 #这个是完全
 drwxr-x--- 8 root root 275 Jun 23 21:55 2019-06-23_21-55-32 #这个是增量
 mysql> insert stu (Name) value ('aa1'),('cc1');
 mysql> insert stu (Name) value ('aa1'),('cc2');
-[root@lnmp ~]# innobackupex --incremental /backup --incremental-basedir=/backup/2019-06-23_21-55-32 #我的天第二次增量备份
+[root@lnmp ~]# innobackupex --incremental /backup --incremental-basedir=/backup/2019-06-23_21-55-32 #这个是第二次增量备份
 [root@lnmp backup]# ll
 total 0
 drwxr-x--- 8 root root 249 Jun 23 21:52 2019-06-23_21-52-24
@@ -2343,8 +2345,8 @@ compact = 0
 recover_binlog_info = 0
 #让事务日志写入数据文件
 [root@lnmp ~]# innobackupex --apply-log --redo-only /backup/2019-06-23_21-52-24/ #对完全备份操作，让事务日志写入数据文件，并且只做重读操作，不做撤销，因为如果撤销会影响后面的重读操作
-[root@lnmp ~]# innobackupex --apply-log --redo-only /backup/2019-06-23_21-52-24/ --incremental-dir=/backup/2019-06-23_21-55-32/ #对增量备份1进行事务日志操作，/backup/2019-06-23_21-52-24/为写入数据文件路径，--incremental-dir=/backup/2019-06-23_21-55-32/是第1次增量备份事务日志路径
-[root@lnmp ~]# innobackupex --apply-log --redo-only /backup/2019-06-23_21-52-24/ --incremental-dir=/backup/2019-06-23_22-00-13/ #对增量备份2进行事务日志操作，/backup/2019-06-23_21-52-24/为写入数据文件路径，--incremental-dir=/backup/2019-06-23_21-55-32/是第2次增量备份事务日志路径
+[root@lnmp ~]# innobackupex --apply-log --redo-only /backup/2019-06-23_21-52-24/ --incremental-dir=/backup/2019-06-23_21-55-32/ #对增量备份1进行事务日志操作，/backup/2019-06-23_21-52-24/为写入数据文件路径，--incremental-dir=/backup/2019-06-23_21-55-32/是第1次增量备份事务日志和二进制日志路径
+[root@lnmp ~]# innobackupex --apply-log --redo-only /backup/2019-06-23_21-52-24/ --incremental-dir=/backup/2019-06-23_22-00-13/ #对增量备份2进行事务日志操作，/backup/2019-06-23_21-52-24/为写入数据文件路径，--incremental-dir=/backup/2019-06-23_21-55-32/是第2次增量备份事务日志和二进制日志路径
 [root@lnmp ~]# service mysql stop #停止mysql
 Shutting down MySQL... SUCCESS!  
 [root@lnmp mydata]# rm -rf /mydata/* #模拟崩溃
