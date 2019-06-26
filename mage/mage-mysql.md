@@ -1190,7 +1190,7 @@ mysql> show indexes from student;
 mysql> drop index name_on_student on student; #删除索引
 Query OK, 0 rows affected (0.27 sec)
 Records: 0  Duplicates: 0  Warnings: 0
-mysql> create index name_on_student on student (name(5) desc) using btree; #新建索引并且只引用从左到右五位，后面的不参加索引，可能节约资源有很大帮助，desc是降序，asc是降序。
+mysql> create index name_on_student on student (name(5) desc) using btree; #新建索引并且只引用从左到右五位，后面的不参加索引，可能节约资源有很大帮助，desc是降序，asc是升序。
 Query OK, 0 rows affected (0.09 sec)
 Records: 0  Duplicates: 0  Warnings: 0
 
@@ -1242,7 +1242,7 @@ mysql> SELECT 2+1 AS sum;
 	连接：
 		1. 交叉连接：笛卡尔乘积（不会这样使用）
 		2. 自然连接：建立主外键关系进行查询，有的才显示，没有的不显示
-		3. 外连接：有的显示值，没有的显示NULL
+		3. 外连接：有的显示值，没有的显示NULL，建立在自然连接基础之上
 			1. 左外连接：... LEFT JOIN ... ON ... #省略号依次为左表，右表，条件，以左表为基准
 			2. 右外连接：... RIGHT JOIN ... ON ...#省略号依次为左表，右表，条件，在名表为基准
 		4. 自连接：对同一张表当作两张表进行查询
@@ -1928,7 +1928,7 @@ Query OK, 0 rows affected (0.01 sec)
 | mysql-bin.000015 |       107 |
 +------------------+-----------+
 2 rows in set (0.00 sec) 
-12. [root@lnmp mydata]# cp mysql-bin.000012 /root/ #备份增量到/root目录下
+12. [root@lnmp mydata]# cp mysql-bin.000014 /root/ #备份增量到/root目录下
 13. [root@lnmp mydata]# mysqlbinlog mysql-bin.000014 > /root/mon-incrementa1.sql #或者这样先读出来二进制文件重定向到新建文件进行增量备份也行，12步和13步选其一即可
 14. mysql> insert into student (CID,name) value (88,'ll'); #到第二天操作增加了一行
 Query OK, 1 row affected (0.00 sec)
@@ -2117,7 +2117,7 @@ Do you really want to remove active logical volume myvg/mydata-snap? [y/n]: y
 [root@lnmp alldata]# ls
 ibdata1      ib_logfile1        lnmp.jack.com.pid  mydb   performance_schema  wordpress
 ib_logfile0  lnmp.jack.com.err  lost+found         mysql  test
-10. [root@lnmp mydata]# mysqlbinlog --start-datetime='2019-06-23 18:59:54' mysql-bin.000006 mysql-bin.000007 > /root/a.sql #整理增量文件，时间从之前导出的binlog.txt文件看出，假如mysql服务已经断状态执行
+10. [root@lnmp mydata]# mysqlbinlog --start-datetime='2019-06-23 18:59:54' mysql-bin.000006 mysql-bin.000007 > /root/a.sql #整理增量文件，时间从之前导出的binlog.txt文件看出，假如mysql服务已经是断开状态
 11. [root@lnmp alldata]# service mysql stop
 Shutting down MySQL.... SUCCESS!
 12. [root@lnmp mydata]# ls
