@@ -2395,5 +2395,24 @@ mysql> select * from stu;
 #注：innodb_file_per_table=1必须启用每表一个表空间，innodb_expand_import=1启用导入功能
 
 
+###MySQL读写分离
+复制的作用：
+	1. 辅助实现备份
+	2. 高可用
+	3. 异地容灾
+	4. scale out:分担负载
+主从架构中不使用MYSQL代理，通过php程序指定主从服务器来实现读写分离。
+双主复制：无法减轻写操作。
+
+#读写分离工具
+读写分离：
+	MySQL-Proxy
+	amoeba:阿里巴巴前员工写的，已经离职
+数据拆分：
+	cobar：现在阿里巴巴用
+
+
+
+
 
 </pre>
