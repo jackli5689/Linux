@@ -1,4 +1,4 @@
-﻿#Mysql数据库
+#Mysql数据库
 
 <pre>
 #第一节：关系型数据体系结构
@@ -2396,6 +2396,7 @@ mysql> select * from stu;
 
 
 ###MySQL读写分离
+#第一节：MYSQL读写分离概念
 复制的作用：
 	1. 辅助实现备份
 	2. 高可用
@@ -2410,6 +2411,931 @@ mysql> select * from stu;
 	amoeba:阿里巴巴前员工写的，已经离职
 数据拆分：
 	cobar：现在阿里巴巴用
+
+#第二节：MYSQL异步、半同步配置及其注意事项
+一个从只能属于一个主服务器，
+mysql5.5-：配置很简单
+mysql5.6+：配置较复制，引入gtid（全局事务号）机制，multi-thread repliction
+
+一：mysql master:
+1. 启用二进制日志：
+	1. log-bin = master-bin
+	2. log-bin-index = master-bin.index
+2. 选择一个惟一server-id
+	server-id = {0-2^32}-1 #0到2的32次方减1
+3. 创建具有复制权限的用户
+	1. REPLICATION SLAVE #复制从用户
+	2. REPLICATION CLIENT #复制客户端用户
+
+二：mysql slave
+1. 启用中继日志
+	1. relay-log = relay-log
+	2. relay-log-index = relay-log.index
+2. 选择一个惟一的server-id
+	server-id = {0-2^32}-1 #0到2的32次方减1,千千万万不能和主服务器相同
+3. 连接至主服务器，并开始复制数据：
+	1. mysql> CHANGE MASTER TO MASTER_HOST='',MASTER_PORT='',MASTER_LOG_FILE='',MASTER_LOG_POS='',MASTER_USER='',MASTER_PASSWORD='';
+	2. mysql> START SLAVE; #启动IO_Thread和SQL_Thread两个线程，如果需要启用单个线程，例：START SLAVE IO_Thread;
+复制线程：
+	master: 当从服务器复制主服务器二进制事件时，主服务器启动一个dump线程跟从服务器IO_Thread进行连接
+	slave: 当从服务器从主服务器复制二进制事件时，会启动IO_Thread和SQL_Thread两个线程，IO_Thread是跟主服务器dump线程进行连接，作用是复制主服务器二进制事件到从服务器中继日志中的。SQL_Thread线程是回放本地的中继日志生成数据文件并记录二进制日志文件到从服务器在。
+
+工作模式：
+半同步：只需要从服务器其中一台响应主服务器复制成功或超时，这就是半同步模式。并且要设超时时间间隔。
+异步：当超时时间间隔到达后主服务器与从服务器断开，并且降级为异步模式
+
+####实操：
+##主服务器：
+[root@mysql-master download]wget https://dev.mysql.com/get/Downloads/MySQL-5.5/mysql-5.5.62-linux-glibc2.12-x86_64.tar.gz
+[root@mysql-master download]# tar xf mysql-5.5.62-linux-glibc2.12-x86_64.tar.gz  -C /usr/local
+[root@mysql-master download]# groupadd -g 3306 -r mysql
+[root@mysql-master download]# useradd -g 3306 -u 3306 -r mysql
+[root@mysql-master download]# mkdir -pv /mydata/data
+[root@mysql-master download]# chown -R mysql.mysql /mydata/data/
+[root@mysql-master download]# chown -R root.mysql /usr/local/mysql-5.5.62-linux-glibc2.12-x86_64/
+[root@mysql-master download]# ln -sv /usr/local/mysql-5.5.62-linux-glibc2.12-x86_64 /usr/local/mysql
+‘/usr/local/mysql’ -> ‘/usr/local/mysql-5.5.62-linux-glibc2.12-x86_64’
+[root@mysql-master mysql]# ./scripts/mysql_install_db --user=mysql --datadir=/mydata/data
+[root@mysql-master mysql]# cp support-files/mysql.server /etc/init.d/mysqld
+[root@mysql-master mysql]# chkconfig --add mysqld
+[root@mysql-master mysql]# chkconfig --list mysqld
+mysqld          0:off   1:off   2:on    3:on    4:on    5:on    6:off
+[root@mysql-master mysql]# cat /etc/profile.d/mysqld.sh 
+export PATH=$PATH:/usr/local/mysql/bin
+[root@mysql-slave mysql]# . /etc/profile.d/mysqld.sh 
+[root@mysql-master mysql]# cat /etc/ld.so.conf.d/mysql
+/usr/local/mysql/lib
+[root@mysql-master lib]# ldconfig -v
+[root@mysql-master mysql]# ln -sv /usr/local/mysql/include/ /usr/include/mysql
+‘/usr/include/mysql’ -> ‘/usr/local/mysql/include/’
+[root@mysql-master mysql]# cp support-files/my-large.cnf /etc/my.cnf
+[root@mysql-master mysql]# vim  /etc/my.cnf
+innodb_file_per_table=1
+datadir = /mydata/data
+log-bin=mysql-bin
+log-bin-index=log-bin.inde
+server-id       = 1
+-------------------------
+[root@mysql-master mysql]# egrep -v '#|^$' /etc/my.cnf
+[client]
+port            = 3306
+socket          = /tmp/mysql.sock
+[mysqld]
+port            = 3306
+socket          = /tmp/mysql.sock
+skip-external-locking
+key_buffer_size = 256M
+max_allowed_packet = 1M
+table_open_cache = 256
+sort_buffer_size = 1M
+read_buffer_size = 1M
+read_rnd_buffer_size = 4M
+myisam_sort_buffer_size = 64M
+thread_cache_size = 8
+query_cache_size= 16M
+thread_concurrency = 8
+innodb_file_per_table=1
+datadir = /mydata/data
+log-bin=mysql-bin
+log-bin-index=log-bin.index
+binlog_format=mixed
+server-id       = 1
+[mysqldump]
+quick
+max_allowed_packet = 16M
+[mysql]
+no-auto-rehash
+[myisamchk]
+key_buffer_size = 128M
+sort_buffer_size = 128M
+read_buffer = 2M
+write_buffer = 2M
+[mysqlhotcopy]
+interactive-timeout
+-------------------------
+[root@mysql-master mysql]# service mysqld start
+Starting MySQL.. SUCCESS!
+mysql> grant replication slave on *.* to repluser@'192.168.1.%' identified by 'replpass';  #建立复制从服务器的用户
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> flush privileges;
+Query OK, 0 rows affected (0.00 sec)
+[root@mysql-master mysql]# scp /etc/my.cnf 192.168.1.37:/etc #复制主服务器配置文件到从服务器
+
+##从服务器
+[root@mysql-slave download]# tar xf mysql-5.5.62-linux-glibc2.12-x86_64.tar.gz -C /usr/local
+[root@mysql-slave download]# mkdir -pv /mydata/data
+mkdir: created directory ‘/mydata’
+mkdir: created directory ‘/mydata/data’
+[root@mysql-slave download]# groupadd -r -g 3306 mysql
+[root@mysql-slave download]# useradd -r -g 3306 -u 3306 mysql
+[root@mysql-slave download]# chown -R mysql.mysql /mydata/data/
+[root@mysql-slave download]# ln -sv /usr/local/mysql-5.5.62-linux-glibc2.12-x86_64/ /usr/local/mysql
+‘/usr/local/mysql’ -> ‘/usr/local/mysql-5.5.62-linux-glibc2.12-x86_64/’
+[root@mysql-slave download]# cd /usr/local/mysql
+[root@mysql-slave mysql]# ./scripts/mysql_install_db --user=mysql --datadir=/mydata/data
+[root@mysql-slave mysql]# vim /etc/profile.d/mysqld.sh
+export PATH=$PATH:/usr/local/mysql/bin
+[root@mysql-slave mysql]# . /etc/profile.d/mysqld.sh 
+[root@mysql-slave mysql]# vim /etc/ld.so.conf.d/mysql
+/usr/local/mysql/lib
+[root@mysql-slave mysql]# ldconfig
+[root@mysql-slave mysql]# ln -sv /usr/local/mysql/include/ /usr/include/mysql
+‘/usr/include/mysql’ -> ‘/usr/local/mysql/include/’
+[root@mysql-slave mysql]# vim /etc/my.cnf
+server-id       = 11
+relay-log = relay-log
+relay-log-index = relay-log.index
+[root@mysql-slave mysql]# service mysqld start
+Starting MySQL.Logging to '/mydata/data/mysql-slave.jack.com.err'.
+. SUCCESS! 
+------------------
+[root@mysql-slave mysql]# egrep -v '#|^$' /etc/my.cnf
+[client]
+port            = 3306
+socket          = /tmp/mysql.sock
+[mysqld]
+port            = 3306
+socket          = /tmp/mysql.sock
+skip-external-locking
+key_buffer_size = 256M
+max_allowed_packet = 1M
+table_open_cache = 256
+sort_buffer_size = 1M
+read_buffer_size = 1M
+read_rnd_buffer_size = 4M
+myisam_sort_buffer_size = 64M
+thread_cache_size = 8
+query_cache_size= 16M
+thread_concurrency = 8
+innodb_file_per_table=1
+datadir = /mydata/data
+relay-log = relay-log
+relay-log-index = relay-log.index
+binlog_format=mixed
+server-id       = 11
+[mysqldump]
+quick
+max_allowed_packet = 16M
+[mysql]
+no-auto-rehash
+[myisamchk]
+key_buffer_size = 128M
+sort_buffer_size = 128M
+read_buffer = 2M
+write_buffer = 2M
+[mysqlhotcopy]
+interactive-timeout
+------------------
+mysql> show slave status; #查看slave状态，现在未启动所以未有结果
+Empty set (0.00 sec)
+
+mysql> show master status;
++------------------+----------+--------------+------------------+
+| File             | Position | Binlog_Do_DB | Binlog_Ignore_DB |
++------------------+----------+--------------+------------------+
+| mysql-bin.000001 |      338 |              |                  |
++------------------+----------+--------------+------------------+
+1 row in set (0.00 sec)
+mysql> show binlog events in 'mysql-bin.000001'; #从结果看出，由于主服务器创建用户导致position发生改变，而从服务器不需要这个用户，则从服务器从主服务器文件：mysql-bin.000001开始，位置为338开始
++------------------+-----+-------------+-----------+-------------+-----------------------------------------------------------------------------------+
+| Log_name         | Pos | Event_type  | Server_id | End_log_pos | Info                                                                              |
++------------------+-----+-------------+-----------+-------------+-----------------------------------------------------------------------------------+
+| mysql-bin.000001 |   4 | Format_desc |         1 |         107 | Server ver: 5.5.62-log, Binlog ver: 4                                             |
+| mysql-bin.000001 | 107 | Query       |         1 |         263 | grant replication slave on *.* to repluser@'192.168.1.%' identified by 'replpass' |
+| mysql-bin.000001 | 263 | Query       |         1 |         338 | flush privileges                                                                  |
++------------------+-----+-------------+-----------+-------------+-----------------------------------------------------------------------------------+
+3 rows in set (0.00 sec)
+mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.31',MASTER_USER='repluser',MASTER_PASSWORD='replpass',MASTER_LOG_FILE='mysql-bin.000001',MASTER_LOG_POS=338;  #连接主服务器，因为主服务器端口默认是3306，所以未指定
+Query OK, 0 rows affected (0.01 sec)
+mysql> show slave status\G; #查看从服务器的壮态
+*************************** 1. row ***************************
+               Slave_IO_State: 
+                  Master_Host: 192.168.1.31 #主服务器地址
+                  Master_User: repluser  #同步主服务器的用户
+                  Master_Port: 3306  #主服务器端口 
+                Connect_Retry: 60  #连接重试间隔时间为60秒
+              Master_Log_File: mysql-bin.000001  #主服务器二进制文件名称
+          Read_Master_Log_Pos: 338  #读到主服务器二进制文件的位置
+               Relay_Log_File: relay-log.000001  #从服务器中继日志文件名称
+                Relay_Log_Pos: 4 #从服务器中继日志文件位置
+        Relay_Master_Log_File: mysql-bin.000001  #中继到主服务器的日志文件名称
+             Slave_IO_Running: No   #IO线程运行状态，日后排错重点
+            Slave_SQL_Running: No   #SQL线程运行状态，日后排错重点
+              Replicate_Do_DB:   #复制过滤器
+          Replicate_Ignore_DB: 
+           Replicate_Do_Table: 
+       Replicate_Ignore_Table: 
+      Replicate_Wild_Do_Table: 
+  Replicate_Wild_Ignore_Table: 
+                   Last_Errno: 0  
+                   Last_Error: 
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 338  #写到主服务器二进制文件的位置
+              Relay_Log_Space: 107 #中继日志空间位置
+              Until_Condition: None
+               Until_Log_File: 
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No  #主服务器是否允许ssl
+           Master_SSL_CA_File: 
+           Master_SSL_CA_Path: 
+              Master_SSL_Cert: 
+            Master_SSL_Cipher: 
+               Master_SSL_Key: 
+        Seconds_Behind_Master: NULL #从服务器比主服务器慢多少
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0  #本地线程的错误信息
+                Last_IO_Error: 
+               Last_SQL_Errno: 0
+               Last_SQL_Error: 
+  Replicate_Ignore_Server_Ids: 
+             Master_Server_Id: 0
+1 row in set (0.00 sec)
+mysql> START SLAVE;  #启动从服务器
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> SHOW SLAVE STATUS\G;
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for master to send event
+                  Master_Host: 192.168.1.31
+                  Master_User: repluser
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: mysql-bin.000001
+          Read_Master_Log_Pos: 338
+               Relay_Log_File: relay-log.000002
+                Relay_Log_Pos: 253
+        Relay_Master_Log_File: mysql-bin.000001
+             Slave_IO_Running: Yes  #IO线程已经运行
+            Slave_SQL_Running: Yes  #SQL线程已经运行
+              Replicate_Do_DB: 
+          Replicate_Ignore_DB: 
+           Replicate_Do_Table: 
+       Replicate_Ignore_Table: 
+      Replicate_Wild_Do_Table: 
+  Replicate_Wild_Ignore_Table: 
+                   Last_Errno: 0
+                   Last_Error: 
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 338
+              Relay_Log_Space: 403
+              Until_Condition: None
+               Until_Log_File: 
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File: 
+           Master_SSL_CA_Path: 
+              Master_SSL_Cert: 
+            Master_SSL_Cipher: 
+               Master_SSL_Key: 
+        Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error: 
+               Last_SQL_Errno: 0
+               Last_SQL_Error: 
+  Replicate_Ignore_Server_Ids: 
+             Master_Server_Id: 1
+1 row in set (0.00 sec)
+mysql> show global variables like 'read%';
++----------------------+---------+
+| Variable_name        | Value   |
++----------------------+---------+
+| read_buffer_size     | 1048576 |
+| read_only            | OFF     |  #设置从服务器是否为可读
+| read_rnd_buffer_size | 4194304 |
++----------------------+---------+
+3 rows in set (0.00 sec)
+[root@mysql-slave mysql]# vim /etc/my.cnf
+read_only = 1  #设置从服务器以后永久只能只读
+[root@mysql-slave mysql]# service mysqld restart
+mysql> show global variables like 'read%';
++----------------------+---------+
+| Variable_name        | Value   |
++----------------------+---------+
+| read_buffer_size     | 1048576 |
+| read_only            | ON      |  #已经开启，但对于super用户来说不生效
+| read_rnd_buffer_size | 4194304 |
++----------------------+---------+
+3 rows in set (0.00 sec)
+mysql> show slave status \G;
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for master to send event
+                  Master_Host: 192.168.1.31
+                  Master_User: repluser
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: mysql-bin.000001
+          Read_Master_Log_Pos: 338
+               Relay_Log_File: relay-log.000008
+                Relay_Log_Pos: 253
+        Relay_Master_Log_File: mysql-bin.000001
+             Slave_IO_Running: Yes  #设置从服务器为只读也不影响IO和SQL线程写入
+            Slave_SQL_Running: Yes
+              Replicate_Do_DB: 
+          Replicate_Ignore_DB: 
+           Replicate_Do_Table: 
+       Replicate_Ignore_Table: 
+      Replicate_Wild_Do_Table: 
+  Replicate_Wild_Ignore_Table: 
+                   Last_Errno: 0
+                   Last_Error: 
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 338
+              Relay_Log_Space: 403
+              Until_Condition: None
+               Until_Log_File: 
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File: 
+           Master_SSL_CA_Path: 
+              Master_SSL_Cert: 
+            Master_SSL_Cipher: 
+               Master_SSL_Key: 
+        Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error: 
+               Last_SQL_Errno: 0
+               Last_SQL_Error: 
+  Replicate_Ignore_Server_Ids: 
+             Master_Server_Id: 1
+1 row in set (0.00 sec)
+
+##重启slave服务器时未指定用户密码等信息，从服务器是怎么运行的呢？
+[root@mysql-slave data]# cat master.info  #slave数据库目录下存储了用户密码等信息
+18
+mysql-bin.000001
+421
+192.168.1.31
+repluser
+replpass
+3306
+60
+0
+
+
+
+
+
+0
+1800.000
+
+0
+[root@mysql-slave data]# cat relay-log.info #这个文件记录的是当前中继日志的文件名和位置，以及主服务器的文件及位置，结合master.info文件来确定IO和SQL线程从哪里开始启动
+./relay-log.000008
+336
+mysql-bin.000001
+421
+
+mysql> create database mydb;  #主服务器上新建数据库
+Query OK, 1 row affected (0.00 sec)
+mysql> show databases; #从服务器上查看新建的数据库
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mydb               |
+| mysql              |
+| performance_schema |
+| test               |
++--------------------+
+5 rows in set (0.00 sec)
+
+#主服务器配置
+sync_binlog = 1 #设定主服务器同步二进制日志，确定二进制安全
+
+#注：当从服务器不想一启动时，可把数据库路径下的master.info和relay-log.info移出数据库路径，当重启从服务器服务时，不会自动启动，再手动添加主服务器连接即可。
+#注：从服务器的IO和SQL线程信息日志都在从服务器数据库路径下的错误日志里面。
+STOP SLAVE;停止从服务器IO和SQL线程
+
+####设置半同步复制
+[root@mysql-slave data]# cd /usr/local/mysql/lib/plugin/ #主服务器上跟这一样
+[root@mysql-slave plugin]# ls
+semisync_master.so    #主服务器安装的半同步模块
+semisync_slave.so     #从服务器安装的半同步模块
+#在主服务器中安装半同步模块
+mysql> INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so'; #安装主服务器的模块
+Query OK, 0 rows affected (0.00 sec)
+mysql> SHOW GLOBAL VARIABLES LIKE '%rpl%';
++------------------------------------+-------+
+| Variable_name                      | Value |
++------------------------------------+-------+
+| rpl_recovery_rank                  | 0     |
+| rpl_semi_sync_master_enabled       | OFF   |  #默认是未开启的
+| rpl_semi_sync_master_timeout       | 10000 |  #半同步超时时间
+| rpl_semi_sync_master_trace_level   | 32    |  #追踪级别
+| rpl_semi_sync_master_wait_no_slave | ON    |  #没有slave连接时是否等待slave连接
++------------------------------------+-------+
+5 rows in set (0.00 sec)
+mysql> SET GLOBAL rpl_semi_sync_master_enabled=1; #主服务器开启半同步模式
+Query OK, 0 rows affected (0.00 sec)
+mysql> SHOW GLOBAL VARIABLES LIKE '%rpl%';
++------------------------------------+-------+
+| Variable_name                      | Value |
++------------------------------------+-------+
+| rpl_recovery_rank                  | 0     |
+| rpl_semi_sync_master_enabled       | ON    |  #已经开启
+| rpl_semi_sync_master_timeout       | 10000 |
+| rpl_semi_sync_master_trace_level   | 32    |
+| rpl_semi_sync_master_wait_no_slave | ON    |
++------------------------------------+-------+
+5 rows in set (0.00 sec)
+
+##从服务器安装半同步模块
+mysql> INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so';
+Query OK, 0 rows affected (0.00 sec)
+mysql> SHOW GLOBAL VARIABLES LIKE '%rpl%';
++---------------------------------+-------+
+| Variable_name                   | Value |
++---------------------------------+-------+
+| rpl_recovery_rank               | 0     |
+| rpl_semi_sync_slave_enabled     | OFF   |
+| rpl_semi_sync_slave_trace_level | 32    |
++---------------------------------+-------+
+3 rows in set (0.00 sec)
+mysql> SET GLOBAL rpl_semi_sync_slave_enabled=1; #开启从线程半同步模式
+Query OK, 0 rows affected (0.00 sec)
+mysql> show global variables like '%rpl%';
++---------------------------------+-------+
+| Variable_name                   | Value |
++---------------------------------+-------+
+| rpl_recovery_rank               | 0     |
+| rpl_semi_sync_slave_enabled     | ON    |
+| rpl_semi_sync_slave_trace_level | 32    |
++---------------------------------+-------+
+3 rows in set (0.01 sec)
+
+mysql> SHOW GLOBAL STATUS LIKE '%rpl%';
++--------------------------------------------+-------------+
+| Variable_name                              | Value       |
++--------------------------------------------+-------------+
+| Rpl_semi_sync_master_clients               | 0           | #半同步客户端还未有，因为需要从服务器IO_Thread重新连接dump线程才行
+| Rpl_semi_sync_master_net_avg_wait_time     | 0           |
+| Rpl_semi_sync_master_net_wait_time         | 0           |
+| Rpl_semi_sync_master_net_waits             | 0           |
+| Rpl_semi_sync_master_no_times              | 0           |
+| Rpl_semi_sync_master_no_tx                 | 0           |
+| Rpl_semi_sync_master_status                | ON          |
+| Rpl_semi_sync_master_timefunc_failures     | 0           |
+| Rpl_semi_sync_master_tx_avg_wait_time      | 0           |
+| Rpl_semi_sync_master_tx_wait_time          | 0           |
+| Rpl_semi_sync_master_tx_waits              | 0           |
+| Rpl_semi_sync_master_wait_pos_backtraverse | 0           |
+| Rpl_semi_sync_master_wait_sessions         | 0           |
+| Rpl_semi_sync_master_yes_tx                | 0           |
+| Rpl_status                                 | AUTH_MASTER |
++--------------------------------------------+-------------+
+15 rows in set (0.00 sec)
+mysql> STOP SLAVE IO_Thread;
+Query OK, 0 rows affected (0.01 sec)
+mysql> START SLAVE IO_Thread;  #重新启动IO_Thread，从新连接主服务器dump线程
+Query OK, 0 rows affected (0.00 sec)
+mysql> SHOW GLOBAL STATUS LIKE '%rpl%';
++--------------------------------------------+-------------+
+| Variable_name                              | Value       |
++--------------------------------------------+-------------+
+| Rpl_semi_sync_master_clients               | 1           |
+| Rpl_semi_sync_master_net_avg_wait_time     | 0           |
+| Rpl_semi_sync_master_net_wait_time         | 0           |
+| Rpl_semi_sync_master_net_waits             | 0           |
+| Rpl_semi_sync_master_no_times              | 0           |
+| Rpl_semi_sync_master_no_tx                 | 0           |
+| Rpl_semi_sync_master_status                | ON          |
+| Rpl_semi_sync_master_timefunc_failures     | 0           |
+| Rpl_semi_sync_master_tx_avg_wait_time      | 0           |
+| Rpl_semi_sync_master_tx_wait_time          | 0           |
+| Rpl_semi_sync_master_tx_waits              | 0           |
+| Rpl_semi_sync_master_wait_pos_backtraverse | 0           |
+| Rpl_semi_sync_master_wait_sessions         | 0           |
+| Rpl_semi_sync_master_yes_tx                | 0           |
+| Rpl_status                                 | AUTH_MASTER |
++--------------------------------------------+-------------+
+15 rows in set (0.00 sec)
+##注：至此，半同步服务器已经结束
+
+----------------------------
+##半同步到异步的转变例子：
+mysql> use mydb;
+Database changed
+mysql> create table tb1 (id int);
+Query OK, 0 rows affected (0.01 sec)
+mysql> stop slave IO_THREAD; #从服务器停止IO线程
+Query OK, 0 rows affected (0.01 sec)
+mysql> create table tb2 (id int); #主服务器半同步时间为10秒，会等待超时时间走完，而后会降级为异步
+Query OK, 0 rows affected (10.01 sec)
+mysql> create table t32 (id int); #现在为异步，不会再等待slave的IO线程了
+Query OK, 0 rows affected (0.01 sec)
+mysql> SHOW GLOBAL STATUS LIKE '%rpl%';
++--------------------------------------------+-------------+
+| Variable_name                              | Value       |
++--------------------------------------------+-------------+
+| Rpl_semi_sync_master_clients               | 0           | #没有客户端连接显示为异步
+| Rpl_semi_sync_master_net_avg_wait_time     | 230         |
+| Rpl_semi_sync_master_net_wait_time         | 460         |
+| Rpl_semi_sync_master_net_waits             | 2           | #等待了2次
+| Rpl_semi_sync_master_no_times              | 1           |
+| Rpl_semi_sync_master_no_tx                 | 2           |
+| Rpl_semi_sync_master_status                | OFF         |
+| Rpl_semi_sync_master_timefunc_failures     | 0           |
+| Rpl_semi_sync_master_tx_avg_wait_time      | 467         |
+| Rpl_semi_sync_master_tx_wait_time          | 467         |
+| Rpl_semi_sync_master_tx_waits              | 1           |
+| Rpl_semi_sync_master_wait_pos_backtraverse | 0           |
+| Rpl_semi_sync_master_wait_sessions         | 0           |
+| Rpl_semi_sync_master_yes_tx                | 1           |
+| Rpl_status                                 | AUTH_MASTER |
++--------------------------------------------+-------------+
+15 rows in set (0.00 sec)
+mysql> start slave IO_THREAD; #当从服务器IO线程启动，从服务器立即从异步模式到半同步模式
+Query OK, 0 rows affected (0.01 sec)
+mysql> SHOW GLOBAL STATUS LIKE '%rpl%';
++--------------------------------------------+-------------+
+| Variable_name                              | Value       |
++--------------------------------------------+-------------+
+| Rpl_semi_sync_master_clients               | 1           |
+| Rpl_semi_sync_master_net_avg_wait_time     | 1108        |
+| Rpl_semi_sync_master_net_wait_time         | 3324        |
+| Rpl_semi_sync_master_net_waits             | 3           |
+| Rpl_semi_sync_master_no_times              | 1           |
+| Rpl_semi_sync_master_no_tx                 | 2           |
+| Rpl_semi_sync_master_status                | ON          |
+| Rpl_semi_sync_master_timefunc_failures     | 0           |
+| Rpl_semi_sync_master_tx_avg_wait_time      | 467         |
+| Rpl_semi_sync_master_tx_wait_time          | 467         |
+| Rpl_semi_sync_master_tx_waits              | 1           |
+| Rpl_semi_sync_master_wait_pos_backtraverse | 0           |
+| Rpl_semi_sync_master_wait_sessions         | 0           |
+| Rpl_semi_sync_master_yes_tx                | 1           |
+| Rpl_status                                 | AUTH_MASTER |
++--------------------------------------------+-------------+
+15 rows in set (0.00 sec)
+----------------------------
+
+###percona-tools工具
+参考链接：https://www.percona.com/
+[root@mysql-slave download]# wget https://www.percona.com/downloads/percona-toolkit/2.2.2/RPM/percona-toolkit-2.2.2-1.noarch.rpm
+[root@mysql-slave download]# rpm -ivh percona-toolkit-2.2.2-1.noarch.rpm  #rpm安装需要依赖
+warning: percona-toolkit-2.2.2-1.noarch.rpm: Header V4 DSA/SHA1 Signature, key ID cd2efd2a: NOKEY
+error: Failed dependencies:
+        perl(DBI) >= 1.13 is needed by percona-toolkit-2.2.2-1.noarch
+        perl(DBD::mysql) >= 1.0 is needed by percona-toolkit-2.2.2-1.noarch
+        perl(IO::Socket::SSL) is needed by percona-toolkit-2.2.2-1.noarch
+[root@mysql-slave download]# yum -y localinstall percona-toolkit-2.2.2-1.noarch.rpm --nogpgcheck #用yum localinstall安装解决依赖关系
+[root@mysql-slave download]# vim /etc/my.cnf #确定my.cnf配置文件未被更改
+[root@mysql-slave download]# pt #安装好后pt开头的命令
+pt-align                  pt-index-usage            pt-slave-restart
+pt-archiver               pt-ioprofile              pt-stalk
+ptaskset                  pt-kill                   pt-summary
+pt-config-diff            pt-mext                   pt-table-checksum
+pt-deadlock-logger        pt-mysql-summary          pt-table-sync
+pt-diskstats              pt-online-schema-change   pt-table-usage
+pt-duplicate-key-checker  pt-pmp                    pt-upgrade
+pt-fifo-split             pt-query-digest           pt-variable-advisor
+pt-find                   pt-show-grants            pt-visual-explain
+pt-fingerprint            pt-sift                   ptx
+pt-fk-error-logger        pt-slave-delay            
+pt-heartbeat              pt-slave-find        
+
+pt-ioprofile  #评估io的能力
+
+#####设置主-主复制
+##主服务器1：
+[root@mysql-master download]# vim /etc/my.cnf
+log-bin=master-bin
+log-bin-index=master-bin.index
+relay-log=relay-master
+relay-log-index=relay-master.index
+auto-increment-increment = 2
+auto-increment-offset=1
+server-id = 10
+mysql> GRANT REPLICATION SLAVE ON *.* TO repluser@'192.168.1.%' IDENTIFIED BY 'replpass';
+Query OK, 0 rows affected (0.01 sec)
+mysql> flush privileges;
+Query OK, 0 rows affected (0.00 sec)
+
+##主服务器2：
+[root@mysql-slave download]# vim /etc/my.cnf
+log-bin=mysql-bin
+log-bin-index=mysql-bin.index
+relay-log = relay-master
+relay-log-index = relay-master.index
+auto-increment-increment=2
+auto-increment-offset=2
+server-id = 20
+mysql> GRANT REPLICATION SLAVE ON *.* TO repluser@'192.168.1.%' IDENTIFIED BY 'replpass';
+Query OK, 0 rows affected (0.01 sec)
+mysql> flush privileges;
+Query OK, 0 rows affected (0.00 sec)
+
+#mysql终端操作
+mysql> show master status;  #主服务器2
++-------------------+----------+--------------+------------------+
+| File              | Position | Binlog_Do_DB | Binlog_Ignore_DB |
++-------------------+----------+--------------+------------------+
+| master-bin.000002 |      107 |              |                  |
++-------------------+----------+--------------+------------------+
+1 row in set (0.01 sec)
+mysql> show master status;  #主服务器1
++-------------------+----------+--------------+------------------+
+| File              | Position | Binlog_Do_DB | Binlog_Ignore_DB |
++-------------------+----------+--------------+------------------+
+| master-bin.000001 |      107 |              |                  |
++-------------------+----------+--------------+------------------+
+1 row in set (0.00 sec)
+
+mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.31',MASTER_USER='repluser',MASTER_PASSWORD='replpass',MASTER_LOG_FILE='master-bin.000001',MASTER_LOG_POS=107;  #主服务器2设置
+Query OK, 0 rows affected (0.01 sec)
+mysql> START SLAVE; #主服务器2
+Query OK, 0 rows affected (0.01 sec)
+mysql> SHOW SLAVE STATUS\G;  #主服务器2
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for master to send event
+                  Master_Host: 192.168.1.31
+                  Master_User: repluser
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: master-bin.000001
+          Read_Master_Log_Pos: 107
+               Relay_Log_File: relay-master.000002
+                Relay_Log_Pos: 254
+        Relay_Master_Log_File: master-bin.000001
+             Slave_IO_Running: Yes
+            Slave_SQL_Running: Yes
+              Replicate_Do_DB: 
+          Replicate_Ignore_DB: 
+           Replicate_Do_Table: 
+       Replicate_Ignore_Table: 
+      Replicate_Wild_Do_Table: 
+  Replicate_Wild_Ignore_Table: 
+                   Last_Errno: 0
+                   Last_Error: 
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 107
+              Relay_Log_Space: 407
+              Until_Condition: None
+               Until_Log_File: 
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File: 
+           Master_SSL_CA_Path: 
+              Master_SSL_Cert: 
+            Master_SSL_Cipher: 
+               Master_SSL_Key: 
+        Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error: 
+               Last_SQL_Errno: 0
+               Last_SQL_Error: 
+  Replicate_Ignore_Server_Ids: 
+             Master_Server_Id: 10
+1 row in set (0.00 sec)
+
+mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.37',MASTER_USER='repluser',MASTER_PASSWORD='replpass',MASTER_LOG_FILE='master-bin.000002',MASTER_LOG_POS=107;  #主服务器1设置
+Query OK, 0 rows affected (0.01 sec)
+mysql> START SLAVE; #主服务器1
+Query OK, 0 rows affected (0.00 sec)
+mysql> SHOW SLAVE STATUS \G;  #主服务器1
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for master to send event
+                  Master_Host: 192.168.1.37
+                  Master_User: repluser
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: master-bin.000002
+          Read_Master_Log_Pos: 107
+               Relay_Log_File: relay-master.000002
+                Relay_Log_Pos: 254
+        Relay_Master_Log_File: master-bin.000002
+             Slave_IO_Running: Yes
+            Slave_SQL_Running: Yes
+              Replicate_Do_DB: 
+          Replicate_Ignore_DB: 
+           Replicate_Do_Table: 
+       Replicate_Ignore_Table: 
+      Replicate_Wild_Do_Table: 
+  Replicate_Wild_Ignore_Table: 
+                   Last_Errno: 0
+                   Last_Error: 
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 107
+              Relay_Log_Space: 407
+              Until_Condition: None
+               Until_Log_File: 
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File: 
+           Master_SSL_CA_Path: 
+              Master_SSL_Cert: 
+            Master_SSL_Cipher: 
+               Master_SSL_Key: 
+        Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error: 
+               Last_SQL_Errno: 0
+               Last_SQL_Error: 
+  Replicate_Ignore_Server_Ids: 
+             Master_Server_Id: 20
+1 row in set (0.00 sec)
+
+##mysql使用ssl连接：
+mysql> show global variables like '%ssl%';
++---------------+----------+
+| Variable_name | Value    |
++---------------+----------+
+| have_openssl  | DISABLED |
+| have_ssl      | DISABLED | #是否开启ssl功能, 不可写变量,需要指定证书和key即可开启
+| ssl_ca        |          |
+| ssl_capath    |          |
+| ssl_cert      |          |
+| ssl_cipher    |          |
+| ssl_key       |          |
++---------------+----------+
+7 rows in set (0.00 sec)
+
+mysql> grant all on *.* to jack@'%' identified by 'jackli' REQUIRE SSL; #设置需要ssl认证的用户登录
+Query OK, 0 rows affected (0.01 sec)
+
+#cakey.pem建立：
+[root@mysql-slave CA]# openssl req -new -x509 -key private/cakey.pem -out cacert.pem -days 3650
+#建立CA需要的文件
+[root@mysql-slave CA]# touch index.txt
+[root@mysql-slave CA]# touch serial
+[root@mysql-slave CA]# echo 01 > serial
+#客户端生成key:
+[root@mysql-slave data]# openssl genrsa -out ./mysql.key 1024
+#客户端生成csr证书请求文件:
+[root@mysql-slave data]# openssl req -new -key mysql.key -out mysql.csr
+#CA签署证书请求文件生成证书：
+[root@mysql-slave data]# openssl ca -in mysql.csr -out mysql.crt -days 3650
+#复制ca证书及mysql证书和私钥到/mydata/data/ssl目录下
+[root@mysql-slave data]# mv mysql.crt mysql.key ssl/
+[root@mysql-slave data]# cp /etc/pki/CA/cacert.pem ./ssl/
+[root@mysql-slave data]# ls ssl/
+cacert.pem  mysql.crt  mysql.key
+#生成客户端证书及密钥
+[root@mysql-slave ssl]# openssl genrsa -out ./client.key 1024
+[root@mysql-slave ssl]# openssl req -new -key client.key -out client.csr 
+[root@mysql-slave ssl]# openssl ca -in client.csr -out client.crt -days 3650
+[root@mysql-slave data]# chown -R mysql.mysql /mydata
+[root@mysql-slave ssl]# mysql -ujack -h 192.168.1.37 -p --ssl-cert=/mydata/data/ssl/client.crt --ssl-key=/mydata/data/ssl/client.key
+Enter password: 
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 5
+Server version: 5.5.62-log MySQL Community Server (GPL)
+
+Copyright (c) 2000, 2018, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> 
+mysql> show global variables like '%ssl%';
++---------------+-----------------------------+
+| Variable_name | Value                       |
++---------------+-----------------------------+
+| have_openssl  | YES                         |
+| have_ssl      | YES                         |
+| ssl_ca        | /mydata/data/ssl/cacert.pem |
+| ssl_capath    |                             |
+| ssl_cert      | /mydata/data/ssl/mysql.crt  |
+| ssl_cipher    |                             |
+| ssl_key       | /mydata/data/ssl/mysql.key  |
++---------------+-----------------------------+
+7 rows in set (0.01 sec)
+
+#SSL主主复制
+#主服务器1:
+mysql> grant replication slave on *.* to 'repluser'@'192.168.1.%' require ssl; #设定此用户复制到从服务器时必须使用ssl认证
+mysql> change master to master_host='192.168.1.37',master_user='repluser',master_password='replpass',master_log_file='master-bin.000001',master_log_pos=367; #主服务器2连接时未使用ssl连接
+Query OK, 0 rows affected (0.01 sec)
+mysql> show slave status\G;
+               Slave_IO_State: Connecting to master
+                  Master_Host: 192.168.1.37
+                  Master_User: repluser
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: master-bin.000001
+          Read_Master_Log_Pos: 367
+               Relay_Log_File: relay-master.000001
+                Relay_Log_Pos: 4
+        Relay_Master_Log_File: master-bin.000001
+             Slave_IO_Running: Connecting  #因为主服务器配置必须使用证书才可登录,这里未使用所以一直显示连接中状态
+            Slave_SQL_Running: Yes
+
+mysql> change master to master_host='192.168.1.37',master_user='repluser',master_password='replpass',master_log_file='master-bin.000001',master_log_pos=367,master_ssl=1,master_ssl_cert='/mydata/data/ssl/mysql.crt',master_ssl_key='/mydata/data/ssl/mysql.key',master_ssl_ca='/mydata/data/ssl/cacert.pem';
+mysql> start slave;
+mysql> show slave status\G;
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for master to send event
+                  Master_Host: 192.168.1.37
+                  Master_User: repluser
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: master-bin.000003
+          Read_Master_Log_Pos: 349
+               Relay_Log_File: relay-master.000004
+                Relay_Log_Pos: 496
+        Relay_Master_Log_File: master-bin.000003
+             Slave_IO_Running: Yes
+            Slave_SQL_Running: Yes
+              Replicate_Do_DB: 
+          Replicate_Ignore_DB: 
+           Replicate_Do_Table: 
+       Replicate_Ignore_Table: 
+      Replicate_Wild_Do_Table: 
+  Replicate_Wild_Ignore_Table: 
+                   Last_Errno: 0
+                   Last_Error: 
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 349
+              Relay_Log_Space: 50283
+              Until_Condition: None
+               Until_Log_File: 
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: Yes
+           Master_SSL_CA_File: /mydata/data/ssl/cacert.pem #192.168.1.37上的ca证书
+           Master_SSL_CA_Path: 
+              Master_SSL_Cert: /mydata/data/ssl/mysql.crt #192.168.1.37mysql配置文件上的证书
+            Master_SSL_Cipher: 
+               Master_SSL_Key: /mydata/data/ssl/mysql.key #192.168.1.37mysql配置文件上的私钥
+        Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error: 
+               Last_SQL_Errno: 0
+               Last_SQL_Error: 
+  Replicate_Ignore_Server_Ids: 
+             Master_Server_Id: 20
+1 row in set (0.00 sec)
+#注:从服务器上的ca证书,客户端证书和私钥必须和主服务器配置文件上的一模一样,也就是说主服务器需要同步从服务器帐户ssl认证时,主服务器必须先设定好ca证书,客户端证书和私钥文件,否则报错.这边只做了单主ssl加密,另外单主跟这一样操作,这里不再列出.
+
+#第三节：MYSQL5.6基于GTID及多线程的复制
+#数据库(MYSQL)复制过滤:
+主服务器:
+	binlog-do-db:仅将指定数据库的相关修改操作记入二进制日志
+	binlog-ignore-db:将指定数据库的相关修改操作忽略不记入二进制日志	
+	注:不建议在主服务器修改,会导致二进制文件丢失,无法即时点还原
+从服务器:
+	replicate-do-db:只应用哪些数据库
+	replicate-ignore-db:只忽略哪些数据库
+	replicate-do-table:只应用哪些表
+	replicate-ignore-table:只忽略哪些表
+	replicate-wild-do-table:以通配符只应用哪些表
+	replicate-wild-ignore-table:以通配符只忽略哪些表
+	注:这上面的每个参数可以多次使用
+[root@mysql-slave ~]# vim /etc/my.cnf
+replicate-do-db = gtid
+mysql> show slave status\G;
+Replicate_Do_DB: gtid #会显示只复制这个数据库
+mysql> create database mydb; #主服务器新建数据库mydb
+Query OK, 1 row affected (0.00 sec)
+mysql> show databases; #从未同步
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| ssl                |
+| test               |
++--------------------+
+5 rows in set (0.00 sec) 
+mysql> create database gtid; #主服务器新建gtid数据库
+Query OK, 1 row affected (0.00 sec)
+mysql> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| gtid               |  #从服务器过滤成功复制了
+| mysql              |
+| performance_schema |
+| ssl                |
+| test               |
++--------------------+
+6 rows in set (0.00 sec)
+
+###MySQL-5.6:GTID(global transaction identifiles)
+slave-parallel-workers:表示启用几个SQL_Thread线程,0为禁用.每个SQL_Thread线程只能复制一个数据库
+#GTID只支持Python2.7+,
+https://launchpad.net/mysql-utilities
+流程:replicate-->check-->show-->HA
+1. mysqlreplicate(复制相关工具):实现快速启动mysql从服务器的,通过追踪gtid知道哪些事务完成,跳过已经执行的事务,从未执行的事务开始复制
+2. mysqlrpcheck:用户实现简单验证我们的部署,并实现快速故障修复等功能.
+3. mysqlrplshow:发现并显示主从复制拓扑图,并显示主机名和端口号
+4. mysqlfailover:故障转移工具,能够快速让你自动或手动提升一个slave为master的,提升master之前slave会从其他slave复制本身不具备的事务并重放后提升自己为master
+5. mysqlrpladmin:调度管理工具,手动让某一个节点启动或下线
+
+
+####配置5.6的GTID实现复制功能
+
+
 
 
 

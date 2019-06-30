@@ -1,4 +1,4 @@
-﻿#command 
+#command 
 <pre>
 curl命令详解：
 ###curl参数值：
@@ -616,6 +616,86 @@ fun "$*"
 echo "$*"
 ------------
 
+
+##CA证书：
+#cakey.pem建立：
+[root@mysql-slave CA]# （umask 077;openssl genrsa -out private/cakey.pem 2048)
+#cacert.pem自签名证书：
+[root@mysql-slave CA]# openssl req -new -x509 -key private/cakey.pem -out cacert.pem -days 3650
+You are about to be asked to enter information that will be incorporated
+into your certificate request.
+What you are about to enter is what is called a Distinguished Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter '.', the field will be left blank.
+-----
+Country Name (2 letter code) [XX]:CN
+State or Province Name (full name) []:Shanghai
+Locality Name (eg, city) [Default City]:Shanghai
+Organization Name (eg, company) [Default Company Ltd]:Tech
+Organizational Unit Name (eg, section) []:magedu
+Common Name (eg, your name or your server's hostname) []:ca.jack.com                       
+Email Address []:
+#建立CA需要的文件
+[root@mysql-slave CA]# touch index.txt
+[root@mysql-slave CA]# touch serial
+[root@mysql-slave CA]# echo 01 > serial
+#客户端生成key:
+[root@mysql-slave data]# openssl genrsa -out ./mysql.key 1024
+#客户端生成csr证书请求文件:
+[root@mysql-slave data]# openssl req -new -key mysql.key -out mysql.csr
+You are about to be asked to enter information that will be incorporated
+into your certificate request.
+What you are about to enter is what is called a Distinguished Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter '.', the field will be left blank.
+-----
+Country Name (2 letter code) [XX]:CN
+State or Province Name (full name) []:Shanghai
+Locality Name (eg, city) [Default City]:Shanghai
+Organization Name (eg, company) [Default Company Ltd]:Tech
+Organizational Unit Name (eg, section) []:magedu
+Common Name (eg, your name or your server's hostname) []:mysql.jack.com
+Email Address []:
+
+Please enter the following 'extra' attributes
+to be sent with your certificate request
+A challenge password []:
+An optional company name []:
+#CA签署证书请求文件生成证书：
+[root@mysql-slave data]# openssl ca -in mysql.csr -out mysql.crt -days 3650
+Using configuration from /etc/pki/tls/openssl.cnf
+Check that the request matches the signature
+Signature ok
+Certificate Details:
+        Serial Number: 1 (0x1)
+        Validity
+            Not Before: Jun 30 09:30:52 2019 GMT
+            Not After : Jun 27 09:30:52 2029 GMT
+        Subject:
+            countryName               = CN
+            stateOrProvinceName       = Shanghai
+            organizationName          = Tech
+            organizationalUnitName    = magedu
+            commonName                = mysql.jack.com
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            Netscape Comment: 
+                OpenSSL Generated Certificate
+            X509v3 Subject Key Identifier: 
+                D9:B5:05:EB:7B:0F:BF:4E:0C:12:C8:62:2C:9C:40:4E:CD:07:3D:40
+            X509v3 Authority Key Identifier: 
+                keyid:48:71:EC:91:50:71:2D:0A:F1:D6:20:97:92:58:82:A3:0C:5B:E0:4F
+
+Certificate is to be certified until Jun 27 09:30:52 2029 GMT (3650 days)
+Sign the certificate? [y/n]:y
+
+
+1 out of 1 certificate requests certified, commit? [y/n]y
+Write out database with 1 new entries
+Data Base Updated
 
 
 
