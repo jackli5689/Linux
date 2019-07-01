@@ -3333,12 +3333,71 @@ https://launchpad.net/mysql-utilities
 5. mysqlrpladmin:调度管理工具,手动让某一个节点启动或下线
 
 
-####配置5.6的GTID实现复制功能
+####基于MYSQL5.6的GTID实现复制功能
+#1. 配置master节点
+[mysqld]
+binlog-format=ROW  #二进制日志格式
+log-bin=master-bin  #启用二进制日志
+log-slave-update=true  #获取其他服务器的日志记录到自己的二进制日志中
+gtid-mode=on  #开启gtid，否则跟5.5的复制功能一样
+enforce-gtid-consistency=true  #是否强制开启gtid的一致性，可防止数据不一致的
+master-info-repository=TABLE  #master.info文件记录到表中，默认是FILE
+relay-log-info-repository=TABLE #relay-log.info文件记录到表中，默认是FILE
+sync-master-info=1  #同步信息到master.info中，确保无信息丢失的
+slave-paralles-workers=2  #设定从服务器的SQL线程数，0表示关闭多线程复制功能
+binlog-checksum=CRC32  #指定二进制日志文件校验算法，启用复制有关的所有检验功能
+master-verify-checksum=1 #启用验证主服务器binlog的校验码，启用复制有关的所有检验功能
+slave-sql-verify-checksum=1  #启用验证从服务器binlog的校验码，启用复制有关的所有检验功能
+binlog-rows-query-log_events=1 #启用可以在二进制日志记录事件相关的信息，可降低故障排除的复杂度
+server-id=11 #服务器id
+report-port=3306  #报告主机的端口
+port=3306 #mysqld服务端口
+datadir=/tmp/mysql.sock  #套接字文件 
+report-host=192.168.1.31 #报告主机的地址
+#2. 配置slave节点
+[mysqld]
+binlog-format=ROW  #二进制日志格式
+relay-log=relay-log  #启用中继日志
+log-slave-update=true  #获取其他服务器的日志记录到自己的二进制日志中
+gtid-mode=on  #开启gtid，否则跟5.5的复制功能一样
+enforce-gtid-consistency=true  #强制开始gtid的一致性，可防止数据不一至的
+master-info-repository=TABLE  #master.info文件记录到表中，默认是FILE
+relay-log-info-repository=TABLE #relay-log.info文件记录到表中，默认是FILE
+sync-master-info=1  #同步信息到master.info中，确保无信息丢失的
+slave-paralles-workers=2  #设定从服务器的SQL线程数，0表示关闭多线程复制功能
+binlog-checksum=CRC32  #指定二进制日志文件校验算法，启用复制有关的所有检验功能
+master-verify-checksum=1 #启用验证主服务器binlog的校验码，启用复制有关的所有检验功能
+slave-sql-verify-checksum=1  #启用验证从服务器binlog的校验码，启用复制有关的所有检验功能
+binlog-rows-query-log_events=1 #启用可以在二进制日志记录事件相关的信息，可降低故障排除的复杂度
+server-id=11 #服务器id
+report-port=3306  #报告主机的端口
+port=3306 #mysqld服务端口
+datadir=/tmp/mysql.sock  #套接字文件 
+report-host=192.168.1.37  #报告主机的地址
+#注：如果使用了HA功能，需要把从提升为主，那么需要在从设置二进制日志文件
+注：在gtid模式下，每个server将会随机生成一个uuid，uuid补上一个事务号就成了gtid
+#3. 创建复制用户
+mysql> GRANT REPLICATION SLAVE ON *.* TO repluser@'192.168.1.%' IDENTIFIED BY 'replpass';
+#4. 为备节点提供初始数据库
+锁定主表，备份主节点上的数据，将其还原至从节点：如果没有启用GTID,在备份时需要在master上使用show master status 命令查看二进制日志文件名称及事件位置，以便后面启动slave节点时使用
+#5. 启动从节点的复制线程
+mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.31',MASTER_USER='repluser',MASTER_PASSWORD='replpass',MASTER_AUTO_POSITION=1;
+没启用GTID,需要使用如下命令：
+	mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.31',MASTER_USER='repluser',MASTER_PASSWORD='replpass',MASTER_LOG_FILE='master-bin.000001',MASTER_LOG_POS=1174;
 
 
+###实例：
+#注：将来无论在任何集群或高可用上都要做到时间的同步
+mysql> show global variables like '%gtid%'; #5.5下未启用gtid功能，所以未有值
+Empty set (0.00 sec)
+mysql> show global variables like '%uuid%';
+Empty set (0.00 sec)
 
-
-
+show global variables like '%gtid%'; #查看是否启用了gtid
+show warnings; #查看警告消息
+show slave hosts; #查看从节点主机的信息
+ 
+#mysql5.6半同步和mysql5.5一样。mysql5.5和mysql5.6主从复制没什么太大差别，就是多了个GTID功能 
 
 
 </pre>
