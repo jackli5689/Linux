@@ -1,4 +1,4 @@
-#Mysql数据库
+﻿#Mysql数据库
 
 <pre>
 #第一节：关系型数据体系结构
@@ -3338,17 +3338,17 @@ https://launchpad.net/mysql-utilities
 [mysqld]
 binlog-format=ROW  #二进制日志格式
 log-bin=master-bin  #启用二进制日志
-log-slave-update=true  #获取其他服务器的日志记录到自己的二进制日志中
+log-slave-update=true  #获取其他从服务器的日志记录到自己的二进制日志中，为了以后提升自己为主服务器做准备，必须启用二进制日志
 gtid-mode=on  #开启gtid，否则跟5.5的复制功能一样
-enforce-gtid-consistency=true  #是否强制开启gtid的一致性，可防止数据不一致的
+enforce-gtid-consistency=true  #强制开启gtid的一致性检查，可防止二进制日志文件数据不一致的
 master-info-repository=TABLE  #master.info文件记录到表中，默认是FILE
 relay-log-info-repository=TABLE #relay-log.info文件记录到表中，默认是FILE
-sync-master-info=1  #同步信息到master.info中，确保无信息丢失的
-slave-paralles-workers=2  #设定从服务器的SQL线程数，0表示关闭多线程复制功能
+sync-master-info=1  #同步从节点执行二进制日志事件所在的文件及位置到master.info中，确保下次从节点再次读取的准确性和完整性
+slave-parallel-workers=2  #设定从服务器的SQL线程数，0表示关闭多线程复制功能，只能等于小于数据库个数
 binlog-checksum=CRC32  #指定二进制日志文件校验算法，启用复制有关的所有检验功能
 master-verify-checksum=1 #启用验证主服务器binlog的校验码，启用复制有关的所有检验功能
 slave-sql-verify-checksum=1  #启用验证从服务器binlog的校验码，启用复制有关的所有检验功能
-binlog-rows-query-log_events=1 #启用可以在二进制日志记录事件相关的信息，可降低故障排除的复杂度
+binlog-rows-query-log_events=1 #启用可以在二进制日志记录事件相关的信息，可降低故障排除的复杂度，但会降低服务器的io性能
 server-id=11 #服务器id
 report-port=3306  #报告主机的端口
 port=3306 #mysqld服务端口
@@ -3364,7 +3364,7 @@ enforce-gtid-consistency=true  #强制开始gtid的一致性，可防止数据�
 master-info-repository=TABLE  #master.info文件记录到表中，默认是FILE
 relay-log-info-repository=TABLE #relay-log.info文件记录到表中，默认是FILE
 sync-master-info=1  #同步信息到master.info中，确保无信息丢失的
-slave-paralles-workers=2  #设定从服务器的SQL线程数，0表示关闭多线程复制功能
+slave-parallel-workers=2  #设定从服务器的SQL线程数，0表示关闭多线程复制功能
 binlog-checksum=CRC32  #指定二进制日志文件校验算法，启用复制有关的所有检验功能
 master-verify-checksum=1 #启用验证主服务器binlog的校验码，启用复制有关的所有检验功能
 slave-sql-verify-checksum=1  #启用验证从服务器binlog的校验码，启用复制有关的所有检验功能
@@ -3374,7 +3374,8 @@ report-port=3306  #报告主机的端口
 port=3306 #mysqld服务端口
 datadir=/tmp/mysql.sock  #套接字文件 
 report-host=192.168.1.37  #报告主机的地址
-#注：如果使用了HA功能，需要把从提升为主，那么需要在从设置二进制日志文件
+read_only=1 #设置从节点为只读
+#注：如果使用了HA功能，需要把从提升为主，那么需要在从服务器上设置开启二进制日志文件log-bin=master-bin
 注：在gtid模式下，每个server将会随机生成一个uuid，uuid补上一个事务号就成了gtid
 #3. 创建复制用户
 mysql> GRANT REPLICATION SLAVE ON *.* TO repluser@'192.168.1.%' IDENTIFIED BY 'replpass';
@@ -3388,16 +3389,657 @@ mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.31',MASTER_USER='repluser',MASTER
 
 ###实例：
 #注：将来无论在任何集群或高可用上都要做到时间的同步
-mysql> show global variables like '%gtid%'; #5.5下未启用gtid功能，所以未有值
-Empty set (0.00 sec)
+mysql> show global variables like '%gtid%'; #查看是否启用了gtid,5.5下未启用gtid功能，所以未有值
 mysql> show global variables like '%uuid%';
-Empty set (0.00 sec)
-
-show global variables like '%gtid%'; #查看是否启用了gtid
 show warnings; #查看警告消息
 show slave hosts; #查看从节点主机的信息
- 
 #mysql5.6半同步和mysql5.5一样。mysql5.5和mysql5.6主从复制没什么太大差别，就是多了个GTID功能 
+
+#主节点配置：
+[root@mysql-slave mysql]# id mysql
+uid=3306(mysql) gid=3306(mysql) groups=3306(mysql)
+[root@mysql-master mysql]# chown -R mysql.mysql /mydata/
+
+1. [root@mysql-master mysql]# tar xf mysql-5.6.43-linux-glibc2.12-x86_64.tar.gz -C /usr/local/
+2. [root@mysql-master mysql]# ln -sv /usr/local/mysql-5.6.43-linux-glibc2.12-x86_64/ /usr/local/mysql
+3. [root@mysql-master mysql]# yum install -y autoconf #解决报错问题
+4. [root@mysql-master mysql]# scripts/mysql_install_db --user=mysql --datadir=/mydata/data
+5. [root@mysql-master mysql]# cp support-files/mysql.server /etc/init.d/mysqld
+6. [root@mysql-master mysql]# chkconfig --add mysqld
+7. [root@mysql-master mysql]# cat /etc/profile.d/mysqld.sh 
+export PATH=$PATH:/usr/local/mysql/bin
+8. [root@mysql-master mysql]# . /etc/profile.d/mysqld.sh
+9. [root@mysql-master mysql]# egrep -v '#|^$' /usr/local/mysql/my.cnf 
+[mysqld]
+sql_mode=NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES 
+datadir=/mydata/data
+socket=/tmp/mysql.sock
+server_id=1
+log-bin=master-bin
+log-slave-update=true
+gtid-mode=on
+enforce-gtid-consistency=true
+master-info-repository=TABLE
+relay-log-info-repository=TABLE
+sync-master-info=1
+slave-parallel-workers=2
+binlog-checksum=CRC32
+master-verify-checksum=1
+slave-sql-verify-checksum=1
+binlog-rows-query-log_events=1
+report-port=3306
+report-host=192.168.1.31
+port=3306
+[root@mysql-master mysql]# chown -R root.mysql /usr/local/mysql
+10. [root@mysql-master mysql]# service mysqld start
+11. mysql> show global variables like '%gtid%';
++---------------------------------+-------+
+| Variable_name                   | Value |
++---------------------------------+-------+
+| binlog_gtid_simple_recovery     | OFF   |
+| enforce_gtid_consistency        | ON    |
+| gtid_executed                   |       |
+| gtid_mode                       | ON    |  #已经开启gtid
+| gtid_owned                      |       |
+| gtid_purged                     |       |
+| simplified_binlog_gtid_recovery | OFF   |
++---------------------------------+-------+
+12. mysql> show global variables like '%uuid%';
++---------------+--------------------------------------+
+| Variable_name | Value                                |
++---------------+--------------------------------------+
+| server_uuid   | cc9c8cb8-9c66-11e9-9eb9-000c29ee3e65 |  #因为开启了gtid所以会生成uuid
++---------------+--------------------------------------+
+13. mysql> mysql> show master status; #查看主节点状态
++-------------------+----------+--------------+------------------+-------------------+
+| File              | Position | Binlog_Do_DB | Binlog_Ignore_DB | Executed_Gtid_Set |
++-------------------+----------+--------------+------------------+-------------------+
+| master-bin.000001 |      151 |              |                  |                   |
++-------------------+----------+--------------+------------------+-------------------+
+14. mysql> show slave hosts; 
+Empty set (0.00 sec) #因为还未有从节点加入，所以为空
+
+#从节点配置
+[root@mysql-slave mysql]# id mysql
+uid=3306(mysql) gid=3306(mysql) groups=3306(mysql)
+[root@mysql-master mysql]# chown -R mysql.mysql /mydata/
+
+1. [root@mysql-slave download]# tar xf mysql-5.6.43-linux-glibc2.12-x86_64.tar.gz -C /usr/local/
+2. [root@mysql-slave download]# ln -sv /usr/local/mysql-5.6.43-linux-glibc2.12-x86_64/ /usr/local/mysql
+‘/usr/local/mysql’ -> ‘/usr/local/mysql-5.6.43-linux-glibc2.12-x86_64/’
+3. [root@mysql-slave mysql]# chown -R root.mysql /usr/local/mysql
+4. [root@mysql-slave mysql]# yum install -y autoconf #解决报错问题
+5. [root@mysql-slave mysql]# scripts/my
+6. sql_install_db --user=mysql --datadir=/mydata/data
+6. [root@mysql-slave mysql]# cp support-files/mysql.server /etc/init.d/mysqld
+7. [root@mysql-slave mysql]# chkconfig --add mysqld
+8. [root@mysql-slave mysql]# egrep -v '#|^$' /usr/local/mysql/my.cnf 
+[mysqld]
+sql_mode=NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES 
+datadir=/mydata/data
+socket=/tmp/mysql.sock
+server_id=11
+log-bin=master-bin
+log-slave-update=true
+gtid-mode=on
+enforce-gtid-consistency=true
+master-info-repository=TABLE
+relay-log-info-repository=TABLE
+sync-master-info=1
+slave-parallel-workers=2
+binlog-checksum=CRC32
+master-verify-checksum=1
+slave-sql-verify-checksum=1
+binlog-rows-query-log_events=1
+report-port=3306
+report-host=192.168.1.37
+port=3306
+read-only=1
+9. [root@mysql-slave mysql]# service mysqld start
+10. mysql> show global variables like '%gtid%';
++---------------------------------+-------+
+| Variable_name                   | Value |
++---------------------------------+-------+
+| binlog_gtid_simple_recovery     | OFF   |
+| enforce_gtid_consistency        | ON    |
+| gtid_executed                   |       |
+| gtid_mode                       | ON    |
+| gtid_owned                      |       |
+| gtid_purged                     |       |
+| simplified_binlog_gtid_recovery | OFF   |
++---------------------------------+-------+
+11. mysql> show global variables like '%uuid%';
++---------------+--------------------------------------+
+| Variable_name | Value                                |
++---------------+--------------------------------------+
+| server_uuid   | c38be2e6-9c68-11e9-9ec6-000c29303e31 |
++---------------+--------------------------------------+
+12. mysql> show master status;
++-------------------+----------+--------------+------------------+-------------------+
+| File              | Position | Binlog_Do_DB | Binlog_Ignore_DB | Executed_Gtid_Set |
++-------------------+----------+--------------+------------------+-------------------+
+| master-bin.000001 |      151 |              |                  |                   |
++-------------------+----------+--------------+------------------+-------------------+
+13. mysql> show slave status;
+Empty set (0.00 sec)  #因为这个做未从节点，而别的节点未把此从节点当做主节点，所以为空
+#从节点加入主节点
+1. mysql> grant replication slave on *.* to repluser@'192.168.1.%' identified by 'replpass'; #主节点设置帐户
+Query OK, 0 rows affected (0.00 sec)
+2. mysql> change master to master_host='192.168.1.31',master_user='repluser',master_password='replpass',master_auto_position=1; #从节点加入主节点
+Query OK, 0 rows affected, 2 warnings (0.02 sec)
+3. mysql> show slave status\G;
+*************************** 1. row ***************************
+               Slave_IO_State: 
+                  Master_Host: 192.168.1.31
+                  Master_User: repluser
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: 
+          Read_Master_Log_Pos: 4
+               Relay_Log_File: mysql-slave-relay-bin.000001
+                Relay_Log_Pos: 4
+        Relay_Master_Log_File: 
+             Slave_IO_Running: No #还未开启IO_THREAD和SQL_THREAD
+            Slave_SQL_Running: No
+              Replicate_Do_DB: 
+          Replicate_Ignore_DB: 
+           Replicate_Do_Table: 
+       Replicate_Ignore_Table: 
+      Replicate_Wild_Do_Table: 
+  Replicate_Wild_Ignore_Table: 
+                   Last_Errno: 0
+                   Last_Error: 
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 0
+              Relay_Log_Space: 151
+              Until_Condition: None
+               Until_Log_File: 
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File: 
+           Master_SSL_CA_Path: 
+              Master_SSL_Cert: 
+            Master_SSL_Cipher: 
+               Master_SSL_Key: 
+        Seconds_Behind_Master: NULL
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error: 
+               Last_SQL_Errno: 0
+               Last_SQL_Error: 
+  Replicate_Ignore_Server_Ids: 
+             Master_Server_Id: 0
+                  Master_UUID: 
+             Master_Info_File: mysql.slave_master_info
+                    SQL_Delay: 0
+          SQL_Remaining_Delay: NULL
+      Slave_SQL_Running_State: 
+           Master_Retry_Count: 86400
+                  Master_Bind: 
+      Last_IO_Error_Timestamp: 
+     Last_SQL_Error_Timestamp: 
+               Master_SSL_Crl: 
+           Master_SSL_Crlpath: 
+           Retrieved_Gtid_Set: 
+            Executed_Gtid_Set: 
+                Auto_Position: 1
+4. mysql> start slave;
+5. mysql> show slave status\G;
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for master to send event
+                  Master_Host: 192.168.1.31
+                  Master_User: repluser
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: master-bin.000001
+          Read_Master_Log_Pos: 411
+               Relay_Log_File: mysql-slave-relay-bin.000002
+                Relay_Log_Pos: 623
+        Relay_Master_Log_File: master-bin.000001
+             Slave_IO_Running: Yes  #已经开启
+            Slave_SQL_Running: Yes
+              Replicate_Do_DB: 
+          Replicate_Ignore_DB: 
+           Replicate_Do_Table: 
+       Replicate_Ignore_Table: 
+      Replicate_Wild_Do_Table: 
+  Replicate_Wild_Ignore_Table: 
+                   Last_Errno: 0
+                   Last_Error: 
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 411
+              Relay_Log_Space: 833
+              Until_Condition: None
+               Until_Log_File: 
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File: 
+           Master_SSL_CA_Path: 
+              Master_SSL_Cert: 
+            Master_SSL_Cipher: 
+               Master_SSL_Key: 
+        Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error: 
+               Last_SQL_Errno: 0
+               Last_SQL_Error: 
+  Replicate_Ignore_Server_Ids: 
+             Master_Server_Id: 1
+                  Master_UUID: cc9c8cb8-9c66-11e9-9eb9-000c29ee3e65
+             Master_Info_File: mysql.slave_master_info
+                    SQL_Delay: 0
+          SQL_Remaining_Delay: NULL
+      Slave_SQL_Running_State: Slave has read all relay log; waiting for the slave I/O thread to update it
+           Master_Retry_Count: 86400
+                  Master_Bind: 
+      Last_IO_Error_Timestamp: 
+     Last_SQL_Error_Timestamp: 
+               Master_SSL_Crl: 
+           Master_SSL_Crlpath: 
+           Retrieved_Gtid_Set: cc9c8cb8-9c66-11e9-9eb9-000c29ee3e65:1
+            Executed_Gtid_Set: cc9c8cb8-9c66-11e9-9eb9-000c29ee3e65:1
+                Auto_Position: 1
+6. mysql> show slave hosts;  #查看从节点信息
++-----------+--------------+------+-----------+--------------------------------------+
+| Server_id | Host         | Port | Master_id | Slave_UUID                           |
++-----------+--------------+------+-----------+--------------------------------------+
+|        11 | 192.168.1.37 | 3306 |         1 | c38be2e6-9c68-11e9-9ec6-000c29303e31 |
++-----------+--------------+------+-----------+--------------------------------------+
+7. [root@mysql-master download]# mysql -u root -p wordpress < wordpress.sql  #主节点导入数据库
+8. [root@mysql-slave mysql]# mysql -u root -p -e 'show databases'
+Enter password: 
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| test               |
+| wordpress          |  #从节点同步了
++--------------------+
+
+###MYSQL-PROXY
+memcached是旁路服务器，只是一个API
+mysql proxy(需要lua插件)，amoeba(阿里巴巴开源的mysql读写分时软件)
+mysql-mmm另外一个项目，是对mysql多主复制的管理工具，可以使mysql多主功能更好
+
+mysql-proxy依赖包：
+	libevent,lua,glib2,pkg-config,libtool,mysql-devel
+rpm -q lua #确保已经安装lua，才可安装mysql-proxy
+#源代码安装：
+	./configure
+	make && make install 
+
+#使用通用二进制安装：
+[root@lnmp mysql-proxy]# rpm -qa | grep lua #确保lua已经安装
+lua-5.1.4-15.el7.x86_64
+[root@lnmp download]# wget https://downloads.mysql.com/archives/get/file/mysql-proxy-0.8.3-linux-glibc2.3-x86-64bit.tar.gz
+[root@lnmp download]# useradd -r mysql-proxy
+[root@lnmp download]# tar xf mysql-proxy-0.8.3-linux-glibc2.3-x86-64bit.tar.gz -C /usr/local/
+[root@lnmp download]# ln -sv /usr/local/mysql-proxy-0.8.3-linux-glibc2.3-x86-64bit/ /usr/local/mysql-proxy
+‘/usr/local/mysql-proxy’ -> ‘/usr/local/mysql-proxy-0.8.3-linux-glibc2.3-x86-64bit/’
+[root@lnmp mysql-proxy]# echo 'export PATH=$PATH:/usr/local/mysql-proxy/bin' > /etc/profile.d/mysql-proxy.sh
+[root@lnmp mysql-proxy]# . /etc/profile.d/mysql-proxy.sh 
+[root@lnmp mysql-proxy]# mysql-proxy --help-all
+Usage:
+  mysql-proxy [OPTION...] - MySQL Proxy
+
+Help Options:
+  -?, --help                                              Show help options
+  --help-all                                              Show all help options
+  --help-proxy                                            Show options for the proxy-module
+
+proxy-module
+  -P, --proxy-address=<host:port>                         #mysql-proxy地址
+  -r, --proxy-read-only-backend-addresses=<host:port>     #只读后端服务器
+  -b, --proxy-backend-addresses=<host:port>               #读写后端服务器
+  --proxy-skip-profiling                                  disables profiling of queries (default: enabled)
+  --proxy-fix-bug-25371                                   fix bug #25371 (mysqld > 5.1.12) for older libmysql versions
+  -s, --proxy-lua-script=<file>                           #lua脚本路径
+  --no-proxy                                              don't start the proxy-module (default: enabled)
+  --proxy-pool-no-change-user                             don't use CHANGE_USER to reset the connection coming from the pool (default: enabled)
+  --proxy-connect-timeout                                 #写超时时长
+  --proxy-read-timeout                                    #读超时时长
+  --proxy-write-timeout                                   #写超时时长
+
+Application Options:
+  -V, --version                                           Show version
+  --defaults-file=<file>                                  #默认读取的配置文件路径
+  --verbose-shutdown                                      Always log the exit code when shutting down
+  --daemon                                                Start in daemon-mode
+  --user=<user>                                           Run mysql-proxy as user
+  --basedir=<absolute path>                               Base directory to prepend to relative paths in the config
+  --pid-file=<file>                                       PID file in case we are started as daemon
+  --plugin-dir=<path>                                     path to the plugins
+  --plugins=<name>                                        plugins to load
+  --log-level=(error|warning|info|message|debug)          log all messages of level ... or higher
+  --log-file=<file>                                       log all messages in a file
+  --log-use-syslog                                        log all messages to syslog
+  --log-backtrace-on-crash                                try to invoke debugger on crash
+  --keepalive                                             try to restart the proxy if it crashed
+  --max-open-files                                        maximum number of open files (ulimit -n)
+  --event-threads                                         number of event-handling threads (default: 1)
+  --lua-path=<...>                                        set the LUA_PATH
+  --lua-cpath=<...>                                       set the LUA_CPATH
+
+[root@lnmp mysql-proxy]# mysql-proxy --daemon --log-level=debug --log-file=/var/log/mysql-proxy.log --plugins="proxy" --proxy-backend-addresses="192.168.1.31:3306" --proxy-read-only-backend-addresses="192.168.1.37:3306" #开启mysql-proxy，运行在4040端口，--plugins="proxy"必须开启proxy插件，否则无法启动
+[root@lnmp mysql-proxy]# tail /var/log/mysql-proxy.log 
+2019-07-02 22:44:50: (critical) plugin proxy 0.8.3 started
+2019-07-02 22:44:50: (debug) max open file-descriptors = 1024
+2019-07-02 22:44:50: (message) proxy listening on port :4040
+2019-07-02 22:44:50: (message) added read/write backend: 192.168.1.31:3306
+2019-07-02 22:44:50: (message) added read-only backend: 192.168.1.37:3306
+#注：此时可以连接192.168.1.233:4040进行连接主从服务器，但mysql-proxy不会给我们进行读写分离，要想读写分离必须借助lua脚本才可实现
+
+[root@lnmp mysql-proxy]# ls /usr/local/mysql-proxy/share/doc/mysql-proxy
+active-queries.lua       ro-balance.lua           tutorial-resultset.lua
+active-transactions.lua  ro-pooling.lua           tutorial-rewrite.lua
+admin-sql.lua            rw-splitting.lua         tutorial-routing.lua
+analyze-query.lua        tutorial-basic.lua       tutorial-scramble.lua
+auditing.lua             tutorial-constants.lua   tutorial-states.lua
+commit-obfuscator.lua    tutorial-inject.lua      tutorial-tokenize.lua
+commit-obfuscator.msc    tutorial-keepalive.lua   tutorial-union.lua
+COPYING                  tutorial-monitor.lua     tutorial-warnings.lua
+histogram.lua            tutorial-packets.lua     xtab.lua
+load-multi.lua           tutorial-prep-stmts.lua
+README                   tutorial-query-time.lua
+注： rw-splitting.lua这个脚本是实现读写分离的
+[root@lnmp mysql-proxy]# killall mysql-proxy #先停掉服务
+[root@lnmp mysql-proxy]# mysql-proxy --daemon --log-level=debug --log-file=/var/log/mysql-proxy.log --plugins="proxy" --proxy-backend-addresses="192.168.1.31:3306" --proxy-read-only-backend-addresses="192.168.1.37:3306" --proxy-lua-script="/usr/local/mysql-proxy/share/doc/mysql-proxy/rw-splitting.lua" #加入读写分离功能
+[root@lnmp mysql-proxy]# cat /usr/local/mysql-proxy/share/doc/mysql-proxy/admin.lua 
+---------------------mysql-proxy admin插件lua脚本--------------------------
+function set_error(errmsg) 
+        proxy.response = {
+                type = proxy.MYSQLD_PACKET_ERR,
+                errmsg = errmsg or "error"
+        }
+end
+
+function read_query(packet)
+        if packet:byte() ~= proxy.COM_QUERY then
+                set_error("[admin] we only handle text-based queries (COM_QUERY)")
+                return proxy.PROXY_SEND_RESULT
+        end
+
+        local query = packet:sub(2)
+
+        local rows = { }
+        local fields = { }
+
+        if query:lower() == "select * from backends" then
+                fields = { 
+                        { name = "backend_ndx", 
+                          type = proxy.MYSQL_TYPE_LONG },
+
+                        { name = "address",
+                          type = proxy.MYSQL_TYPE_STRING },
+                        { name = "state",
+                          type = proxy.MYSQL_TYPE_STRING },
+                        { name = "type",
+                          type = proxy.MYSQL_TYPE_STRING },
+                        { name = "uuid",
+                          type = proxy.MYSQL_TYPE_STRING },
+                        { name = "connected_clients", 
+                          type = proxy.MYSQL_TYPE_LONG },
+                }
+
+                for i = 1, #proxy.global.backends do
+                        local states = {
+                                "unknown",
+                                "up",
+                                "down"
+                        }
+                        local types = {
+                                "unknown",
+                                "rw",
+                                "ro"
+                        }
+                        local b = proxy.global.backends[i]
+
+                        rows[#rows + 1] = {
+                                i,
+                                b.dst.name,          -- configured backend address
+                                states[b.state + 1], -- the C-id is pushed down starting at 0
+                                types[b.type + 1],   -- the C-id is pushed down starting at 0
+                                b.uuid,              -- the MySQL Server's UUID if it is managed
+                                b.connected_clients  -- currently connected clients
+                        }
+                end
+        elseif query:lower() == "select * from help" then
+                fields = { 
+                        { name = "command", 
+                          type = proxy.MYSQL_TYPE_STRING },
+                        { name = "description", 
+                          type = proxy.MYSQL_TYPE_STRING },
+                }
+                rows[#rows + 1] = { "SELECT * FROM help", "shows this help" }
+                rows[#rows + 1] = { "SELECT * FROM backends", "lists the backends and their state" }
+        else
+                set_error("use 'SELECT * FROM help' to see the supported commands")
+                return proxy.PROXY_SEND_RESULT
+        end
+
+        proxy.response = {
+                type = proxy.MYSQLD_PACKET_OK,
+                resultset = {
+                        fields = fields,
+                        rows = rows
+                }
+        }
+        return proxy.PROXY_SEND_RESULT
+end
+---------------------
+[root@lnmp mysql-proxy]# killall mysql-proxy #先停掉服务
+[root@lnmp mysql-proxy]# mysql-proxy --daemon --log-level=debug --log-file=/var/log/mysql-proxy.log --plugins="proxy" --proxy-backend-addresses="192.168.1.31:3306" --proxy-read-only-backend-addresses="192.168.1.37:3306" --proxy-lua-script="/usr/local/mysql-proxy/share/doc/mysql-proxy/rw-splitting.lua" --plugins=admin --admin-username="admin" --admin-password="admin" --admin-lua-script="/usr/local/mysql-proxy/share/doc/mysql-proxy/admin.lua" #重新启动，并再加新功能开启admin
+[root@lnmp mysql-proxy]# tail /var/log/mysql-proxy.log 
+2019-07-02 23:01:46: (message) shutting down normally, exit code is: 0
+2019-07-02 23:04:38: (critical) mysql-proxy-cli.c:503: Unknown option --admin-lua-scripts=/usr/local/mysql-proxy/share/doc/mysql-proxy/admin.lua (use --help to show all options)
+2019-07-02 23:04:38: (message) Initiating shutdown, requested from mysql-proxy-cli.c:513
+2019-07-02 23:04:38: (message) shutting down normally, exit code is: 1
+2019-07-02 23:05:24: (critical) plugin proxy 0.8.3 started
+2019-07-02 23:05:24: (critical) plugin admin 0.8.3 started
+2019-07-02 23:05:24: (debug) max open file-descriptors = 1024
+2019-07-02 23:05:24: (message) proxy listening on port :4040  #已经启动
+2019-07-02 23:05:24: (message) added read/write backend: 192.168.1.31:3306
+2019-07-02 23:05:24: (message) added read-only backend: 192.168.1.37:3306
+[root@lnmp mysql-proxy]# netstat -tnlp
+Active Internet connections (only servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    
+tcp        0      0 0.0.0.0:4040            0.0.0.0:*               LISTEN      2643/mysql-proxy    #这个是mysql-proxy代理端口
+tcp        0      0 127.0.0.1:9000          0.0.0.0:*               LISTEN      19324/php-fpm: pool 
+tcp        0      0 0.0.0.0:4041            0.0.0.0:*               LISTEN      2643/mysql-proxy    #这个是管理接口
+tcp        0      0 0.0.0.0:3306            0.0.0.0:*               LISTEN      6663/mysqld         
+tcp        0      0 0.0.0.0:111             0.0.0.0:*               LISTEN      1/systemd           
+tcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN      29371/nginx: master 
+tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      4902/sshd           
+tcp        0      0 0.0.0.0:10050           0.0.0.0:*               LISTEN      29685/zabbix_agentd 
+tcp6       0      0 :::8009                 :::*                    LISTEN      24764/java          
+tcp6       0      0 :::42445                :::*                    LISTEN      24764/java          
+tcp6       0      0 :::111                  :::*                    LISTEN      1/systemd           
+tcp6       0      0 :::8080                 :::*                    LISTEN      24764/java          
+tcp6       0      0 :::22                   :::*                    LISTEN      4902/sshd           
+tcp6       0      0 :::8888                 :::*                    LISTEN      24764/java          
+tcp6       0      0 :::35192                :::*                    LISTEN      24764/java          
+tcp6       0      0 :::10050                :::*                    LISTEN      29685/zabbix_agentd 
+tcp6       0      0 :::10052                :::*                    LISTEN      28163/java          
+tcp6       0      0 127.0.0.1:8005          :::*                    LISTEN      24764/java          
+#测试：
+mysql> grant all on *.* to root@'192.%' identified by 'redhat'; #连接到主建立可访问用户
+mysql> flush privileges;
+[root@mysql-slave ~]# mysql -u admin -p -h 192.168.1.233 --port 4041 #连接mysql-proxy admin管理接口，用户密码为设置的admin
+Enter password: 
+mysql> select * from backends; #连进来后只能使用这个命令查看主从节点信息和状态
++-------------+-------------------+---------+------+------+-------------------+
+| backend_ndx | address           | state   | type | uuid | connected_clients |
++-------------+-------------------+---------+------+------+-------------------+
+|           1 | 192.168.1.31:3306 | unknown | rw   | NULL |                 0 |
+|           2 | 192.168.1.37:3306 | unknown | ro   | NULL |                 0 |
++-------------+-------------------+---------+------+------+-------------------+
+[root@mysql-slave ~]# mysql -uroot -p -h 192.168.1.233 -P 4040 #连接mysql代理服务器进行路由
+Enter password: 
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 9
+Server version: 5.6.43-log MySQL Community Server (GPL)
+
+Copyright (c) 2000, 2019, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> create database hellodb; #进行写操作
+Query OK, 1 row affected (0.00 sec)
+mysql> select * from backends;
++-------------+-------------------+---------+------+------+-------------------+
+| backend_ndx | address           | state   | type | uuid | connected_clients |
++-------------+-------------------+---------+------+------+-------------------+
+|           1 | 192.168.1.31:3306 | up      | rw   | NULL |                 0 | #此时这个状态为up，说明写操作路由到主节点上了
+|           2 | 192.168.1.37:3306 | unknown | ro   | NULL |                 0 |
++-------------+-------------------+---------+------+------+-------------------+
+2 rows in set (0.00 sec)
+mysql> select user,password from mysql.user; #读操作
++----------+-------------------------------------------+
+| user     | password                                  |
++----------+-------------------------------------------+
+| root     |                                           |
+| root     |                                           |
+| root     |                                           |
+| root     |                                           |
+|          |                                           |
+|          |                                           |
+| repluser | *D98280F03D0F78162EBDBB9C883FC01395DEA2BF |
+| root     | *84BB5DF4823DA319BBF86C99624479A198E6EEE9 |
++----------+-------------------------------------------+
+mysql> select * from backends;
++-------------+-------------------+---------+------+------+-------------------+
+| backend_ndx | address           | state   | type | uuid | connected_clients |
++-------------+-------------------+---------+------+------+-------------------+
+|           1 | 192.168.1.31:3306 | up      | rw   | NULL |                 0 | #还是路由到主，概率问题
+|           2 | 192.168.1.37:3306 | unknown | ro   | NULL |                 0 |
++-------------+-------------------+---------+------+------+-------------------+
+mysql> select * from backends;
++-------------+-------------------+-------+------+------+-------------------+
+| backend_ndx | address           | state | type | uuid | connected_clients |
++-------------+-------------------+-------+------+------+-------------------+
+|           1 | 192.168.1.31:3306 | down  | rw   | NULL |                 1 | #当把主读掉时，此时从可以读了，说明没问题
+|           2 | 192.168.1.37:3306 | up    | ro   | NULL |                 0 |
++-------------+-------------------+-------+------+------+-------------------+
+
+#####mysql-proxy启动脚本
+#注：分为mysql-proxy脚本和/etc/sysconfig/mysql-proxy配置文件
+----------------
+[root@lnmp mysql-proxy]# cat /etc/init.d/mysql-proxy 
+#!/bin/bash
+#
+# mysql-proxy This script starts and stops the mysql-proxy daemon
+#
+# chkconfig: - 78 30
+# processname: mysql-proxy
+# description: mysql-proxy is a proxy daemon for mysql
+ 
+# Source function library.
+. /etc/rc.d/init.d/functions
+ 
+prog="/usr/local/mysql-proxy/bin/mysql-proxy"
+ 
+# Source networking configuration.
+if [ -f /etc/sysconfig/network ]; then
+    . /etc/sysconfig/network
+fi
+ 
+# Check that networking is up.
+[ ${NETWORKING} = "no" ] && exit 0
+ 
+# Set default mysql-proxy configuration.
+ADMIN_USER="admin"
+ADMIN_PASSWD="admin"
+ADMIN_LUA_SCRIPT="/usr/local/mysql-proxy/share/doc/mysql-proxy/admin.lua"
+PROXY_OPTIONS="--daemon"
+PROXY_PID=/var/run/mysql-proxy.pid
+PROXY_USER="mysql-proxy"
+PROXY_ADDRESS="0.0.0.0:4040"
+ 
+# Source mysql-proxy configuration.
+if [ -f /etc/sysconfig/mysql-proxy ]; then
+    . /etc/sysconfig/mysql-proxy
+fi
+ 
+RETVAL=0
+ 
+start() {
+    echo -n $"Starting $prog: "
+    daemon $prog $PROXY_OPTIONS --pid-file=$PROXY_PID --proxy-address="$PROXY_ADDRESS" --user=$PROXY_USER --admin-username="$ADMIN_USER" --admin-lua-script="$ADMIN_LUA_SCRIPT" --admin-password="$ADMIN_PASSWORD"
+    RETVAL=$?
+    echo
+    if [ $RETVAL -eq 0 ]; then
+        touch /var/lock/subsys/mysql-proxy
+    fi
+}
+ 
+stop() {
+    echo -n $"Stopping $prog: "
+    killproc -p $PROXY_PID -d 3 $prog
+    RETVAL=$?
+    echo
+    if [ $RETVAL -eq 0 ]; then
+        rm -f /var/lock/subsys/mysql-proxy
+        rm -f $PROXY_PID
+    fi
+}
+# See how we were called.
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    condrestart|try-restart)
+        if status -p $PROXY_PIDFILE $prog >&/dev/null; then
+            stop
+            start
+        fi
+        ;;
+    status)
+        status -p $PROXY_PID $prog
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|reload|status|condrestart|try-restart}"
+        RETVAL=1
+        ;;
+esac
+ 
+exit $RETVAL
+----------------
+[root@lnmp mysql-proxy]# cat /etc/sysconfig/mysql-proxy  #mysql-proxy脚本配置文件
+# Options for mysql-proxy 
+ADMIN_USER="admin"
+ADMIN_PASSWORD="admin"
+ADMIN_LUA_SCRIPT="/usr/local/mysql-proxy/share/doc/mysql-proxy/admin.lua"
+PROXY_LUA_SCRIPT="/usr/local/mysql-proxy/share/doc/mysql-proxy/rw-splitting.lua"
+PROXY_ADDRESS="0.0.0.0:3306"
+PROXY_USER="mysql-proxy"
+PROXY_OPTIONS="--daemon --log-level=info --log-file=/var/log/mysql-proxy.log --plugins="proxy" --proxy-backend-addresses="192.168.1.31:3306" --proxy-read-only-backend-addresses="192.168.1.37:3306" --proxy-lua-script="$PROXY_LUA_SCRIPT" --plugins="admin" "
+----------------
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 </pre>
