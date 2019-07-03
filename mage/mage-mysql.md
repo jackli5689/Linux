@@ -3717,7 +3717,7 @@ Application Options:
   --log-file=<file>                                       log all messages in a file
   --log-use-syslog                                        log all messages to syslog
   --log-backtrace-on-crash                                try to invoke debugger on crash
-  --keepalive                                             try to restart the proxy if it crashed
+  --keepalive                                             #在mysql-proxy崩溃时重启mysql-proxy
   --max-open-files                                        maximum number of open files (ulimit -n)
   --event-threads                                         number of event-handling threads (default: 1)
   --lua-path=<...>                                        set the LUA_PATH
@@ -3900,33 +3900,14 @@ mysql> select * from backends;
 |           2 | 192.168.1.37:3306 | unknown | ro   | NULL |                 0 |
 +-------------+-------------------+---------+------+------+-------------------+
 2 rows in set (0.00 sec)
-mysql> select user,password from mysql.user; #读操作
-+----------+-------------------------------------------+
-| user     | password                                  |
-+----------+-------------------------------------------+
-| root     |                                           |
-| root     |                                           |
-| root     |                                           |
-| root     |                                           |
-|          |                                           |
-|          |                                           |
-| repluser | *D98280F03D0F78162EBDBB9C883FC01395DEA2BF |
-| root     | *84BB5DF4823DA319BBF86C99624479A198E6EEE9 |
-+----------+-------------------------------------------+
-mysql> select * from backends;
-+-------------+-------------------+---------+------+------+-------------------+
-| backend_ndx | address           | state   | type | uuid | connected_clients |
-+-------------+-------------------+---------+------+------+-------------------+
-|           1 | 192.168.1.31:3306 | up      | rw   | NULL |                 0 | #还是路由到主，概率问题
-|           2 | 192.168.1.37:3306 | unknown | ro   | NULL |                 0 |
-+-------------+-------------------+---------+------+------+-------------------+
 mysql> select * from backends;
 +-------------+-------------------+-------+------+------+-------------------+
 | backend_ndx | address           | state | type | uuid | connected_clients |
 +-------------+-------------------+-------+------+------+-------------------+
-|           1 | 192.168.1.31:3306 | down  | rw   | NULL |                 1 | #当把主读掉时，此时从可以读了，说明没问题
-|           2 | 192.168.1.37:3306 | up    | ro   | NULL |                 0 |
+|           1 | 192.168.1.31:3306 | up    | rw   | NULL |                 0 |
+|           2 | 192.168.1.37:3306 | up    | ro   | NULL |                 0 | 
 +-------------+-------------------+-------+------+------+-------------------+
+#经过多连接查询，此时到从服务器了，因为读写分离lua脚本设置最小4个连接，最大8个连接，所以未达到这个不会到另外一个服务器，这里把它改小了
 
 #####mysql-proxy启动脚本
 #注：分为mysql-proxy脚本和/etc/sysconfig/mysql-proxy配置文件
@@ -4026,10 +4007,10 @@ ADMIN_LUA_SCRIPT="/usr/local/mysql-proxy/share/doc/mysql-proxy/admin.lua"
 PROXY_LUA_SCRIPT="/usr/local/mysql-proxy/share/doc/mysql-proxy/rw-splitting.lua"
 PROXY_ADDRESS="0.0.0.0:3306"
 PROXY_USER="mysql-proxy"
-PROXY_OPTIONS="--daemon --log-level=info --log-file=/var/log/mysql-proxy.log --plugins="proxy" --proxy-backend-addresses="192.168.1.31:3306" --proxy-read-only-backend-addresses="192.168.1.37:3306" --proxy-lua-script="$PROXY_LUA_SCRIPT" --plugins="admin" "
+PROXY_OPTIONS="--daemon --keepalive=true --log-level=info --log-file=/var/log/mysql-proxy.log --plugins="proxy" --proxy-backend-addresses="192.168.1.31:3306" --proxy-read-only-backend-addresses="192.168.1.37:3306" --proxy-lua-script="$PROXY_LUA_SCRIPT" --plugins="admin" "
 ----------------
 
-
+</pre>
 
 
 
