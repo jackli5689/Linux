@@ -1,4 +1,4 @@
-﻿#Mysql数据库
+#Mysql数据库
 
 <pre>
 #第一节：关系型数据体系结构
@@ -28,7 +28,7 @@ RDBMS：
 	2. 并集：属于A或属于B
 	3. 差集：属于A不属于B
 	4. 补集：全集减去集合等于补集
-SQL:Structure Qure Language
+SQL:Structure Qurey Language
 1970年IBM研发了System R数据库系统
 Ingres：世界上第一款成熟的数据库系统。Oracle,sybase商业数据库系统。
 美国标准委员会定义了sql标准：ansi-sql
@@ -74,7 +74,7 @@ mysql交互工具及应用：
 	2. sql用户
 	3. dba管理工具
 	4. 程序员api
-mysql是单进程多线程的，有守护线程，应用线程。应尽量跟数据库交互，所以需要使用缓存和线程重用
+mysql是单进程多线程的，有守护线程和应用线程。应尽量少跟数据库交互，所以需要使用缓存和线程重用
 32bit：mysql最大2.7G内存
 64bit:不能确定。smp：对称多处理器。mysql不能使一个请求在多个处理器运行，只能一个请求在一个处理器运行
 
@@ -100,7 +100,7 @@ SQL语言的组成部分：
 	DDL
 	DML
 	完整性定义语言：DDL的一部分功能
-	视图定义：
+	视图定义
 	事务控制
 	嵌入式SQL和动态SQL：嵌入式SQL是把sql放在程序设计语言上执行
 
@@ -109,12 +109,9 @@ postgresql:pl/sql
 sqlserver:tsql（只有一个存储引擎）
 mysql:sql（有多个存储引擎）
 使用程序设计语言如何跟RDBMS交互：
-	嵌入式SQL:把sql放在程序设计语言上执行。与动态SQL类似，但其语言必须程序编译时完全确定下来。
-	ODBC
-	动态SQL:程序设计语言使用函数（mysql_connect()）或者方法与RDBMS服务器建立连接，并进行交互;通过建立连接向SQL服务器发送查询语句，并将结果保存至变量中而后进行处理;
-	JDBC
-
-mysql请求流程：
+	ODBC：嵌入式SQL:把sql放在程序设计语言上执行。与动态SQL类似，但其语言必须程序编译时完全确定下来。
+	JDBC：动态SQL:程序设计语言使用函数（mysql_connect()）或者方法与RDBMS服务器建立连接，并进行交互;通过建立连接向SQL服务器发送查询语句，并将结果保存至变量中而后进行处理;
+#mysql请求流程：
 用户->连接管理器->解析器->缓存
 用户->连接管理器->解析器->优化器->存储引擎
 mysql支持插件式存储引擎
@@ -128,10 +125,9 @@ mysql支持插件式存储引擎
 文件中记录组织：
 	堆文件组织：一条记录可以放在文件中的任何地方。
 	顺序文件组织：根据“搜索码”值顺序存放。
-	散列文件组织：
+	散列文件组织：根据hash算法进行存放
 表结构定义文件，表数据文件
 表空间：table space
-
 数据字典：data dictionaty （oracle很常见）
 	关系的元数据：
 		关系的名字
@@ -145,17 +141,16 @@ mysql支持插件式存储引擎
 	缓存转换策略
 	被钉住的块不被置换出来
 
-
 #第三节：数据库基础及编译安装
-mysql前途未卜，所以有了mariaDB,percona是为mysql提供优化方案的
+#mysql前途未卜，所以有了mariaDB,percona是为mysql提供优化方案的
 安装方式：
 	1. 基于软件包发行商格式的包。dep,rpm
 	2. 通用二进制安装，是gcc,icc编译安装的，用得最多的是gcc
 	3. 编译安装。5.1及以前是make安装的，后面的是cmake安装的，可以编译成32位或64位平台。
 1. 基于软件包发行商格式的包安装的包：MySQL-client,MySQL-devel,MySQL-shared,MySQL-shared-compat。-----MySQL-test测试组件偶尔会装
-2. 通信二进制安装之前做过
+2. 通用二进制安装之前做过
 修改密码3种方式：
-	1. mysqladmin -u root -h host -p password 'new-password'
+	1. mysqladmin -u root -h host -p youe_password 'new-password'
 	2. set password for 'root'@'localhost'=password('new-password');
 	3. update user set password=password('new-password') where user=root and host=localhost;
 ###3. 编译安装mysql5.6：
@@ -180,11 +175,11 @@ make && make install     make && make install
 -DDEFAULT_CHARSET=utf-8 #默认字符集
 -DDEFAULT_COLLATION=utf8_general_ci #字符集默认排序规则，例如拼音排序，笔画排序
 -DWITH_LIBWRAP=0  #禁用tcp_wrap访问
-[root@localhost download]# mkdir /mydata/data -pv
+[root@localhost download]# mkdir /mydata/data -pv #生产环境用在lvm上
 [root@localhost data]# useradd -r -g 3306 -u 3306 -s /sbin/nologin mysql
 [root@localhost data]# chown -R mysql.mysql /mydata/data/
 [root@lnmp mysql-5.5.37]# cmake . -LH
-[root@lnmp mysql-5.5.37]# cmake . -DCMAKE_INSTALL_PREFIX=/usr/local/mysql -DMYSQL_DATADIR=/mydata/ -DSYSCONFDIR=/etc -DWITH_INNOBASE_STORAGE_ENGINE=1 -DWITH_ARCHIVE_STORAGE_ENGINE=1 -DWITH_BLACKHOLE_STORAGE_ENGINE=1 -DWITH_READLINE=1 -DWITH_SSL=system -DWITH_ZLIB=system -DWITH_LIBWRAP=0 -DMYSQL_UNIX_ADDR=/tmp/mysql.sock -DDEFAULT_CHARSET=utf-8 -DDEFAULT_COLLATION=utf8_general_ci  #当后面mysql无法启动时，可以不单独设置-DDEFAULT_CHARSET=utf-8 -DDEFAULT_COLLATION=utf8_general_ci参数
+[root@lnmp mysql-5.5.37]# cmake . -DCMAKE_INSTALL_PREFIX=/usr/local/mysql -DMYSQL_DATADIR=/mydata/ -DSYSCONFDIR=/etc -DWITH_INNOBASE_STORAGE_ENGINE=1 -DWITH_ARCHIVE_STORAGE_ENGINE=1 -DWITH_BLACKHOLE_STORAGE_ENGINE=1 -DWITH_READLINE=1 -DWITH_SSL=system -DWITH_ZLIB=system -DWITH_LIBWRAP=0 -DMYSQL_UNIX_ADDR=/tmp/mysql.sock -DDEFAULT_CHARSET=utf-8 -DDEFAULT_COLLATION=utf8_general_ci  #当后面mysql无法启动时，可以先不设置-DDEFAULT_CHARSET=utf-8 -DDEFAULT_COLLATION=utf8_general_ci参数
 /down/mysql-5.5.37/sql/sql_yacc.yy:14770:23: note: in expansion of macro ‘Lex’
              LEX *lex= Lex;
                        ^
@@ -210,7 +205,6 @@ OK
 Filling help tables...
 OK
 [root@lnmp mysql]# cp support-files/my-large.cnf /etc/my.cnf
-cp: overwrite ‘/etc/my.cnf’? y
 [root@lnmp mysql]# cp support-files/mysql.server /etc/init.d/mysqld
 [root@lnmp mysql]# chkconfig --add mysqld
 [root@lnmp mysql]# chkconfig --list mysqld
@@ -225,7 +219,6 @@ Starting MySQL.. SUCCESS!
 	2. 数据初始化失败,查看数据目录/mydata下的$HOST.err错误文件
 	3. 数据目录位置错误，数据目录/mydata下无$HOST.err错误文件，在my.cnf中明确定义datadir = /mydata
 	4. 数据目录权限问题
-
 #在同一台主机上，mysql和mysqld是如何进行通信的：
 linux:
 	mysql-->mysql.sock-->mysqld  #套接字
@@ -266,7 +259,6 @@ mysql> show engines;
 8 rows in set (0.00 sec) 
 注：默认存储引擎为InnoDB
 
-
 [root@lnmp etc]# vim /etc/my.cnf
 thread_concurrency = 4 #4个并发线程
 datadir = /mydata/data  #源码编译安装的mysql没有这个路径，但不报错，因为编译的时候已经指定了，为了保险起见，写上这行
@@ -302,9 +294,6 @@ mysql> select User,Host,Password from user;
 +------+---------------+----------+
 3 rows in set (0.00 sec)
 mysql> update user set password=password('root123') where user='root';  #设置保留的三个用户密码
-Query OK, 3 rows affected (0.00 sec)
-Rows matched: 3  Changed: 3  Warnings: 0
-
 mysql> select User,Host,Password from user;
 +------+---------------+-------------------------------------------+
 | User | Host          | Password                                  |
@@ -351,18 +340,14 @@ mysql> show global variables like '%innodb_file_per_table%';
 
 ##例：创建一张表
 mysql> create database mydb;
-Query OK, 1 row affected (0.00 sec)
-
 mysql> use mydb;
-Database changed
 mysql> create table testdb(
     -> id int not null,
     -> name char(30));
-Query OK, 0 rows affected (0.00 sec)
 [root@lnmp bison-2.5.1]# cd /mydata/data/mydb/
 [root@lnmp mydb]# ll
 total 208
--rw-rw---- 1 mysql mysql    65 Jun 13 17:27 db.opt #当前数据默认的字符集和排序规则
+-rw-rw---- 1 mysql mysql    65 Jun 13 17:27 db.opt #当前数据库默认的字符集和排序规则
 -rw-rw---- 1 mysql mysql  8586 Jun 13 17:27 testdb.frm #innoDB的.frm为表结构
 -rw-rw---- 1 mysql mysql 98304 Jun 13 17:27 testdb.ibd #innoDB的.ibd为表空间，存储了表的数据
 
@@ -426,16 +411,12 @@ use       (\u) Use another database. Takes database name as argument.  #切换�
 charset   (\C) Switch to another charset. Might be needed for processing binlog with multi-byte charsets. #切换字符集
 warnings  (\W) Show warnings after every statement. #开启警告信息
 nowarning (\w) Don't show warnings after every statement. #关闭警告信息
-
-For server side help, type 'help contents'
-
 #mysql的服务器命令使用：
 help KEYWORD ＃help关键字
-
 ##mysqladmin客户端工具的使用
 [root@lnmp ~]# mysqladmin --help
 Usage: mysqladmin [OPTIONS] command command....
-mysqladmin -u root -p password "NEW_PASSWORD" #更改root密码
+mysqladmin -u root -p your_password "NEW_PASSWORD" #更改root密码
 mysqladmin参数：
 	--compress #发送接收数据时都进行压缩
 	--ssl-ca=name   #指定ca路径及名称
@@ -462,10 +443,9 @@ mysqladmin参数：
 	shutdown #关闭mysql服务
 	version #显示服务器版本及当前状态信息
 	start-slave:启动从服务器复制线程
-		SQL thread
 		IO thread
+		SQL thread
 	stop-slave:关闭从服务器复制线程
-
 另外mysql客户端工具：mysqldump,mysqlimport,mysqlcheck
 
 #第五节：mysql数据类型及sql模型
@@ -476,36 +456,24 @@ myISAM:
 InnoDB
 	.frm  #表结构文件
 	.ibd  #表空间(数据和索引)
-大多数情况下使用的是myISAM和InnoDB存储引擎，其它存储引擎为抚助存储引擎
-
+#大多数情况下使用的是myISAM和InnoDB存储引擎，其它存储引擎为抚助存储引擎
 客户端：mysql,mysqladmin,mysqldump,mysqlcheck,mysqlimport
 服务器：mysqld,mysqld_safe(安全线程启动，mysql真正启动时是这个启动的),mysqld_multi(多实例)
 mysqlbinlog #查看mysql二进制日志的
 #my.cnf配置文件顺序：
 	/etc/my.cnf,/etc/mysql/my.cnf,$MYSQL_HOME/my.cnf,--default-extra-file=/pth/to/somefile,~/.my.cnf  #后面的会覆盖前面的配置
-
 [mysqld] #mysqld服务端配置
 [mysql] #mysql客户端
 [client】#所有客户端
 注：所有命令行的命令都可以写到my.cnf配置文件中，也可以把my.cnf文件写在命令行中，在命令行中的_下划线和-横线在配置中一样，
 #mysql配置文件帮助信息：
-mysqld --help --verbose  #查看配置文件可用的参数
-
+#mysqld --help --verbose  #查看配置文件可用的参数
 mysql> help show table status; #查看表的状态信息
 Name: 'SHOW TABLE STATUS'
 Description:
 Syntax:
 SHOW TABLE STATUS [{FROM | IN} db_name]
     [LIKE 'pattern' | WHERE expr]
-
-SHOW TABLE STATUS works likes SHOW TABLES, but provides a lot of
-information about each non-TEMPORARY table. You can also get this list
-using the mysqlshow --status db_name command. The LIKE clause, if
-present, indicates which table names to match. The WHERE clause can be
-given to select rows using more general conditions, as discussed in
-http://dev.mysql.com/doc/refman/5.5/en/extended-show.html.
-
-URL: http://dev.mysql.com/doc/refman/5.5/en/show-table-status.html
 mysql> show table status from mysql like 'user' \G ;
 *************************** 1. row ***************************
            Name: user
@@ -531,7 +499,6 @@ Max_data_length: 281474976710655
 DBA:
 	开发DBA:数据库设计、SQL语句、存储过程，存储函数，触发器
 	管理DBA：安装、升级、备份、恢复、用户管理、权限管理、监控、性能分析、基准测试
-
 ###mysql开发
 1. mysql数据类型
 2. mysql SQL语句
@@ -542,7 +509,7 @@ DBA:
 			1. int 
 			2. decimal #十进制
 		近似数值：
-			1. fload
+			1. float  
 			2. double
 			3. real #实数
 	字符型：
@@ -849,8 +816,8 @@ mysql> show collation;  #查看各个字符集下的排序规则
 197 rows in set (0.00 sec)
 
 ##mysql的SQL模型：
-违反了SQL规定时进行SQL的模型设置
-mysql觉的mysql模型：
+违反了SQL规定时进行SQL模型设置
+mysql的mysql模型：
 	1. ANSI QUOTES
 	2. IGNORE_SPACE
 	3. STRICT_ALL_TABLES
@@ -862,7 +829,6 @@ mysql> show global variables like 'sql_mode'; #查看服务器模型
 +---------------+-------+
 | sql_mode      |       |
 +---------------+-------+
-1 row in set (0.00 sec)
 
 MYSQL服务器变量：
 	作用域：
@@ -877,7 +843,7 @@ MYSQL服务器变量：
 	会话变量：即时生效，但只对当前会话有效。会话断掉即失效。
 #注：默认会话变量从全局变量继承的
 
-服务器变量：@@变量名
+服务器变量：@@变量名或@@global变量名
 	显示：select
 	设定：set global|session 变量名='value'
 
@@ -888,43 +854,36 @@ mysql> select  @@global.sql_mode; #查看全局变量mysql的mode
 +-------------------+
 |                   |
 +-------------------+
-1 row in set (0.00 sec)
-mysql> set global sql_mode='strict_all_tables'; #设置全局变量mode
-Query OK, 0 rows affected (0.01 sec)
-
+mysql> set global sql_mode='strict_all_tables'; #设置全局变量sql mode
 mysql> select @@global.sql_mode; 查看全局变量mode
 +-------------------+
 | @@global.sql_mode |
 +-------------------+
 | STRICT_ALL_TABLES |
 +-------------------+
-1 row in set (0.00 sec)
 mysql> select @@sql_mode;
 +------------+
 | @@sql_mode |
 +------------+
 |            |
 +------------+
-1 row in set (0.00 sec)
 #注：全局变量只对下次登入时生效，对当前会话不生效。局部变量对当前会话生效，会话断掉时失效。
 
 #第六节：MYSQL管理表和索引
 #新建数据库：
 help create database #获取帮助信息
 mysql> create schema students character set 'utf8' collate utf8_general_ci;
-Query OK, 1 row affected (0.49 sec)
 alter database  #修改数据库
 drop database  #删除数据库
 #新建表：
 1. 直接定义一张空表
-2. 从其它表中查询出数据，并以之创建新表
+2. 从其它表中查询出数据，并以之创建新表内容
 3. 以其它表为模板创建一个空表
 help create table  #获取帮助信息
-create table courses(CID TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,Couse VARCHAR(50) NOT NULL，Age TINYINT,PRIMARY KEY(CID),UNIQUE KEY(Course),INDEX(Age)); #另外一种设立主键方法
-#键也称为约束，可用作索引，属于特殊索引（有特殊限定）：是BTree结构，另外一种结构为HASH
+create table courses(CID TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,Course VARCHAR(50) NOT NULL，Age TINYINT,PRIMARY KEY(CID),UNIQUE KEY(Course),INDEX(Age)); #另外一种设立主键方法
+#键也称为约束，可用作索引，属于特殊索引（有特殊限定）：是BTree结构，另外一种结构为HASH结构
 #第一种创建表的方法
 mysql> create table courses(CID TINYINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,Couse VARCHAR(50) NOT NULL); #新建表
-Query OK, 0 rows affected (0.20 sec)
 mysql> show table status from students like 'courses'\G; #查看表状态
 *************************** 1. row ***************************
            Name: courses
@@ -947,10 +906,7 @@ Max_data_length: 0
         Comment: 
 1 row in set (0.00 sec)
 mysql> drop table courses; #删除表
-Query OK, 0 rows affected (0.02 sec)
-
 mysql> create table courses(CID TINYINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,Couse VARCHAR(50) NOT NULL)ENGINE MyISAM; #新建表并设立存储引擎MyISAM
-Query OK, 0 rows affected (0.04 sec)
 mysql> show table status like 'courses'\G';
 *************************** 1. row ***************************
            Name: courses
@@ -971,10 +927,7 @@ Max_data_length: 281474976710655
        Checksum: NULL
  Create_options: 
         Comment: 
-1 row in set (0.00 sec)
 mysql> insert into courses (Couse) value ('hamagong'),('pixiejianfa'),('kuihuabaodian');
-Query OK, 3 rows affected (0.00 sec)
-Records: 3  Duplicates: 0  Warnings: 0
 mysql> select * from courses;
 +-----+---------------+
 | CID | Couse         |
@@ -983,8 +936,6 @@ mysql> select * from courses;
 |   2 | pixiejianfa   |
 |   3 | kuihuabaodian |
 +-----+---------------+
-3 rows in set (0.00 sec)
-
 mysql> show index from courses; #显示表的索引
 +---------+------------+----------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
 | Table   | Non_unique | Key_name | Seq_in_index | Column_name | Collation | Cardinality | Sub_part | Packed | Null | Index_type | Comment | Index_comment |
@@ -992,10 +943,8 @@ mysql> show index from courses; #显示表的索引
 | courses |          0 | PRIMARY  |            1 | CID         | A         |           3 |     NULL | NULL   |      | BTREE      |         |               |
 +---------+------------+----------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
                                                   #CID为索引
-1 row in set (0.00 sec)  
 #第二种创建表的方法
 mysql> create table testcourses select * from courses where CID <= 3;
-Query OK, 3 rows affected (0.33 sec) #复制表
 mysql> desc testcourses; #通过查询新建的表表结构也会发生改变
 +-------+---------------------+------+-----+---------+-------+
 | Field | Type                | Null | Key | Default | Extra |
@@ -1003,8 +952,6 @@ mysql> desc testcourses; #通过查询新建的表表结构也会发生改变
 | CID   | tinyint(3) unsigned | NO   |     | 0       |       |
 | Couse | varchar(50)         | NO   |     | NULL    |       |
 +-------+---------------------+------+-----+---------+-------+
-2 rows in set (0.00 sec)
-
 mysql> desc courses;
 +-------+---------------------+------+-----+---------+----------------+
 | Field | Type                | Null | Key | Default | Extra          |
@@ -1012,11 +959,8 @@ mysql> desc courses;
 | CID   | tinyint(3) unsigned | NO   | PRI | NULL    | auto_increment |
 | Couse | varchar(50)         | NO   |     | NULL    |                |
 +-------+---------------------+------+-----+---------+----------------+
-2 rows in set (0.00 sec)
 #第三种创建表的方法
 mysql> create table test like courses; #复制表的结构为空表
-Query OK, 0 rows affected (0.04 sec)
-
 mysql> desc courses;
 +-------+---------------------+------+-----+---------+----------------+
 | Field | Type                | Null | Key | Default | Extra          |
@@ -1024,8 +968,6 @@ mysql> desc courses;
 | CID   | tinyint(3) unsigned | NO   | PRI | NULL    | auto_increment |
 | Couse | varchar(50)         | NO   |     | NULL    |                |
 +-------+---------------------+------+-----+---------+----------------+
-2 rows in set (0.00 sec)
-
 mysql> desc test;
 +-------+---------------------+------+-----+---------+----------------+
 | Field | Type                | Null | Key | Default | Extra          |
@@ -1033,12 +975,7 @@ mysql> desc test;
 | CID   | tinyint(3) unsigned | NO   | PRI | NULL    | auto_increment |
 | Couse | varchar(50)         | NO   |     | NULL    |                |
 +-------+---------------------+------+-----+---------+----------------+
-2 rows in set (0.01 sec)
-
 mysql> insert into test select * from courses; #复制表数据
-Query OK, 3 rows affected (0.00 sec)
-Records: 3  Duplicates: 0  Warnings: 0
-
 mysql> select * from courses;
 +-----+---------------+
 | CID | Couse         |
@@ -1047,8 +984,6 @@ mysql> select * from courses;
 |   2 | pixiejianfa   |
 |   3 | kuihuabaodian |
 +-----+---------------+
-3 rows in set (0.00 sec)
-
 mysql> select * from test;
 +-----+---------------+
 | CID | Couse         |
@@ -1057,12 +992,10 @@ mysql> select * from test;
 |   2 | pixiejianfa   |
 |   3 | kuihuabaodian |
 +-----+---------------+
-3 rows in set (0.00 sec)
 #ALTER修改表
 help alter table #查看修改帮助
 BTREE索引和HASH索引对表查询优化有很大影响
-mysql> create table student(SID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY ,Name varchar(30) NOT NULL,CID TINYINT unsigned NOT NULL);
-Query OK, 0 rows affected (0.33 sec)
+mysql> create table student(SID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY ,Name varchar(30) NOT NULL,CID TINYINT UNSIGNED NOT NULL);
 mysql> desc courses;
 +-------+---------------------+------+-----+---------+----------------+
 | Field | Type                | Null | Key | Default | Extra          |
@@ -1070,8 +1003,6 @@ mysql> desc courses;
 | CID   | tinyint(3) unsigned | NO   | PRI | NULL    | auto_increment |
 | Couse | varchar(50)         | NO   |     | NULL    |                |
 +-------+---------------------+------+-----+---------+----------------+
-2 rows in set (0.00 sec)
-
 mysql> desc student;
 +-------+---------------------+------+-----+---------+----------------+
 | Field | Type                | Null | Key | Default | Extra          |
@@ -1080,7 +1011,6 @@ mysql> desc student;
 | CID   | tinyint(3) unsigned | NO   | MUL | NULL    |                |
 | name  | varchar(30)         | NO   |     | NULL    |                |
 +-------+---------------------+------+-----+---------+----------------+
-3 rows in set (0.00 sec)
 mysql> insert into student (Name,CID) values ('zwj',2),('lhc',3);
 mysql> select * from student;
 +-----+-----+------+
@@ -1089,8 +1019,6 @@ mysql> select * from student;
 |   1 |   2 | zwj  |
 |   2 |   3 | lhc  |
 +-----+-----+------+
-2 rows in set (0.00 sec)
-
 mysql> select Name,Couse from courses,student where courses.CID=student.CID;  #多表查询
 +------+---------------+
 | Name | Couse         |
@@ -1098,11 +1026,9 @@ mysql> select Name,Couse from courses,student where courses.CID=student.CID;  #�
 | zwj  | pixiejianfa   |
 | lhc  | kuihuabaodian |
 +------+---------------+
-2 rows in set (0.01 sec)
 mysql> insert into student (Name,CID) values ('zhangwuji',5); #现在这个student表没有外键约束所以可以插入主表中没有的CID
-Query OK, 1 row affected (0.05 sec)
 #建立外键：
-mysql> alter table student add FOREIGN KEY(CID) REFERENCES courses(CID) ;  #插入外键时报错，原因在于外键不允许在InnoDB外的存储引擎上使用
+mysql> alter table student add FOREIGN KEY(CID) REFERENCES courses(CID) ;  #插入外键时报错，原因在于外键不允许在除InnoDB外的所有存储引擎上使用
 ERROR 1005 (HY000): Can't create table 'students.#sql-63d8_9' (errno: 150)
 mysql> show table status like 'student'\G;
 *************************** 1. row ***************************
@@ -1124,11 +1050,6 @@ Max_data_length: 0
        Checksum: NULL
  Create_options: 
         Comment: 
-1 row in set (0.00 sec)
-
-ERROR: 
-No query specified
-
 mysql> show table status like 'courses'\G;
 *************************** 1. row ***************************
            Name: courses
@@ -1149,21 +1070,11 @@ Max_data_length: 281474976710655
        Checksum: NULL
  Create_options: 
         Comment: 
-1 row in set (0.00 sec)
-
-ERROR: 
-No query specified
 mysql> alter table courses ENGINE=InnoDB; #更改表存储引擎
-Query OK, 3 rows affected (0.22 sec)
-Records: 3  Duplicates: 0  Warnings: 0
 mysql> alter table student add FOREIGN KEY foreign_id (CID) REFERENCES courses (CID) ; 
-Query OK, 2 rows affected (0.51 sec)
-Records: 2  Duplicates: 0  Warnings: 0
 mysql> insert into student (Name,CID) values ('zhangwuji',6); #此时报错，因为有外键限制
 ERROR 1452 (23000): Cannot add or update a child row: a foreign key constraint fails (`students`.`student`, CONSTRAINT `student_ibfk_1` FOREIGN KEY (`CID`) REFERENCES `courses` (`CID`))
 mysql> insert into student (Name,CID) values ('zhangwuji',1); #这个主键有，所以成功
-Query OK, 1 row affected (0.06 sec)
-
 #索引：
 索引只能增加、查询、删除，不能修改索引。
 mysql> show indexes from student;
@@ -1173,11 +1084,7 @@ mysql> show indexes from student;
 | student |          0 | PRIMARY    |            1 | SID         | A         |           2 |     NULL | NULL   |      | BTREE      |         |               |
 | student |          1 | foreign_id |            1 | CID         | A         |           2 |     NULL | NULL   |      | BTREE      |         |               |
 +---------+------------+------------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
-2 rows in set (0.00 sec)
 mysql> create index name_on_student on student (name) using btree; #新建索引并使用btree索引，默认是btree索引，可以省略不写
-Query OK, 0 rows affected (0.23 sec)
-Records: 0  Duplicates: 0  Warnings: 0
-
 mysql> show indexes from student;
 +---------+------------+-----------------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
 | Table   | Non_unique | Key_name        | Seq_in_index | Column_name | Collation | Cardinality | Sub_part | Packed | Null | Index_type | Comment | Index_comment |
@@ -1186,13 +1093,8 @@ mysql> show indexes from student;
 | student |          1 | foreign_id      |            1 | CID         | A         |           2 |     NULL | NULL   |      | BTREE      |         |               |
 | student |          1 | name_on_student |            1 | name        | A         |           2 |     NULL | NULL   |      | BTREE      |         |               |
 +---------+------------+-----------------+--------------+-------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
-3 rows in set (0.00 sec)
 mysql> drop index name_on_student on student; #删除索引
-Query OK, 0 rows affected (0.27 sec)
-Records: 0  Duplicates: 0  Warnings: 0
 mysql> create index name_on_student on student (name(5) desc) using btree; #新建索引并且只引用从左到右五位，后面的不参加索引，可能节约资源有很大帮助，desc是降序，asc是升序。
-Query OK, 0 rows affected (0.09 sec)
-Records: 0  Duplicates: 0  Warnings: 0
 
 #第七节：单表查询、多表查询和子查询
 查询语句类型：
@@ -1208,7 +1110,7 @@ WHERE子句：布尔关系表达式，判断是否的，=、>、>=、<、<=、<>
 逻辑关系：AND,OR,NOT，BETWEEN，LIKE(_单个字符，%任意字符),REGEXP|RLIKE(正则表达式)，IN，IS NULL|NOT NULL,AS，LIMIT
 排序：ORDER BY field_name {ASC|DESC} #默认是ASC升序
 聚合：AVG(age),MAX(age),MIN(age),SUM(age),COUNT(age),
-分组：GROUP BY，，HAVING(对使用分组的语句最后再进行一次筛选)
+分组：GROUP BY，HAVING(对使用分组的语句最后再进行一次筛选)
 
 ##SELECT语句样例：
 SELECT Name,Age FROM students WHERE Age<=25 AND Age>=20; #查询20到25的用户
@@ -1250,7 +1152,7 @@ mysql> SELECT 2+1 AS sum;
 SELECT s.Name,c.Cname FROM students AS s,courses AS c WHERE s.CID1=c.CID; #自然连接并给表取别名
 SELEECT s.Name,c.Cname FROM students AS s LEFT JOIN courses AS c ON s.CID1=c.CID;  #左外连接，以左表为基准，右表有值的显示，无值的也显示，显示为NULL
 SELEECT s.Name,c.Cname FROM students AS s RIGHT JOIN courses AS c ON s.CID1=c.CID;  #右外连接，以右表为基准，左表有值的显示，无值的也显示，显示为NULL
-SELECT c.Name AS student,s.Name AS tearcher FROM students AS c,student AS c WHERE c.TID=s.SID; #自连接
+SELECT c.Name AS student,s.Name AS tearcher FROM students AS c,student AS s WHERE c.TID=s.SID; #自连接
 
 #子查询：
 子查询：比较操作中使用时只能返回单个值
@@ -1263,13 +1165,11 @@ SELECT Name,Age FROM (SELECT Name,Age FROM students) AS t WHERE t.Age >= 20; #�
 
 #联合查询：UNION关键字
 （SELECT Name,Age FROM students) UNION (SELECT Tname,Age FROM tutors); #联合查询
-
 #第八节：多表查询、子查询及视图
 SELECT Tname FROM tutors WHERE TID NOT IN (SELECT DISTINCT TID FROM courses); #从tutors表找出TID不在courses表上的老师名
 SELECT CID1 FROM students GROUP BY CID1 HAVING COUNT(CID11) >=2; #找出学习的课程大于等于2的CID1
 SELECT Cname FROM courses WHERE CID IN (SELECT CID1 FROM students GROUP BY CID1 HAVING COUNT(CID1) >=2); #对找出大于等于2的CID1进行显示课程名称
 SELECT Name,Cname,Tname FROM students,courses,tutors WHERE students.CID1=courses.CID AND courses.TID=tutors.TID; #从学生表，老师表，课程表中查询每个学生所学的课以及对应的老师
-
 
 #视图：存储下来的SELECT语句
 help create view #获取新建视图帮助
@@ -1287,13 +1187,13 @@ mysql -e 'SHOW DATABASES;'  #在bash上查看数据库
 广义查询：SELECT,INSERT,UPDATE,DELETE
 insert批量插入会提高性能的
 字符串：单引号
-数据弄：不需要引号
+数据型：不需要引号
 日期和时间：不需要引号
 空值：NULL
 auto_increment自增长，在表中删除某些行，计数器不会填补删除的空行数据，而是继续使用之前的顺序新增，除非你更改LAST_INSERT_ID()值。
 
 #insert:
-insert into students (col1,col2,...) value (val1,val2,...);#批量插入
+insert into students (col1,col2) value (val1,val2),...;#批量插入
 insert into students set Tname='tom',Age=16; #特定插入
 insert into students (col1,col2,...) select  #查询插入
 #replace:跟insert语句一样，表示未有数据和有数据时都使用，而insert插入数据有约束时不会插入
@@ -1305,7 +1205,7 @@ delete from tb_name #会删除表所有数据但不清空AUTOINCREMENT计数器
 TRUNCATE tb_name:清空表并重置AUTOINCREMENT计数器;
 
 #update
-update tb_name set cou=val where ;
+update tb_name set cou=val where id=1 ;
 
 ##mysql连接执行流程：
 1. 连接管理器
@@ -1329,7 +1229,6 @@ update tb_name set cou=val where ;
 	行锁：锁定一行
 注：mysql自己内部会处理锁，我们不用人为去加锁，只是使用温备份时才加锁。
 mysql> lock tables student read; #会话1为表student加共享锁
-Query OK, 0 rows affected (0.00 sec)
 mysql> select * from student; #会话2可读
 +-----+------+------+
 | SID | CID  | name |
@@ -1339,7 +1238,6 @@ mysql> select * from student; #会话2可读
 |   8 |    1 | tom  |
 |   9 |   10 | jack |
 +-----+------+------+
-4 rows in set (0.00 sec)
 mysql> insert student (CID,name) values (11,'candy'); #此会会话2插入数据时会卡住，等待锁释放后才可插入
 
 mysql> unlock tables; #会话1解除锁
@@ -1356,21 +1254,20 @@ RDBMS: ACID(原子性，一致性，隔离性，持久性) #支持事务必须�
 事务流程：
  1. 提交事务
  2. 写入事务日志 #当提交事务全部操作未完全写入事务日志时，mysql服务重新启动时会读取撤销日志进行撤销，否则会写入数据库。
- 3. 写入数据库 #当写入数据库操作服务崩溃时，mysql服务重新启用后会读取重做日志进行重新写入数据库
+ 3. 写入数据库 #当写入数据库操作时服务崩溃，mysql服务重新启用后会读取重做日志进行重新写入数据库
 注：事务日志不是越大越好，越大表示同步到磁盘越慢
 隔离性：
 	隔离级别：
 		READ-UNCOMMITTED   #读未提交，最低隔离级别
 		READ-COMMITTED    #读提交
 		REPEATABLE-READ   #可重读（默认隔离级别）
-		SERIABLIZABLE    #可串行
+		SERIALIZABLE    #可串行
 mysql> show global variables like '%iso%'; #查看mysql隔离级别
 +---------------+-----------------+
 | Variable_name | Value           |
 +---------------+-----------------+
 | tx_isolation  | REPEATABLE-READ |
 +---------------+-----------------+
-1 row in set (0.00 sec)
 
 服务器变量：
 	全局变量(global)：
@@ -1384,31 +1281,25 @@ mysql> show global variables like '%iso%'; #全局变量默认级别
 +---------------+-----------------+
 | tx_isolation  | REPEATABLE-READ |
 +---------------+-----------------+
-1 row in set (0.00 sec)
 mysql> show variables like '%iso%'; #会话变量默认级别
 +---------------+-----------------+
 | Variable_name | Value           |
 +---------------+-----------------+
 | tx_isolation  | REPEATABLE-READ |
 +---------------+-----------------+
-1 row in set (0.01 sec)
 mysql> set tx_isolation='READ-UNCOMMITTED'; #设置隔离级别
-Query OK, 0 rows affected (0.00 sec)
 mysql> show variables like '%iso%'; #不知道全名时可使用show进行展示
 +---------------+------------------+
 | Variable_name | Value            |
 +---------------+------------------+
 | tx_isolation  | READ-UNCOMMITTED |
 +---------------+------------------+
-1 row in set (0.00 sec)
 mysql> select @@tx_isolation; #知道全名时可用select展示
 +------------------+
 | @@tx_isolation   |
 +------------------+
 | READ-UNCOMMITTED |
 +------------------+
-1 row in set (0.00 sec)
-
 
 #第十节：事务和隔离级别
 RDBMS: ACID(原子性，一致性，隔离性，持久性)
@@ -1444,8 +1335,6 @@ RDBMS: ACID(原子性，一致性，隔离性，持久性)
 	2. 时间戳
 	3. 多版本和快照隔离
 
-
-
 SQL语句或者ODBC的命令 
 START TRANSACTION  #启动事务
 	SQL 1
@@ -1459,19 +1348,15 @@ mysql> select @@autocommit; #如果没有明确启动事务，自动提交是开
 +--------------+
 |            1 |
 +--------------+
-1 row in set (0.00 sec)
 建议：在事务性数据库上，手动明确使用事务，并且关闭自动提交，这样可以减少数据库io的
 mysql> set autocommit=0； #此时关闭自动提交功能，在使用select语句后需要使用commit提交才可写入持久性存储
 mysql> set global autocommit=0; #这个是设置全局变量的自动提交 
-Query OK, 0 rows affected (0.00 sec)
 mysql> select @@autocommit;
 +--------------+
 | @@autocommit |
 +--------------+
 |            0 |
 +--------------+
-1 row in set (0.00 sec)
-
 保存点：SAVEPOINT  #在事务中使用
 SAVEPOINT a; #建立一个保存点
 ROLLBACK TO a;  #回滚到保存点a
@@ -1486,27 +1371,16 @@ mysql> select * from student;
 |   9 |   10 | jack  |
 |  10 |   11 | candy |
 +-----+------+-------+
-5 rows in set (0.00 sec)
 mysql> select @@autocommit;
 +--------------+
 | @@autocommit |
 +--------------+
 |            0 |
 +--------------+
-1 row in set (0.00 sec)
-
 mysql> delete from student where SID=10;
-Query OK, 1 row affected (0.00 sec)
-
 mysql> savepoint a;
-Query OK, 0 rows affected (0.00 sec)
-
 mysql> delete from student where SID=9;
-Query OK, 1 row affected (0.00 sec)
-
 mysql> savepoint b;
-Query OK, 0 rows affected (0.00 sec)
-
 mysql> select * from student;
 +-----+------+------+
 | SID | CID  | name |
@@ -1515,10 +1389,7 @@ mysql> select * from student;
 |   2 |    3 | lhc  |
 |   8 |    1 | tom  |
 +-----+------+------+
-3 rows in set (0.00 sec)
 mysql> rollback to a;  #回滚到某个保存点
-Query OK, 0 rows affected (0.00 sec)
-
 mysql> select * from student;
 +-----+------+------+
 | SID | CID  | name |
@@ -1528,12 +1399,10 @@ mysql> select * from student;
 |   8 |    1 | tom  |
 |   9 |   10 | jack |
 +-----+------+------+
-4 rows in set (0.00 sec)
-
 ####验证隔离级别：
 先启动两个mysql会话：
 1. SET tx_isolation=READ-UNCOMMITTED(读未提交);两个会话隔离性都为读未提交时，当一个会话启动事务进行增删改操作时，未使用COMMIT提交，另外一个会话也会看到同样的结果，这就是读未提交隔离的效果。但是会产生幻影问题
-2. SET tx_isolation=READ-COMMITTED(读提交);两个会话隔离性都为读提交时，当一个会话启动事务进行增删改操作时，使用COMMIT提交，另外一个会话也会看到同样的结果，这就是读提交隔离的效果。如果未提交则另外一个会话看不到改变的数据，但是会产生幻影问题
+2. SET tx_isolation=READ-COMMITTED(读提交);两个会话隔离性都为读提交时，当一个会话启动事务进行增删改操作时，使用COMMIT提交，另外一个会话也会看到同样的结果，这就是读提交隔离的效果。如果未提交则另外一个会话看不到改变的数据，但是提交后会产生幻影问题
 3. SET tx_isolation=REPEATABLE-READ(可重读);两个会话隔离性都为可重读时，当一个会话启动事务进行增删改操作时，使用COMMIT提交，另外一个会话不会看到同样的结果，此时另外一个会话看到的一直都是另外会话自己看到的结果，当另外一个会话也COMMIT时才会看到当前同样的结果，这就是可重读隔离的效果。但是会产生幻影问题
 4. SET tx_isolation=SEREALABLE(可串行);两个会话隔离性都为可串行时，当一个会话启动事务进行增删改操作时，未使用COMMIT提交，另外一个会话查询时不会有任何结果显示且会卡住查询会话，当当前会话COMMIT时，另外一个会话查询才会有结果显示。
 #注：如果不是银行证券行业，可以适当降低隔离级别，提升性能是相当明显的
@@ -1541,8 +1410,7 @@ mysql> select * from student;
 #第十一节：MYSQL用户和权限管理
 用户：只是认证
 权限：是用来授权用户访问数据库的权限
-
-#mysqld服务启动时会加载mysql数据库中user,db,tables_priv,columns_priv,procs_priv,proxies_priv6张表并生成一张授权表到内存当中。
+#mysqld服务启动时会加载mysql数据库中user,db,tables_priv,columns_priv,procs_priv,proxies_priv 6张表并生成一张授权表到内存当中。
 user表：用户帐号、全局权限 
 db表：库级别权限
 tables_priv表：表级别权限
@@ -1570,7 +1438,6 @@ mysql> show grants for jack@"%"; #查看某个用户权限，这个用户默认�
 +-----------------------------------------------------------------------------------------------------+
 | GRANT USAGE ON *.* TO 'jack'@'%' IDENTIFIED BY PASSWORD '*23AE809DDACAF96AF0FD78ED04B6A265E05AA257' |
 +-----------------------------------------------------------------------------------------------------+
-1 row in set (0.00 sec)
 
 GRANT ALL PRIVILEGES ON [object_type] db.* TO username@'%'; #[object_type]：TABLE,FUNCTION,PROCEDURE
 GRANT EXECUTE ON FUNCTION db.abc TO username@'%'; #授权db.abc存储函数执行权限给某个用户。
@@ -1594,8 +1461,7 @@ mysql> show global variables like '%log%';
 	3. 事件调度器运行一个事件时产生的信息
 	4. 在从服务器上启动从服务器进行时产生的信息
 	
-#一般查询日志：general_log，general_log_file，log,log_output[TABLE|FILE|NONE]可以设定在mysql表中，sql_log_off（用于控制是否禁止将一般查询日志类信息记录进查询日志文件）   #不建议开启
-                          
+#一般查询日志：general_log，general_log_file，log,log_output[TABLE|FILE|NONE]可以设定在mysql表中，sql_log_off（用于控制是否禁止将一般查询日志类信息记录进查询日志文件）   #不建议开启                        
 #慢查询日志：long_query_time，log_slow_queries|slow_query_log，slow_query_log_file，log_output[TABLE|FILE|NONE] #建议开启，日志输出可以同时输出TABLE,FILE中
 mysql> show global variables like '%long_quer%';
 +-----------------+-----------+
@@ -1603,25 +1469,24 @@ mysql> show global variables like '%long_quer%';
 +-----------------+-----------+
 | long_query_time | 10.000000 |
 +-----------------+-----------+
-
 #二进制日志：任何引起或可能引起数据库变化的操作     #必须开启
-	binlog_format=MIXED ，
+	binlog_format=MIXED 
 	log_bin（设置日志开关并且设置二进制文件路径）
-	 sql_log_bin（二进制日志文件开关，当以后恢复备份时需要临时把二进制日志文件关闭，完成后恢复）
-	 binlog_cache_size(大小取决于binlog_stmt_cache_size)
+	sql_log_bin（二进制日志文件开关，当以后恢复备份时需要临时把二进制日志文件关闭，完成后恢复）
+	binlog_cache_size(大小取决于binlog_stmt_cache_size)
 	binlog_stmt_cache_size（二进制文件语句缓存大小）
 	sync_binlog（设置对二进制每多少次写操作后同步一次，0表示不同步）
 	expire_logs_days：设置二进制日志过期天数
 	滚动记录日志，mysqld启动时也会滚动记录日志
 	复制、即时点恢复：
-	mysqlbinlog,查看二进制日志命令
+		mysqlbinlog,查看二进制日志命令
 	二进制日志的格式：
 		基于语句：statement
 		基于行：row
 		混合方式：mixed
 	二进制日志事件：
-		产生的时间
-		位置
+		产生的时间，datetime
+		位置,position
 	二进制日志文件：
 		索引文件
 		二进制日志文件
@@ -1632,7 +1497,6 @@ mysql> show global variables like '%long_quer%';
 +------------------+----------+--------------+------------------+
 | mysql-bin.000009 |  1132572 |              |                  |
 +------------------+----------+--------------+------------------+
-1 row in set (0.00 sec)
 mysql> show binlog events in 'mysql-bin.000003';
 +------------------+-----+-------------+-----------+-------------+---------------------------------------+
 | Log_name         | Pos | Event_type  | Server_id | End_log_pos | Info                                  |
@@ -1640,7 +1504,6 @@ mysql> show binlog events in 'mysql-bin.000003';
 | mysql-bin.000003 |   4 | Format_desc |         1 |         107 | Server ver: 5.5.37-log, Binlog ver: 4 |
 | mysql-bin.000003 | 107 | Stop        |         1 |         126 |                                       |
 +------------------+-----+-------------+-----------+-------------+---------------------------------------+
-2 rows in set (0.00 sec)
 	SHOW BINLOG EVENTS IN 'mysql-bin.000009' [FROM pos]; #详细查看二进制日志文件事件的信息
 	mysqlbinlog命令：
 		--start-datetime 'yyyy-mm-dd hh:mm:ss'
@@ -1649,15 +1512,12 @@ mysql> show binlog events in 'mysql-bin.000003';
 		--stop-position
 	[root@lnmp mydata]# mysqlbinlog --start-position=220554 --stop-position=223392 mysql-bin.000009 > /root/a.sql #查看起始位置到结束位置的日志并导出到sql脚本上，另外mysql数据库导入即可恢复
 	mysql> flush logs; #滚动二进制日志和从服务器中继日志的命令
-Query OK, 0 rows affected (0.00 sec)
-
 mysql> show master status ;
 +------------------+----------+--------------+------------------+
 | File             | Position | Binlog_Do_DB | Binlog_Ignore_DB |
 +------------------+----------+--------------+------------------+
 | mysql-bin.000010 |      107 |              |                  |
 +------------------+----------+--------------+------------------+
-1 row in set (0.00 sec)
 	mysql> show binary logs; #查看当前保存下来的二进制文件
 +------------------+-----------+
 | Log_name         | File_size |
@@ -1674,8 +1534,6 @@ mysql> show master status ;
 | mysql-bin.000010 |       107 |
 +------------------+-----------+
 mysql> purge binary logs to 'mysql-bin.000003'; #删除指定日志文件以前所有的二进制日志文件
-Query OK, 0 rows affected (0.01 sec)
-
 mysql> show binary logs;
 +------------------+-----------+
 | Log_name         | File_size |
@@ -1689,12 +1547,9 @@ mysql> show binary logs;
 | mysql-bin.000009 |   1132615 |
 | mysql-bin.000010 |       107 |
 +------------------+-----------+
-8 rows in set (0.00 sec)
 #中继日志：
 #事务日志：ACIO，InnoD有事务日志
-
 #任何变量涉及文件的操作必须重启服务器才能生效
-
 mysql> show global variables like '%log%'; #查看全局所有log相关日志
 +-----------------------------------------+---------------------------+
 | Variable_name                           | Value                     |
@@ -1733,9 +1588,9 @@ mysql> show global variables like '%log%'; #查看全局所有log相关日志
 | relay_log_purge                         | ON                        |
 | relay_log_recovery                      | OFF                       |
 | relay_log_space_limit                   | 0                         |
-| slow_query_log                          | OFF                       |
+| slow_query_log                          | OFF                       | #慢查询日志开关
 | slow_query_log_file                     | /mydata/lnmp-slow.log     |
-| sql_log_bin                             | ON                        |
+| sql_log_bin                             | ON                        | #用户sql shell中临时开启和关闭二进制日志记录的开关
 | sql_log_off                             | OFF                       |
 | sync_binlog                             | 0                         |
 | sync_relay_log                          | 0                         |
@@ -1743,9 +1598,8 @@ mysql> show global variables like '%log%'; #查看全局所有log相关日志
 +-----------------------------------------+---------------------------+
 41 rows in set (0.00 sec)
 
-
 #第十三节：MYSQL日志管理二
-#中继日志：从主服务器的二进制日志文件中复制而来的事件，并保存的日志文件，用于从服务器复制的
+#中继日志：从主服务器的二进制日志文件中复制而来的事件，并保存的日志文件，用于从服务器复制回放的
 #事务日志：ACIO，InnoD有事务日志
 	innodb_flush_log_at_trx_commit：内存中缓存的日志同步到事务日志中来，值为1时表示每当有事务提交时同步事务日志，并执行磁盘flush操作，值为2时表示每有事务提交才同步，但不执行磁盘flush操作，值为0时每秒钟同步一次并告次内核不要在内核缓存直接保存到事务日志当中（执行磁盘flush操作）
 	innodb_log_buffer_size：内存缓存大小，默认8M
@@ -1753,7 +1607,6 @@ mysql> show global variables like '%log%'; #查看全局所有log相关日志
 	innodb_log_files_in_group：事务日志组，默认为2个
 	innodb_log_group_home_dir：事务日志存储位置
 	innodb_mirrored_log_groups：事务日志镜像组
-
 
 mysql> show engines;
 +--------------------+---------+----------------------------------------------------------------+--------------+------+------------+
@@ -1792,7 +1645,7 @@ CSV：在两个数据库之间进行移植时使用
 ARCHIVE：用来实现归档的，
 MEMORY：内存存储引擎
 BLACKHOLE：级联复制，多级复制时再说
-#不建议使用混合存储引擎，如果以后对事务进行rollback时MYISAM不支持，会出问题。
+#不建议使用混合存储引擎，比如以后对事务进行rollback时MYISAM就不支持，会出问题。
 
 #第十四节：MYSQL备份和还原
 RAID1,RAID10：保证硬件损坏而业务不会中止
@@ -1819,8 +1672,7 @@ RAID1,RAID10：保证硬件损坏而业务不会中止
 热备份：
 	MYISAM:在线热备份几乎不可能，除非借助LVM快照进行热备份，否则最好的是温备份，用读锁锁定备份的所有表
 	InnoDB:xtrabackup,mysqldump来进行热备份
-
-MYSQL可以借助从服务器来进行温备份。从服务器停掉从服务器进程，此时从服务器只能读，就可进行温备份
+MYSQL可以借助从服务器来进行温备份。从服务器停掉从服务器IO线程，此时从服务器只能读，就可进行温备份
 
 物理备份：速度快
 逻辑备份：速度慢、丢失浮点数精度，方便使用文本处理工具直接对其处理、可移植能力强;
@@ -1831,15 +1683,15 @@ MySQ备份工具：
 	1. mysqldump:逻辑备份工具，MyISAM(温备份)，InnoDB(热备份)
 	2. mysqlhotcopy：物理备份工具、温备份
 文件系统备份工具：
-	1. cp:只能实现冷备，基于lv可以实现热备
-	2. lv:逻辑卷的快照功能，几乎热备;
+	1. cp:只能实现冷备，基于lvm可以实现热备
+	2. lvm:逻辑卷的快照功能，几乎热备;
 		mysql>FLUSH TABLES;
 		mysql>LOCK TABLES;
 		创建快照，释放锁，而后复制数据
-		注：基于lv快照来说，对于MyISAM存储引擎来说几乎可以实现热备，但是InnoDB就不行了，因为可能还有部分数据正从事务日志写入数据文件中，所以得监控InnoDB的缓冲区是否全部复制完成。
+		注：基于lvM快照来说，对于MyISAM存储引擎来说几乎可以实现热备，但是InnoDB就不行了，因为可能还有部分数据正从事务日志写入数据文件中，所以得监控InnoDB的缓冲区是否全部复制完成。
 第三组备份工具：
 	ibbackup:针对InnoDB存储引擎的商业工具
-	xtrabackup:开源工具
+	xtrabackup:开源工具,建议使用这个备份工具
 
 mysqldump备份：
 	1. 先打开一个mysql终端进行锁所有表并刷新所有表：FLUSH TABLES WITH READ LOCK;
@@ -1858,15 +1710,15 @@ mysqldump备份：
 --routines #备份存储过程和存储函数
 --triggers #备份触发器
 
-mysqldump --lock-all-tables --master-data=2 students > /root/stu-`date +%Y-%m-%d-%H:%M:%S`.sql
+mysqldump --lock-all-tables --master-data=2 --flush-logs students > /root/stu-`date +%Y-%m-%d-%H:%M:%S`.sql
 
 备份策略：周完全+每日增量
-	完全备份：mysqldump --lock-all-tables --master-data=2 students > /root/stu-`date +%Y-%m-%d-%H:%M:%S`.sql
+	完全备份：mysqldump --lock-all-tables --master-data=2 --flush-logs students > /root/stu-`date +%Y-%m-%d-%H:%M:%S`.sql
 	增量备份：备份二进制日志文件(flush logs)
 例：
 1. [root@lnmp ~]# mysqldump -uroot -p --flush-logs --master-data=2 --lock-all-tables --all-databases > /root/alldatabases.sql
 2. [root@lnmp ~]# less alldatabases.sql 
-CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000014', MASTER_LOG_POS=107;
+CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000014', MASTER_LOG_POS=107; #这个是--master-data=2参数开启记录的文件及位置
 3.mysql> show binary logs;
 +------------------+-----------+
 | Log_name         | File_size |
@@ -1875,17 +1727,13 @@ CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000014', MASTER_LOG_POS=107;
 | mysql-bin.000013 |       352 |
 | mysql-bin.000014 |       107 |
 +------------------+-----------+
-3 rows in set (0.00 sec)
 4. mysql> purge binary logs to 'mysql-bin.000014'; #腾出二进制空间，以后会越来越大，建议先备份老的二进制然后再清理
-
 5. mysql> show binary logs;
 +------------------+-----------+
 | Log_name         | File_size |
 +------------------+-----------+
 | mysql-bin.000014 |       107 |
 +------------------+-----------+
-1 row in set (0.00 sec)
-
 6. mysql> select * from student;
 +-----+------+-------+
 | SID | CID  | name  |
@@ -1896,10 +1744,8 @@ CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000014', MASTER_LOG_POS=107;
 |  10 |   11 | candy |
 |  11 |   12 | bob   |
 +-----+------+-------+
-5 rows in set (0.00 sec)
 7. mysql> delete from student where CID=3 OR CID=1; #删除两行 
-
-8.mysql> select * from student;
+8. mysql> select * from student;
 +-----+------+-------+
 | SID | CID  | name  |
 +-----+------+-------+
@@ -1907,19 +1753,14 @@ CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000014', MASTER_LOG_POS=107;
 |  10 |   11 | candy |
 |  11 |   12 | bob   |
 +-----+------+-------+
-3 rows in set (0.00 sec)
 mysql> \q  #假如一天过去了，做了删除两行的操作
-
 9. mysql> flush logs; #进行日志滚动
-Query OK, 0 rows affected (0.01 sec)
-
-10. mysql> show master status; #当时的二进制日志
+10. mysql> show master status; #当时滚动后的二进制日志
 +------------------+----------+--------------+------------------+
 | File             | Position | Binlog_Do_DB | Binlog_Ignore_DB |
 +------------------+----------+--------------+------------------+
 | mysql-bin.000015 |      107 |              |                  |
 +------------------+----------+--------------+------------------+
-1 row in set (0.00 sec)
 11. mysql> show binary logs;
 +------------------+-----------+
 | Log_name         | File_size |
@@ -1927,11 +1768,9 @@ Query OK, 0 rows affected (0.01 sec)
 | mysql-bin.000014 |       717 | #这个二进制日志就是上一次完全备份后到当前期间的二进制日志
 | mysql-bin.000015 |       107 |
 +------------------+-----------+
-2 rows in set (0.00 sec) 
 12. [root@lnmp mydata]# cp mysql-bin.000014 /root/ #备份增量到/root目录下
-13. [root@lnmp mydata]# mysqlbinlog mysql-bin.000014 > /root/mon-incrementa1.sql #或者这样先读出来二进制文件重定向到新建文件进行增量备份也行，12步和13步选其一即可
+13. [root@lnmp mydata]# mysqlbinlog mysql-bin.000014 > /root/mon-incrementa1.sql #或者这样先读出二进制文件后重定向到新建文件进行增量备份也行，12步和13步选其一即可
 14. mysql> insert into student (CID,name) value (88,'ll'); #到第二天操作增加了一行
-Query OK, 1 row affected (0.00 sec)
 15. mysql> select * from student;
 +-----+------+-------+
 | SID | CID  | name  |
@@ -1941,7 +1780,6 @@ Query OK, 1 row affected (0.00 sec)
 |  11 |   12 | bob   |
 |  12 |   88 | ll    |
 +-----+------+-------+
-4 rows in set (0.00 sec)
 16. 假如服务器崩溃了或者整个数据库删除了，但是日志文件在
 17. [root@lnmp mydata]# cp mysql-bin.000015 /root #假如日志文件在别的目录
 18. [root@lnmp mydata]# rm -rf ./* #整个数据库删了
@@ -1961,7 +1799,6 @@ Enter password:
 |  10 |   11 | candy |
 |  11 |   12 | bob   |
 +-----+------+-------+
-5 rows in set (0.00 sec)
 24. [root@lnmp ~]# mysql -uroot -p < mon-incrementa1.sql  #还原我们的第一次增量数据
 Enter password: 
 25. mysql> select * from  student; #此时还原了我们删除两行的状态，但是我们插入的那行还未还原，我们刚才备份mysql-bin.000015的文件就有插入那行的数据
@@ -1972,7 +1809,6 @@ Enter password:
 |  10 |   11 | candy |
 |  11 |   12 | bob   |
 +-----+------+-------+
-3 rows in set (0.00 sec)
 26. [root@lnmp ~]# mysqlbinlog mysql-bin.000015 > temp.sql #生成临时文件
 27. [root@lnmp ~]# mysql -uroot -p < temp.sql  #导入数据库，也可使用mysqlbinlog mysql-bin.000015 | mysql -uroot -p
 Enter password: 
@@ -1985,7 +1821,6 @@ Enter password:
 |  11 |   12 | bob   |
 |  12 |   88 | ll    |  #已经即时点还原成功
 +-----+------+-------+
-4 rows in set (0.00 sec)
 
 ---------------mysql备份脚本-------------
 #!/bin/bash  
@@ -1998,23 +1833,19 @@ HOSTNAME="localhost"
    
 WEBMASTER=test@qq.com  
    
-BACKUP_DIR=/home/backup/mysql/ #备份文件存储路径  
-LOGFILE=/home/backup/mysql/data_backup.log #日记文件路径  
+BACKUP_DIR=/backup/mysql/$DATABASE #备份文件存储路径  
+LOGFILE=/backup/mysql/$DATABASE/data_backup.log #日记文件路径  
 DATE=`date '+%Y%m%d-%H%M'` #日期格式（作为文件名）  
 DUMPFILE=$DATE.sql #备份文件名  
-ARCHIVE=$DATE.sql.tgz #压缩文件名  
-OPT='--lock-all-tables --flush-logs --master-data=2'
-OPTIONS="-h$HOSTNAME -u$USER -p$PASSWORD $OPT $DATABASE"  
-#mysqldump －help  
-   
+ARCHIVE=$DATE.sql.tar.gz #压缩文件名  
+OPT='--lock-all-tables --flush-logs --master-data=2 --databases'
+OPTIONS="-h$HOSTNAME -u$USER -p$PASSWORD $OPT $DATABASE"    
 #判断备份文件存储目录是否存在，否则创建该目录  
 if [ ! -d $BACKUP_DIR ] ;  
 then  
         mkdir -p "$BACKUP_DIR"  
 fi  
-   
-#开始备份之前，将备份信息头写入日记文件  
-echo " " >> $LOGFILE  
+#开始备份之前，将备份信息头写入日记文件   
 echo " " >> $LOGFILE  
 echo "———————————————–" >> $LOGFILE  
 echo "BACKUP DATE:" $(date +"%y-%m-%d %H:%M:%S") >> $LOGFILE  
@@ -2036,10 +1867,8 @@ else
     echo “Database Backup Fail!” >> $LOGFILE  
 fi  
 #输出备份过程结束的提醒消息  
-echo “Backup Process Done
+echo “Backup Process Done >> $LOGFILE 
 ---------------
-
-
 
 #第十五节：使用LVM快照进行数据备份 
 SET sql_log_bin=0;
@@ -2064,7 +1893,6 @@ MVCC：REPEATABLE-READ(可重读)时，使用--single-transaction对innoDB可做
 mysqlbinlog --start-position=605 /mydata/mysql-bin.000001 > /tmp/my.sql #对二进制日志文件进行位置选定导出为sql文件
 truncate table tutor; #清空表数据
 
-
 #几乎热备：LVM
 	快照：snapshot
 	前提：
@@ -2072,9 +1900,7 @@ truncate table tutor; #清空表数据
 		2. 此逻辑卷所在卷组必须有足够空间使用快照卷
 		3. 数据文件和事务日志要在同一个逻辑卷上
 
-
 如果二进制日志文件跨文件了需要基于开始时间保存
-
 LVM卷进行步骤：
 	1. 打开会话，施加读锁，锁定所有表：
 		mysql> FLUSH TABLES WITH READ LOCK;
@@ -2099,16 +1925,13 @@ LVM卷进行步骤：
 
 例：
 1. mysql> flush tables with read lock;
-Query OK, 0 rows affected (0.01 sec)
 2. mysql> flush logs;
-Query OK, 0 rows affected (0.01 sec)
 3. [root@lnmp ~]# mysql -e 'show master status '> binlog.txt 
 4. [root@lnmp ~]# lvcreate -L 50M -s -p r -n mydata-snap /dev/myvg/mylv
   Rounding up size to full physical extent 52.00 MiB
   Logical volume "mydata-snap" created.
 5. mysql> unlock tables; 
 6. [root@lnmp mnt]#  mount /dev/myvg/mydata-snap /mnt && mkdir /backup/alldata -pv && cp -a ./* /backup/alldata/
-Query OK, 0 rows affected (0.00 sec)
 7. [root@lnmp ~]# umount /mnt/
 8. [root@lnmp ~]# lvremove /dev/myvg/mydata-snap 
 Do you really want to remove active logical volume myvg/mydata-snap? [y/n]: y
@@ -2140,7 +1963,6 @@ Starting MySQL SUCCESS!
 | test                |
 | wordpress           |
 +---------------------+
-7 rows in set (0.00 sec)
 17. mysql> select * from stu; #完全备份后进行新添加的数据没有，需要增量还原后才可见
 +----+-------+------+
 | ID | Name  | Age  |
@@ -2150,7 +1972,6 @@ Starting MySQL SUCCESS!
 |  3 | candy |   24 |
 |  4 | aa    | NULL |
 +----+-------+------+
-4 rows in set (0.00 sec)
 18. mysql> set sql_log_bin=0; #临时关闭二进制写入功能
 19. [root@lnmp ~]# mysql < a.sql  #还原增量文件
 19. mysql> select * from stu;
@@ -2166,7 +1987,6 @@ Starting MySQL SUCCESS!
 |  7 | dd    | NULL |
 |  8 | ee    | NULL |
 +----+-------+------+
-8 rows in set (0.00 sec)
 20. mysql> set sql_log_bin=1; #开启二进制写入功能
 21. [root@lnmp mydata]# service mysql stop #停止
 22. [root@lnmp mydata]# service mysql start #先要在mysql脚本上start()段去掉--skip-networking参数,再启动mysql正常提供服务
@@ -2187,6 +2007,7 @@ sync_binlog            | 0  #建议设置为1，每1次写操作将同步二进�
 #使用Xtrabackup进行mysql备份
 ##安装xtrabackup
 [root@lnmp download]# wget https://www.percona.com/downloads/XtraBackup/Percona-XtraBackup-2.4.9/binary/redhat/6/x86_64/Percona-XtraBackup-2.4.9-ra467167cdd4-el6-x86_64-bundle.tar
+[root@lnmp download]# tar xf Percona-XtraBackup-2.4.9-ra467167cdd4-el6-x86_64-bundle.tar
 [root@lnmp download]# rpm -ivh  rpm -ivh percona-xtrabackup-24-2.4.9-1.el6.x86_64.rpm 
 [root@lnmp download]# yum install -y libev libev-devel perl perl-devel perl-DBD-MySQL #如果依赖需要安装
 [root@lnmp download]# rpm -ql percona-xtrabackup-24-2.4.9-1.el6.x86_64
@@ -2241,10 +2062,7 @@ mysql-bin.000001        801
 #第二阶段：准备工作，将事务日志进行重读和撤销到数据文件
 [root@lnmp 2019-06-23_21-25-52]# innobackupex --apply-log /backup/2019-06-23_21-25-52/ #进行事务日志写入数据文件，后面给一个路径，这个准备工作必须做，做完才可进行恢复
 mysql> insert into stu (Name) value ('abcd'); #模拟在mysql做插入动作
-Query OK, 1 row affected (0.00 sec)
-
 mysql> insert into stu (Name) value ('abcd12');
-Query OK, 1 row affected (0.00 sec)
 mysql> flush logs; #滚动二进制日志
 [root@lnmp mydata]# cp mysql-bin.000001 /root #复制完全备份后更改的二进制日志文件信息
 [root@lnmp mydata]# service mysql stop 
@@ -2284,7 +2102,6 @@ mysql> select * from stu;
 |  7 | dd    | NULL |
 |  8 | ee    | NULL |
 +----+-------+------+
-8 rows in set (0.00 sec)
 mysql> set sql_log_bin=0;
 [root@lnmp ~]# mysql < a.sql  #恢复增量备份数据
 mysql> set sql_log_bin=1;
@@ -2303,12 +2120,9 @@ mysql> select * from stu;
 |  9 | abcd   | NULL | #已经恢复
 | 10 | abcd12 | NULL |
 +----+--------+------+
-10 rows in set (0.00 sec)
 #已经增量恢复了，所以现在重新做完全备份
 [root@lnmp ~]# innobackupex --user=root --password=root123 /backup #重做完全备份
 mysql> insert stu (Name) value ('aa1'),('aa2'); #新插入两条数据
-Query OK, 2 rows affected (0.02 sec)
-Records: 2  Duplicates: 0  Warnings: 0
 [root@lnmp ~]# innobackupex --incremental /backup --incremental-basedir=/backup/2019-06-23_21-52-24 #做第一次增量备份，--incremental表示增量，/backup表示备份的目录，--incremental-basedir=/backup/2019-06-23_21-52-24表示在这个基础上做增量备份
 [root@lnmp backup]# ll
 total 0 
@@ -2438,7 +2252,7 @@ mysql5.6+：配置较复制，引入gtid（全局事务号）机制，multi-thre
 	2. mysql> START SLAVE; #启动IO_Thread和SQL_Thread两个线程，如果需要启用单个线程，例：START SLAVE IO_Thread;
 复制线程：
 	master: 当从服务器复制主服务器二进制事件时，主服务器启动一个dump线程跟从服务器IO_Thread进行连接
-	slave: 当从服务器从主服务器复制二进制事件时，会启动IO_Thread和SQL_Thread两个线程，IO_Thread是跟主服务器dump线程进行连接，作用是复制主服务器二进制事件到从服务器中继日志中的。SQL_Thread线程是回放本地的中继日志生成数据文件并记录二进制日志文件到从服务器在。
+	slave: 当从服务器从主服务器复制二进制事件时，会启动IO_Thread和SQL_Thread两个线程，IO_Thread是跟主服务器dump线程进行连接，作用是复制主服务器二进制事件到从服务器中继日志中的。SQL_Thread线程是回放本地的中继日志生成数据文件并记录二进制日志文件到从服务器的。
 
 工作模式：
 半同步：只需要从服务器其中一台响应主服务器复制成功或超时，这就是半同步模式。并且要设超时时间间隔。
@@ -2516,10 +2330,7 @@ interactive-timeout
 [root@mysql-master mysql]# service mysqld start
 Starting MySQL.. SUCCESS!
 mysql> grant replication slave on *.* to repluser@'192.168.1.%' identified by 'replpass';  #建立复制从服务器的用户
-Query OK, 0 rows affected (0.00 sec)
-
 mysql> flush privileges;
-Query OK, 0 rows affected (0.00 sec)
 [root@mysql-master mysql]# scp /etc/my.cnf 192.168.1.37:/etc #复制主服务器配置文件到从服务器
 
 ##从服务器
@@ -2546,6 +2357,8 @@ export PATH=$PATH:/usr/local/mysql/bin
 server-id       = 11
 relay-log = relay-log
 relay-log-index = relay-log.index
+innodb_file_per_table=1
+datadir = /mydata/data
 [root@mysql-slave mysql]# service mysqld start
 Starting MySQL.Logging to '/mydata/data/mysql-slave.jack.com.err'.
 . SUCCESS! 
@@ -2588,15 +2401,12 @@ write_buffer = 2M
 interactive-timeout
 ------------------
 mysql> show slave status; #查看slave状态，现在未启动所以未有结果
-Empty set (0.00 sec)
-
 mysql> show master status;
 +------------------+----------+--------------+------------------+
 | File             | Position | Binlog_Do_DB | Binlog_Ignore_DB |
 +------------------+----------+--------------+------------------+
 | mysql-bin.000001 |      338 |              |                  |
 +------------------+----------+--------------+------------------+
-1 row in set (0.00 sec)
 mysql> show binlog events in 'mysql-bin.000001'; #从结果看出，由于主服务器创建用户导致position发生改变，而从服务器不需要这个用户，则从服务器从主服务器文件：mysql-bin.000001开始，位置为338开始
 +------------------+-----+-------------+-----------+-------------+-----------------------------------------------------------------------------------+
 | Log_name         | Pos | Event_type  | Server_id | End_log_pos | Info                                                                              |
@@ -2605,9 +2415,7 @@ mysql> show binlog events in 'mysql-bin.000001'; #从结果看出，由于主服
 | mysql-bin.000001 | 107 | Query       |         1 |         263 | grant replication slave on *.* to repluser@'192.168.1.%' identified by 'replpass' |
 | mysql-bin.000001 | 263 | Query       |         1 |         338 | flush privileges                                                                  |
 +------------------+-----+-------------+-----------+-------------+-----------------------------------------------------------------------------------+
-3 rows in set (0.00 sec)
 mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.31',MASTER_USER='repluser',MASTER_PASSWORD='replpass',MASTER_LOG_FILE='mysql-bin.000001',MASTER_LOG_POS=338;  #连接主服务器，因为主服务器端口默认是3306，所以未指定
-Query OK, 0 rows affected (0.01 sec)
 mysql> show slave status\G; #查看从服务器的壮态
 *************************** 1. row ***************************
                Slave_IO_State: 
@@ -2619,7 +2427,7 @@ mysql> show slave status\G; #查看从服务器的壮态
           Read_Master_Log_Pos: 338  #读到主服务器二进制文件的位置
                Relay_Log_File: relay-log.000001  #从服务器中继日志文件名称
                 Relay_Log_Pos: 4 #从服务器中继日志文件位置
-        Relay_Master_Log_File: mysql-bin.000001  #中继到主服务器的日志文件名称
+        Relay_Master_Log_File: mysql-bin.000001  #中继工作此时到主服务器的日志文件名称
              Slave_IO_Running: No   #IO线程运行状态，日后排错重点
             Slave_SQL_Running: No   #SQL线程运行状态，日后排错重点
               Replicate_Do_DB:   #复制过滤器
@@ -2650,10 +2458,7 @@ Master_SSL_Verify_Server_Cert: No
                Last_SQL_Error: 
   Replicate_Ignore_Server_Ids: 
              Master_Server_Id: 0
-1 row in set (0.00 sec)
 mysql> START SLAVE;  #启动从服务器
-Query OK, 0 rows affected (0.00 sec)
-
 mysql> SHOW SLAVE STATUS\G;
 *************************** 1. row ***************************
                Slave_IO_State: Waiting for master to send event
@@ -2696,7 +2501,6 @@ Master_SSL_Verify_Server_Cert: No
                Last_SQL_Error: 
   Replicate_Ignore_Server_Ids: 
              Master_Server_Id: 1
-1 row in set (0.00 sec)
 mysql> show global variables like 'read%';
 +----------------------+---------+
 | Variable_name        | Value   |
@@ -2705,7 +2509,6 @@ mysql> show global variables like 'read%';
 | read_only            | OFF     |  #设置从服务器是否为可读
 | read_rnd_buffer_size | 4194304 |
 +----------------------+---------+
-3 rows in set (0.00 sec)
 [root@mysql-slave mysql]# vim /etc/my.cnf
 read_only = 1  #设置从服务器以后永久只能只读
 [root@mysql-slave mysql]# service mysqld restart
@@ -2717,7 +2520,6 @@ mysql> show global variables like 'read%';
 | read_only            | ON      |  #已经开启，但对于super用户来说不生效
 | read_rnd_buffer_size | 4194304 |
 +----------------------+---------+
-3 rows in set (0.00 sec)
 mysql> show slave status \G;
 *************************** 1. row ***************************
                Slave_IO_State: Waiting for master to send event
@@ -2760,8 +2562,6 @@ Master_SSL_Verify_Server_Cert: No
                Last_SQL_Error: 
   Replicate_Ignore_Server_Ids: 
              Master_Server_Id: 1
-1 row in set (0.00 sec)
-
 ##重启slave服务器时未指定用户密码等信息，从服务器是怎么运行的呢？
 [root@mysql-slave data]# cat master.info  #slave数据库目录下存储了用户密码等信息
 18
@@ -2789,7 +2589,6 @@ mysql-bin.000001
 421
 
 mysql> create database mydb;  #主服务器上新建数据库
-Query OK, 1 row affected (0.00 sec)
 mysql> show databases; #从服务器上查看新建的数据库
 +--------------------+
 | Database           |
@@ -2800,8 +2599,6 @@ mysql> show databases; #从服务器上查看新建的数据库
 | performance_schema |
 | test               |
 +--------------------+
-5 rows in set (0.00 sec)
-
 #主服务器配置
 sync_binlog = 1 #设定主服务器同步二进制日志，确定二进制安全
 
@@ -2816,7 +2613,6 @@ semisync_master.so    #主服务器安装的半同步模块
 semisync_slave.so     #从服务器安装的半同步模块
 #在主服务器中安装半同步模块
 mysql> INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so'; #安装主服务器的模块
-Query OK, 0 rows affected (0.00 sec)
 mysql> SHOW GLOBAL VARIABLES LIKE '%rpl%';
 +------------------------------------+-------+
 | Variable_name                      | Value |
@@ -2827,9 +2623,7 @@ mysql> SHOW GLOBAL VARIABLES LIKE '%rpl%';
 | rpl_semi_sync_master_trace_level   | 32    |  #追踪级别
 | rpl_semi_sync_master_wait_no_slave | ON    |  #没有slave连接时是否等待slave连接
 +------------------------------------+-------+
-5 rows in set (0.00 sec)
 mysql> SET GLOBAL rpl_semi_sync_master_enabled=1; #主服务器开启半同步模式
-Query OK, 0 rows affected (0.00 sec)
 mysql> SHOW GLOBAL VARIABLES LIKE '%rpl%';
 +------------------------------------+-------+
 | Variable_name                      | Value |
@@ -2840,11 +2634,8 @@ mysql> SHOW GLOBAL VARIABLES LIKE '%rpl%';
 | rpl_semi_sync_master_trace_level   | 32    |
 | rpl_semi_sync_master_wait_no_slave | ON    |
 +------------------------------------+-------+
-5 rows in set (0.00 sec)
-
 ##从服务器安装半同步模块
 mysql> INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so';
-Query OK, 0 rows affected (0.00 sec)
 mysql> SHOW GLOBAL VARIABLES LIKE '%rpl%';
 +---------------------------------+-------+
 | Variable_name                   | Value |
@@ -2853,9 +2644,7 @@ mysql> SHOW GLOBAL VARIABLES LIKE '%rpl%';
 | rpl_semi_sync_slave_enabled     | OFF   |
 | rpl_semi_sync_slave_trace_level | 32    |
 +---------------------------------+-------+
-3 rows in set (0.00 sec)
 mysql> SET GLOBAL rpl_semi_sync_slave_enabled=1; #开启从线程半同步模式
-Query OK, 0 rows affected (0.00 sec)
 mysql> show global variables like '%rpl%';
 +---------------------------------+-------+
 | Variable_name                   | Value |
@@ -2864,8 +2653,6 @@ mysql> show global variables like '%rpl%';
 | rpl_semi_sync_slave_enabled     | ON    |
 | rpl_semi_sync_slave_trace_level | 32    |
 +---------------------------------+-------+
-3 rows in set (0.01 sec)
-
 mysql> SHOW GLOBAL STATUS LIKE '%rpl%';
 +--------------------------------------------+-------------+
 | Variable_name                              | Value       |
@@ -2886,11 +2673,8 @@ mysql> SHOW GLOBAL STATUS LIKE '%rpl%';
 | Rpl_semi_sync_master_yes_tx                | 0           |
 | Rpl_status                                 | AUTH_MASTER |
 +--------------------------------------------+-------------+
-15 rows in set (0.00 sec)
 mysql> STOP SLAVE IO_Thread;
-Query OK, 0 rows affected (0.01 sec)
 mysql> START SLAVE IO_Thread;  #重新启动IO_Thread，从新连接主服务器dump线程
-Query OK, 0 rows affected (0.00 sec)
 mysql> SHOW GLOBAL STATUS LIKE '%rpl%';
 +--------------------------------------------+-------------+
 | Variable_name                              | Value       |
@@ -2911,17 +2695,13 @@ mysql> SHOW GLOBAL STATUS LIKE '%rpl%';
 | Rpl_semi_sync_master_yes_tx                | 0           |
 | Rpl_status                                 | AUTH_MASTER |
 +--------------------------------------------+-------------+
-15 rows in set (0.00 sec)
 ##注：至此，半同步服务器已经结束
 
 ----------------------------
 ##半同步到异步的转变例子：
 mysql> use mydb;
-Database changed
 mysql> create table tb1 (id int);
-Query OK, 0 rows affected (0.01 sec)
 mysql> stop slave IO_THREAD; #从服务器停止IO线程
-Query OK, 0 rows affected (0.01 sec)
 mysql> create table tb2 (id int); #主服务器半同步时间为10秒，会等待超时时间走完，而后会降级为异步
 Query OK, 0 rows affected (10.01 sec)
 mysql> create table t32 (id int); #现在为异步，不会再等待slave的IO线程了
@@ -2946,9 +2726,7 @@ mysql> SHOW GLOBAL STATUS LIKE '%rpl%';
 | Rpl_semi_sync_master_yes_tx                | 1           |
 | Rpl_status                                 | AUTH_MASTER |
 +--------------------------------------------+-------------+
-15 rows in set (0.00 sec)
 mysql> start slave IO_THREAD; #当从服务器IO线程启动，从服务器立即从异步模式到半同步模式
-Query OK, 0 rows affected (0.01 sec)
 mysql> SHOW GLOBAL STATUS LIKE '%rpl%';
 +--------------------------------------------+-------------+
 | Variable_name                              | Value       |
@@ -2969,10 +2747,8 @@ mysql> SHOW GLOBAL STATUS LIKE '%rpl%';
 | Rpl_semi_sync_master_yes_tx                | 1           |
 | Rpl_status                                 | AUTH_MASTER |
 +--------------------------------------------+-------------+
-15 rows in set (0.00 sec)
-----------------------------
 
-###percona-tools工具
+###percona-tools工具，mysql管理工具
 参考链接：https://www.percona.com/
 [root@mysql-slave download]# wget https://www.percona.com/downloads/percona-toolkit/2.2.2/RPM/percona-toolkit-2.2.2-1.noarch.rpm
 [root@mysql-slave download]# rpm -ivh percona-toolkit-2.2.2-1.noarch.rpm  #rpm安装需要依赖
@@ -2996,8 +2772,7 @@ pt-find                   pt-show-grants            pt-visual-explain
 pt-fingerprint            pt-sift                   ptx
 pt-fk-error-logger        pt-slave-delay            
 pt-heartbeat              pt-slave-find        
-
-pt-ioprofile  #评估io的能力
+#pt-ioprofile  #评估io的能力
 
 #####设置主-主复制
 ##主服务器1：
@@ -3010,9 +2785,7 @@ auto-increment-increment = 2
 auto-increment-offset=1
 server-id = 10
 mysql> GRANT REPLICATION SLAVE ON *.* TO repluser@'192.168.1.%' IDENTIFIED BY 'replpass';
-Query OK, 0 rows affected (0.01 sec)
 mysql> flush privileges;
-Query OK, 0 rows affected (0.00 sec)
 
 ##主服务器2：
 [root@mysql-slave download]# vim /etc/my.cnf
@@ -3024,9 +2797,7 @@ auto-increment-increment=2
 auto-increment-offset=2
 server-id = 20
 mysql> GRANT REPLICATION SLAVE ON *.* TO repluser@'192.168.1.%' IDENTIFIED BY 'replpass';
-Query OK, 0 rows affected (0.01 sec)
 mysql> flush privileges;
-Query OK, 0 rows affected (0.00 sec)
 
 #mysql终端操作
 mysql> show master status;  #主服务器2
@@ -3035,19 +2806,14 @@ mysql> show master status;  #主服务器2
 +-------------------+----------+--------------+------------------+
 | master-bin.000002 |      107 |              |                  |
 +-------------------+----------+--------------+------------------+
-1 row in set (0.01 sec)
 mysql> show master status;  #主服务器1
 +-------------------+----------+--------------+------------------+
 | File              | Position | Binlog_Do_DB | Binlog_Ignore_DB |
 +-------------------+----------+--------------+------------------+
 | master-bin.000001 |      107 |              |                  |
 +-------------------+----------+--------------+------------------+
-1 row in set (0.00 sec)
-
 mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.31',MASTER_USER='repluser',MASTER_PASSWORD='replpass',MASTER_LOG_FILE='master-bin.000001',MASTER_LOG_POS=107;  #主服务器2设置
-Query OK, 0 rows affected (0.01 sec)
 mysql> START SLAVE; #主服务器2
-Query OK, 0 rows affected (0.01 sec)
 mysql> SHOW SLAVE STATUS\G;  #主服务器2
 *************************** 1. row ***************************
                Slave_IO_State: Waiting for master to send event
@@ -3090,12 +2856,8 @@ Master_SSL_Verify_Server_Cert: No
                Last_SQL_Error: 
   Replicate_Ignore_Server_Ids: 
              Master_Server_Id: 10
-1 row in set (0.00 sec)
-
 mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.37',MASTER_USER='repluser',MASTER_PASSWORD='replpass',MASTER_LOG_FILE='master-bin.000002',MASTER_LOG_POS=107;  #主服务器1设置
-Query OK, 0 rows affected (0.01 sec)
 mysql> START SLAVE; #主服务器1
-Query OK, 0 rows affected (0.00 sec)
 mysql> SHOW SLAVE STATUS \G;  #主服务器1
 *************************** 1. row ***************************
                Slave_IO_State: Waiting for master to send event
@@ -3138,7 +2900,6 @@ Master_SSL_Verify_Server_Cert: No
                Last_SQL_Error: 
   Replicate_Ignore_Server_Ids: 
              Master_Server_Id: 20
-1 row in set (0.00 sec)
 
 ##mysql使用ssl连接：
 mysql> show global variables like '%ssl%';
@@ -3153,12 +2914,9 @@ mysql> show global variables like '%ssl%';
 | ssl_cipher    |          |
 | ssl_key       |          |
 +---------------+----------+
-7 rows in set (0.00 sec)
-
 mysql> grant all on *.* to jack@'%' identified by 'jackli' REQUIRE SSL; #设置需要ssl认证的用户登录
-Query OK, 0 rows affected (0.01 sec)
-
 #cakey.pem建立：
+[root@mysql-slave CA]# （umask 077;openssl genrsa -out private/cakey.pem 2048)
 [root@mysql-slave CA]# openssl req -new -x509 -key private/cakey.pem -out cacert.pem -days 3650
 #建立CA需要的文件
 [root@mysql-slave CA]# touch index.txt
@@ -3181,20 +2939,7 @@ cacert.pem  mysql.crt  mysql.key
 [root@mysql-slave ssl]# openssl ca -in client.csr -out client.crt -days 3650
 [root@mysql-slave data]# chown -R mysql.mysql /mydata
 [root@mysql-slave ssl]# mysql -ujack -h 192.168.1.37 -p --ssl-cert=/mydata/data/ssl/client.crt --ssl-key=/mydata/data/ssl/client.key
-Enter password: 
-Welcome to the MySQL monitor.  Commands end with ; or \g.
-Your MySQL connection id is 5
-Server version: 5.5.62-log MySQL Community Server (GPL)
-
-Copyright (c) 2000, 2018, Oracle and/or its affiliates. All rights reserved.
-
-Oracle is a registered trademark of Oracle Corporation and/or its
-affiliates. Other names may be trademarks of their respective
-owners.
-
-Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
-
-mysql> 
+Enter password:    #/my.cnf文件上要写明ca证书路径，mysql的私钥和公钥路径，
 mysql> show global variables like '%ssl%';
 +---------------+-----------------------------+
 | Variable_name | Value                       |
@@ -3207,13 +2952,11 @@ mysql> show global variables like '%ssl%';
 | ssl_cipher    |                             |
 | ssl_key       | /mydata/data/ssl/mysql.key  |
 +---------------+-----------------------------+
-7 rows in set (0.01 sec)
 
 #SSL主主复制
 #主服务器1:
 mysql> grant replication slave on *.* to 'repluser'@'192.168.1.%' require ssl; #设定此用户复制到从服务器时必须使用ssl认证
 mysql> change master to master_host='192.168.1.37',master_user='repluser',master_password='replpass',master_log_file='master-bin.000001',master_log_pos=367; #主服务器2连接时未使用ssl连接
-Query OK, 0 rows affected (0.01 sec)
 mysql> show slave status\G;
                Slave_IO_State: Connecting to master
                   Master_Host: 192.168.1.37
@@ -3272,8 +3015,7 @@ Master_SSL_Verify_Server_Cert: No
                Last_SQL_Error: 
   Replicate_Ignore_Server_Ids: 
              Master_Server_Id: 20
-1 row in set (0.00 sec)
-#注:从服务器上的ca证书,客户端证书和私钥必须和主服务器配置文件上的一模一样,也就是说主服务器需要同步从服务器帐户ssl认证时,主服务器必须先设定好ca证书,客户端证书和私钥文件,否则报错.这边只做了单主ssl加密,另外单主跟这一样操作,这里不再列出.
+#注:从服务器上的ca证书,客户端证书和私钥必须和主服务器配置文件上的一模一样,也就是说主服务器需要同从服务器帐户进行ssl认证时,主服务器必须先设定好ca证书,客户端证书和私钥文件,否则报错.这边只做了单主ssl加密,另外单主跟这一样操作,这里不再列出.
 
 #第三节：MYSQL5.6基于GTID及多线程的复制
 #数据库(MYSQL)复制过滤:
@@ -3292,9 +3034,8 @@ Master_SSL_Verify_Server_Cert: No
 [root@mysql-slave ~]# vim /etc/my.cnf
 replicate-do-db = gtid
 mysql> show slave status\G;
-Replicate_Do_DB: gtid #会显示只复制这个数据库
+Replicate_Do_DB: gtid #会显示只复制这个数据库这行
 mysql> create database mydb; #主服务器新建数据库mydb
-Query OK, 1 row affected (0.00 sec)
 mysql> show databases; #从未同步
 +--------------------+
 | Database           |
@@ -3305,9 +3046,7 @@ mysql> show databases; #从未同步
 | ssl                |
 | test               |
 +--------------------+
-5 rows in set (0.00 sec) 
 mysql> create database gtid; #主服务器新建gtid数据库
-Query OK, 1 row affected (0.00 sec)
 mysql> show databases;
 +--------------------+
 | Database           |
@@ -3319,7 +3058,6 @@ mysql> show databases;
 | ssl                |
 | test               |
 +--------------------+
-6 rows in set (0.00 sec)
 
 ###MySQL-5.6:GTID(global transaction identifiles)
 slave-parallel-workers:表示启用几个SQL_Thread线程,0为禁用.每个SQL_Thread线程只能复制一个数据库
@@ -3331,7 +3069,6 @@ https://launchpad.net/mysql-utilities
 3. mysqlrplshow:发现并显示主从复制拓扑图,并显示主机名和端口号
 4. mysqlfailover:故障转移工具,能够快速让你自动或手动提升一个slave为master的,提升master之前slave会从其他slave复制本身不具备的事务并重放后提升自己为master
 5. mysqlrpladmin:调度管理工具,手动让某一个节点启动或下线
-
 
 ####基于MYSQL5.6的GTID实现复制功能
 #1. 配置master节点
@@ -3383,9 +3120,8 @@ mysql> GRANT REPLICATION SLAVE ON *.* TO repluser@'192.168.1.%' IDENTIFIED BY 'r
 锁定主表，备份主节点上的数据，将其还原至从节点：如果没有启用GTID,在备份时需要在master上使用show master status 命令查看二进制日志文件名称及事件位置，以便后面启动slave节点时使用
 #5. 启动从节点的复制线程
 mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.31',MASTER_USER='repluser',MASTER_PASSWORD='replpass',MASTER_AUTO_POSITION=1;
-没启用GTID,需要使用如下命令：
-	mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.31',MASTER_USER='repluser',MASTER_PASSWORD='replpass',MASTER_LOG_FILE='master-bin.000001',MASTER_LOG_POS=1174;
-
+没启用GTID功能,需要使用如下命令：
+mysql> CHANGE MASTER TO MASTER_HOST='192.168.1.31',MASTER_USER='repluser',MASTER_PASSWORD='replpass',MASTER_LOG_FILE='master-bin.000001',MASTER_LOG_POS=1174;
 
 ###实例：
 #注：将来无论在任何集群或高可用上都要做到时间的同步
@@ -3399,7 +3135,6 @@ show slave hosts; #查看从节点主机的信息
 [root@mysql-slave mysql]# id mysql
 uid=3306(mysql) gid=3306(mysql) groups=3306(mysql)
 [root@mysql-master mysql]# chown -R mysql.mysql /mydata/
-
 1. [root@mysql-master mysql]# tar xf mysql-5.6.43-linux-glibc2.12-x86_64.tar.gz -C /usr/local/
 2. [root@mysql-master mysql]# ln -sv /usr/local/mysql-5.6.43-linux-glibc2.12-x86_64/ /usr/local/mysql
 3. [root@mysql-master mysql]# yum install -y autoconf #解决报错问题
@@ -3463,7 +3198,6 @@ Empty set (0.00 sec) #因为还未有从节点加入，所以为空
 [root@mysql-slave mysql]# id mysql
 uid=3306(mysql) gid=3306(mysql) groups=3306(mysql)
 [root@mysql-master mysql]# chown -R mysql.mysql /mydata/
-
 1. [root@mysql-slave download]# tar xf mysql-5.6.43-linux-glibc2.12-x86_64.tar.gz -C /usr/local/
 2. [root@mysql-slave download]# ln -sv /usr/local/mysql-5.6.43-linux-glibc2.12-x86_64/ /usr/local/mysql
 ‘/usr/local/mysql’ -> ‘/usr/local/mysql-5.6.43-linux-glibc2.12-x86_64/’
@@ -3481,6 +3215,7 @@ socket=/tmp/mysql.sock
 server_id=11
 log-bin=master-bin
 log-slave-update=true
+relay-log=relay-log
 gtid-mode=on
 enforce-gtid-consistency=true
 master-info-repository=TABLE
@@ -3524,9 +3259,7 @@ read-only=1
 Empty set (0.00 sec)  #因为这个做未从节点，而别的节点未把此从节点当做主节点，所以为空
 #从节点加入主节点
 1. mysql> grant replication slave on *.* to repluser@'192.168.1.%' identified by 'replpass'; #主节点设置帐户
-Query OK, 0 rows affected (0.00 sec)
 2. mysql> change master to master_host='192.168.1.31',master_user='repluser',master_password='replpass',master_auto_position=1; #从节点加入主节点
-Query OK, 0 rows affected, 2 warnings (0.02 sec)
 3. mysql> show slave status\G;
 *************************** 1. row ***************************
                Slave_IO_State: 
@@ -3744,7 +3477,7 @@ COPYING                  tutorial-monitor.lua     tutorial-warnings.lua
 histogram.lua            tutorial-packets.lua     xtab.lua
 load-multi.lua           tutorial-prep-stmts.lua
 README                   tutorial-query-time.lua
-注： rw-splitting.lua这个脚本是实现读写分离的
+#注： rw-splitting.lua这个脚本是实现读写分离的
 [root@lnmp mysql-proxy]# killall mysql-proxy #先停掉服务
 [root@lnmp mysql-proxy]# mysql-proxy --daemon --log-level=debug --log-file=/var/log/mysql-proxy.log --plugins="proxy" --proxy-backend-addresses="192.168.1.31:3306" --proxy-read-only-backend-addresses="192.168.1.37:3306" --proxy-lua-script="/usr/local/mysql-proxy/share/doc/mysql-proxy/rw-splitting.lua" #加入读写分离功能
 [root@lnmp mysql-proxy]# cat /usr/local/mysql-proxy/share/doc/mysql-proxy/admin.lua 
@@ -3878,20 +3611,7 @@ mysql> select * from backends; #连进来后只能使用这个命令查看主从
 +-------------+-------------------+---------+------+------+-------------------+
 [root@mysql-slave ~]# mysql -uroot -p -h 192.168.1.233 -P 4040 #连接mysql代理服务器进行路由
 Enter password: 
-Welcome to the MySQL monitor.  Commands end with ; or \g.
-Your MySQL connection id is 9
-Server version: 5.6.43-log MySQL Community Server (GPL)
-
-Copyright (c) 2000, 2019, Oracle and/or its affiliates. All rights reserved.
-
-Oracle is a registered trademark of Oracle Corporation and/or its
-affiliates. Other names may be trademarks of their respective
-owners.
-
-Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
-
 mysql> create database hellodb; #进行写操作
-Query OK, 1 row affected (0.00 sec)
 mysql> select * from backends;
 +-------------+-------------------+---------+------+------+-------------------+
 | backend_ndx | address           | state   | type | uuid | connected_clients |
@@ -3899,7 +3619,6 @@ mysql> select * from backends;
 |           1 | 192.168.1.31:3306 | up      | rw   | NULL |                 0 | #此时这个状态为up，说明写操作路由到主节点上了
 |           2 | 192.168.1.37:3306 | unknown | ro   | NULL |                 0 |
 +-------------+-------------------+---------+------+------+-------------------+
-2 rows in set (0.00 sec)
 mysql> select * from backends;
 +-------------+-------------------+-------+------+------+-------------------+
 | backend_ndx | address           | state | type | uuid | connected_clients |
@@ -3907,7 +3626,7 @@ mysql> select * from backends;
 |           1 | 192.168.1.31:3306 | up    | rw   | NULL |                 0 |
 |           2 | 192.168.1.37:3306 | up    | ro   | NULL |                 0 | 
 +-------------+-------------------+-------+------+------+-------------------+
-#经过多连接查询，此时到从服务器了，因为读写分离lua脚本设置最小4个连接，最大8个连接，所以未达到这个不会到另外一个服务器，这里把它改小了
+#经过多个连接查询，此时到从服务器了，因为读写分离lua脚本设置最小4个连接，最大8个连接，所以未达到这个不会到另外一个服务器，读写分离lua脚本那里把它改小了
 
 #####mysql-proxy启动脚本
 #注：分为mysql-proxy脚本和/etc/sysconfig/mysql-proxy配置文件
@@ -4009,18 +3728,4 @@ PROXY_ADDRESS="0.0.0.0:3306"
 PROXY_USER="mysql-proxy"
 PROXY_OPTIONS="--daemon --keepalive=true --log-level=info --log-file=/var/log/mysql-proxy.log --plugins="proxy" --proxy-backend-addresses="192.168.1.31:3306" --proxy-read-only-backend-addresses="192.168.1.37:3306" --proxy-lua-script="$PROXY_LUA_SCRIPT" --plugins="admin" "
 ----------------
-
-</pre>
-
-
-
-
-
-
-
-
-
-
-
-
 </pre>
