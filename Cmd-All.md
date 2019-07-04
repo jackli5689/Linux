@@ -1,4 +1,4 @@
-#command 
+﻿#command 
 <pre>
 curl命令详解：
 ###curl参数值：
@@ -697,6 +697,210 @@ Sign the certificate? [y/n]:y
 Write out database with 1 new entries
 Data Base Updated
 
+
+#Linux的文件系统控制(setfacl、getfacl)
+[root@smb-server tmp]# mkdir test
+[root@smb-server tmp]# ll -d test/
+drwxr-xr-x 2 root root 4096 7月   4 20:30 test/
+[root@smb-server tmp]# getfacl test/
+# file: test/
+# owner: root
+# group: root
+user::rwx   #未设置facl时，使用简单的acl权限
+group::r-x
+other::r-x
+[root@smb-server tmp]# setfacl -m u:hq01u0402:rwx test/
+[root@smb-server tmp]# getfacl test/
+# file: test/
+# owner: root
+# group: root
+user::rwx
+user:hq01u0402:rwx  #设置用户hq01u0402的权限为rwx,mask也相应的随着改变为rwx，当mask为rw，而user:hq01u0402权限为rwx，则user:hq01u0402最后权限为rw，不能大于mask
+group::r-x
+mask::rwx
+other::r-x
+[root@smb-server tmp]# getfacl test/
+# file: test/
+# owner: root
+# group: root
+user::rwx
+user:hq01u0402:rwx
+user:hq01u0061:rw- #又加入一个用户
+group::r-x
+mask::rwx
+other::r-x
+[root@smb-server tmp]# setfacl -m mask::rw test/ #设置mask为rw
+[root@smb-server tmp]# getfacl test/
+# file: test/
+# owner: root
+# group: root
+user::rwx
+user:hq01u0402:rwx              #effective:rw-  #真实权限只有rw
+user:hq01u0061:rw-
+group::r-x                      #effective:r--  #真实权限只有r
+mask::rw-
+other::r-x
+[root@smb-server tmp]# mkdir -pv test/jack
+mkdir: 已创建目录 "test/jack"
+[root@smb-server tmp]# getfacl -R test/ #递归查询目录下所有文件权限信息
+# file: test/
+# owner: root
+# group: root
+user::rwx
+user:hq01u0402:rwx              #effective:rw-
+user:hq01u0061:rw-
+group::r-x                      #effective:r--
+mask::rw-
+other::r-x
+
+# file: test//jack  #这个文件目录下的权限不受test目录权限影响
+# owner: root
+# group: root
+user::rwx
+group::r-x
+other::r-x
+
+[root@smb-server tmp]# setfacl -d -m mask::rwx test/  #设置默认的mask为rwx
+[root@smb-server tmp]# getfacl -R test/
+# file: test/
+# owner: root
+# group: root
+user::rwx
+user:hq01u0402:rwx              #effective:rw-
+user:hq01u0061:rw-
+group::r-x                      #effective:r--
+mask::rw-
+other::r-x
+default:user::rwx
+default:group::r-x
+default:mask::rwx   #默认mask为rwx，表示这个目录下的所有新建立文件mask为rwx，本目录本身的rwx为自己设置的rw
+default:other::r-x
+
+# file: test//jack
+# owner: root
+# group: root
+user::rwx
+group::r-x
+other::r-x
+[root@smb-server tmp]# setfacl -R -d -m u:hq01u0402:rwx test/ #递归设置默认用户hq01u0402的权限为rwx,则以后在test/目录上新建的任何文件用户hq01u0402都具有rwx权限
+[root@smb-server tmp]# getfacl -R test/
+# file: test/
+# owner: root
+# group: root
+user::rwx
+user:hq01u0402:rwx              #effective:rw-
+user:hq01u0061:rw-
+group::r-x                      #effective:r--
+mask::rw-
+other::r-x
+default:user::rwx
+default:user:hq01u0402:rwx
+default:group::r-x
+default:mask::rwx
+default:other::r-x
+
+# file: test//jack
+# owner: root
+# group: root
+user::rwx
+group::r-x
+other::r-x
+default:user::rwx
+default:user:hq01u0402:rwx
+default:group::r-x
+default:mask::rwx
+default:other::r-x
+[root@smb-server tmp]# getfacl /Share/Info/   #查看/share/Info的facl权限
+getfacl: Removing leading '/' from absolute path names 
+# file: Share/Info/
+# owner: hq01u0402
+# group: hq01u0402
+# flags: -s-
+user::rwx
+group::r-x
+group:Info:rwx
+mask::rwx
+other::r-x
+default:user::rwx
+default:group::r-x
+default:group:Info:rwx
+default:mask::rwx
+default:other::r--
+[root@smb-server tmp]# getfacl /Share/Info/ | setfacl -R --set-file=- /tmp/test/  #复制acl权限到另外一个目录，并且递归应用于每个文件
+getfacl: Removing leading '/' from absolute path names
+[root@smb-server tmp]# getfacl -R test/
+# file: test/
+# owner: root
+# group: root
+user::rwx
+group::r-x
+group:Info:rwx
+mask::rwx
+other::r-x
+default:user::rwx
+default:group::r-x
+default:group:Info:rwx
+default:mask::rwx
+default:other::r--
+
+# file: test//jack
+# owner: root
+# group: root
+user::rwx
+group::r-x
+group:Info:rwx
+mask::rwx
+other::r-x
+default:user::rwx
+default:group::r-x
+default:group:Info:rwx
+default:mask::rwx
+default:other::r--
+[root@smb-server test]# getfacl jack/
+# file: jack/
+# owner: root
+# group: root
+user::rwx
+group::r-x
+group:Info:rwx
+mask::rwx
+other::r-x
+default:user::rwx
+default:group::r-x
+default:group:Info:rwx
+default:mask::rwx
+default:other::r--
+[root@smb-server test]# setfacl -x group:Info jack/  #删除用户或组权限时可不精确到权限
+[root@smb-server test]# getfacl jack/
+# file: jack/
+# owner: root
+# group: root
+user::rwx
+group::r-x
+mask::r-x
+other::r-x
+default:user::rwx
+default:group::r-x
+default:group:Info:rwx
+default:mask::rwx
+default:other::r--
+[root@smb-server test]# setfacl -b jack/ #清空所有facl权限
+[root@smb-server test]# getfacl jack/
+# file: jack/
+# owner: root
+# group: root
+user::rwx
+group::r-x
+other::r-x
+[root@smb-server test]# setfacl -k aa/  #删除默认acl
+[root@smb-server test]# getfacl aa/
+# file: aa/
+# owner: root
+# group: root
+user::rwx
+group::r-x
+group:Info:rwx
+mask::rwx
 
 
 </pre>
