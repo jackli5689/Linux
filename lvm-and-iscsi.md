@@ -446,7 +446,799 @@ tmpfs                  380M     0  380M   0% /run/user/0
 --断开连接iscsi
 注：-l表示连接ISCSI目标；-u表示断开和ISCSI目标的连接，isaci不支持多连接
 
+#####parted工具
+[root@lamp-zabbix ~]# parted  #进入parted模式
+GNU Parted 3.1
+Using /dev/sda
+Welcome to GNU Parted! Type 'help' to view a list of commands.
+(parted) select /dev/sdb  #选择磁盘                                               
+Using /dev/sdb
+(parted) mklabel  #创建磁盘标签                                                        
+New disk label type?  #tab tab可查看帮助                                                    
+aix    amiga  bsd    dvh    gpt    loop   mac    msdos  pc98   sun    
+New disk label type? gpt #选择类型为gpt
+(parted) p   #打印显示/dev/sdb                                                             
+Model: VMware Virtual disk (scsi)
+Disk /dev/sdb: 107GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+Number  Start  End  Size  File system  Name  Flags
+(parted) mkpart  #创建分区
+Partition name?  []? gpt1 #设定分区名
+File system type?  [ext2]?                                                
+affs0            affs6            amufs3           btrfs            hfs              linux-swap(new)  reiserfs
+affs1            affs7            amufs4           ext2             hfs+             linux-swap(old)  sun-ufs
+affs2            amufs            amufs5           ext3             hfsx             linux-swap(v0)   swsusp
+affs3            amufs0           apfs1            ext4             hp-ufs           linux-swap(v1)   xfs
+affs4            amufs1           apfs2            fat16            jfs              nilfs2           
+affs5            amufs2           asfs             fat32            linux-swap       ntfs             
+File system type?  [ext2]? xfs #设定分区文件系统类型
+Start? 1 #设定分区大小起始位置
+End? 20GB  #设定分区大小结束位置                                                             
+(parted) p                                                                
+Model: VMware Virtual disk (scsi)
+Disk /dev/sdb: 107GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+Number  Start   End     Size    File system  Name  Flags
+ 1      1049kB  20.0GB  20.0GB               gpt1
+(parted) mkpart                                                           
+Partition name?  []? gpt2
+File system type?  [ext2]? xfs                                            
+Start? 22G                                                                
+End? 40G
+(parted) p                                                                
+Model: VMware Virtual disk (scsi)
+Disk /dev/sdb: 107GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+Number  Start   End     Size    File system  Name  Flags
+ 1      1049kB  20.0GB  20.0GB               gpt1
+ 2      22.0GB  40.0GB  18.0GB               gpt2
+
+(parted) rm 2  #删除分区                                                             
+(parted) p                                                                
+Model: VMware Virtual disk (scsi)
+Disk /dev/sdb: 107GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+Number  Start   End     Size    File system  Name  Flags
+ 1      1049kB  20.0GB  20.0GB               gpt1
+(parted) mkpart                                                           
+Partition name?  []? part2                                                
+File system type?  [ext2]?                                                
+Start? 10G                                                                
+End? 30G                                                                  
+(parted) p                                                                
+Model: VMware Virtual disk (scsi)
+Disk /dev/sdb: 107GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+Number  Start   End     Size    File system  Name   Flags
+ 1      1049kB  10.0GB  9999MB               part1
+ 2      10.0GB  30.0GB  20.0GB               part2
+
+(parted) mkpart 
+Partition name?  []? part3         #创建了3个分区                                       
+File system type?  [ext2]? ext4                                           
+Start? 30G                                                                
+End? 50G                                                                  
+(parted) p                                                                
+Model: VMware Virtual disk (scsi)
+Disk /dev/sdb: 107GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+Number  Start   End     Size    File system  Name   Flags
+ 1      1049kB  10.0GB  9999MB               part1
+ 2      10.0GB  30.0GB  20.0GB               part2
+ 3      30.0GB  50.0GB  20.0GB               part3
+
+(parted) quit                                                             
+Information: You may need to update /etc/fstab.
+[root@lamp-zabbix ~]# ls /dev/sdb
+sdb   sdb1  sdb2  sdb3   #系统立马识别新建分区
+[root@lamp-zabbix ~]# mkfs.ext4 /dev/sdb1 #格式化磁盘
+[root@lamp-zabbix ~]# mkfs.ext4 /dev/sdb2
+[root@lamp-zabbix ~]# mkfs.ext4 /dev/sdb3
+(parted) p                                                                
+Model: VMware Virtual disk (scsi)
+Disk /dev/sdb: 107GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+Number  Start   End     Size    File system  Name   Flags
+ 1      1049kB  10.0GB  9999MB  ext4         part1
+ 2      10.0GB  30.0GB  20.0GB  ext4         part2
+ 3      30.0GB  50.0GB  20.0GB  ext4         part3
+#分区的删除和恢复
+[root@lamp-zabbix ~]# mount /dev/sdb2 /mnt #挂载/dev/sdb2
+[root@lamp-zabbix mnt]# touch 111
+[root@lamp-zabbix mnt]# echo hello > 111
+[root@lamp-zabbix mnt]# cat 111 
+hello
+[root@lamp-zabbix ~]# umount /mnt
+[root@lamp-zabbix ~]# parted /dev/sdb
+(parted) p  
+Model: VMware Virtual disk (scsi)
+Disk /dev/sdb: 107GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+Number  Start   End     Size    File system  Name   Flags
+ 1      1049kB  10.0GB  9999MB  ext4         part1
+ 2      10.0GB  30.0GB  20.0GB  ext4         part2
+ 3      30.0GB  50.0GB  20.0GB  ext4         part3
+(parted) rm 2                                                             
+(parted) p                                                                
+Model: VMware Virtual disk (scsi)
+Disk /dev/sdb: 107GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+Number  Start   End     Size    File system  Name   Flags
+ 1      1049kB  10.0GB  9999MB  ext4         part1
+ 3      30.0GB  50.0GB  20.0GB  ext4         part3   #已经把part2删除了，此时只要不把part2的分区进行格式化数据就还在
+(parted) rescue     #恢复磁盘                                                       
+Start? 10G  #起始大小必须跟part2起始大小一致                                                               
+End? 30G   #结束大小必须跟part2结束大小一致
+searching for file systems... 42%       (time left 00:01)Information: A ext4 primary partition was found at 10.0GB -> 30.0GB.  Do you want to add it to the partition table?  #搜索文件系统：已经找到一个ext4的主分区，你想添加到分区表吗？
+Yes/No/Cancel? yes                                                        
+(parted) p                                                                
+Model: VMware Virtual disk (scsi)
+Disk /dev/sdb: 107GB
+Sector size (logical/physical): 512B/512B
+Partition Table: gpt
+Disk Flags: 
+
+Number  Start   End     Size    File system  Name   Flags
+ 1      1049kB  10.0GB  9999MB  ext4         part1
+ 2      10.0GB  30.0GB  20.0GB  ext4
+ 3      30.0GB  50.0GB  20.0GB  ext4         part3
+[root@lamp-zabbix ~]# mount /dev/sdb2 /mnt
+[root@lamp-zabbix ~]# ls /mnt/  #数据还在
+111  lost+found
 
 
+###Linux下multipath多路径配置
+多路径的主要功能就是和存储设备一起配合实现如下功能：
+1.故障的切换和恢复
+2.IO流量的负载均衡
+3.磁盘的虚拟化
+注：由于多路径软件是需要和存储在一起配合使用的，不同的厂商基于不同的操作系统，都提供了不同的版本。并且有的厂商，软件和硬件也不是一起卖的，如果要使用 多路径软件的话，可能还需要向厂商购买license才行。比如EMC公司基于linux下的多路径软件，就需要单独的购买license。好在， RedHat和Suse的2.6的内核中都自带了免费的多路径软件包，并且可以免费使用，同时也是一个比较通用的包，可以支持大多数存储厂商的设备，即使 是一些不是出名的厂商，通过对配置文件进行稍作修改，也是可以支持并运行的很好的。
+
+##查看是否安装了device-mapper包
+[root@lamp-zabbix ~]# rpm -qa | grep device-mapper
+device-mapper-event-libs-1.02.149-8.el7.x86_64
+device-mapper-persistent-data-0.7.3-3.el7.x86_64
+device-mapper-1.02.149-8.el7.x86_64
+device-mapper-multipath-0.4.9-123.el7.x86_64
+device-mapper-event-1.02.149-8.el7.x86_64
+device-mapper-multipath-libs-0.4.9-123.el7.x86_64
+device-mapper-libs-1.02.149-8.el7.x86_64
+1. device-mapper-multipath：即multipath-tools。主要提供multipathd和multipath等工具和 multipath.conf等配置文件。这些工具通过device mapper的ioctr的接口创建和配置multipath设备（调用device-mapper的用户空间库。创建的多路径设备会在/dev/mapper中）。
+2. device-mapper：主要包括两大部分：内核部分和用户部分。内核部分主要由device mapper核心（dm.ko）和一些target driver（md-multipath.ko）。核心完成设备的映射，而target根据映射关系和自身特点具体处理从mappered device 下来的i/o。同时，在核心部分，提供了一个接口，用户通过ioctr可和内核部分通信，以指导内核驱动的行为，比如如何创建mappered device，这些divece的属性等。linux device mapper的用户空间部分主要包括device-mapper这个包。其中包括dmsetup工具和一些帮助创建和配置mappered device的库。这些库主要抽象，封装了与ioctr通信的接口，以便方便创建和配置mappered device。multipath-tool的程序中就需要调用这些库。
+3. dm-multipath.ko和dm.ko：dm.ko是device mapper驱动。它是实现multipath的基础。dm-multipath其实是dm的一个target驱动.
+4. scsi_id：包含在udev程序包中，可以在multipath.conf中配置该程序来获取scsi设备的序号。通过序号，便可以判断多个路径 对应了同一设备。这个是多路径实现的关键。scsi_id是通过sg驱动，向设备发送EVPD page80或page83 的inquery命令来查询scsi设备的标识。但一些设备并不支持EVPD 的inquery命令，所以他们无法被用来生成multipath设备。但可以改写scsi_id，为不能提供scsi设备标识的设备虚拟一个标识符，并 输出到标准输出。multipath程序在创建multipath设备时，会调用scsi_id，从其标准输出中获得该设备的scsi id。在改写时，需要修改scsi_id程序的返回值为0。因为在multipath程序中，会检查该直来确定scsi id是否已经成功得到。
+
+##multipath在Redhat中的基本配置过程：
+1. 安装和加载多路径软件包
+# rpm -ivh device-mapper-1.02.39-1.el5.rpm #安装映射包
+# rpm -ivh device-mapper-multipath-0.4.7-34.el5.rpm #安装多路径包
+# chkconfig –level 2345 multipathd on #设置成开机自启动multipathd
+# lsmod |grep dm_multipath #来检查安装是否正常
+
+#如果模块没有加载成功请使用下列命初始化DM，或重启系统:
+[root@lamp-zabbix md]# pwd
+#/lib/modules/3.10.0-957.el7.x86_64/kernel/drivers/md  #内核模块路径 
+[root@lamp-zabbix multipath]# modprobe dm-multipath  ##最主要是这个模块
+[root@lamp-zabbix multipath]# lsmod | grep multipath
+dm_multipath           27792  0 
+dm_mod                124407  3 dm_multipath,dm_log,dm_mirror
+[root@lamp-zabbix multipath]# modprobe dm-round-robin
+[root@lamp-zabbix multipath]# lsmod | grep robin
+dm_round_robin         12819  0 
+dm_multipath           27792  1 dm_round_robin
+
+2. 配置multipath：
+#multipath正常工作的最简配置如下：
+vi /etc/multipath.conf
+blacklist {
+	devnode "^sda"   #表示不对sda这块盘进行检测使用
+}
+defaults {
+	user_friendly_names yes
+	path_grouping_policy multibus
+	failback immediate
+	no_path_retry fail
+}
+
+#Multipath的高级配置，配置文件是/etc/multipath.conf：
+[root@mjdb class]# cat /etc/multipath.conf
+blacklist {
+    devnode "^sda"
+}
+defaults {
+    user_friendly_names yes
+    path_grouping_policy multibus
+    failback immediate
+    no_path_retry fail
+}
+
+multipaths {
+        multipath {
+                wwid 360060e8012651e005040651e00000000  #此wwid可使得multipath -v3查看到
+                alias ssddata
+        }
+        multipath {
+                wwid 360060e8012651e005040651e00000004
+                alias hdddata
+        }
+}
+3. multipath基本操作命令：
+# /etc/init.d/multipathd start #开启mulitipath服务
+# multipath -F #删除现有路径，两个新的路径就会被删除
+# multipath -v2 #格式化路径，格式化后又出现
+# multipath -ll #查看多路径状态
+# multipath -v3 #查看wwid
+[root@mjdb class]# multipath -ll
+ssddata (360060e8012651e005040651e00000000) dm-2 HITACHI ,OPEN-V
+size=2.6T features='0' hwhandler='0' wp=rw
+`-+- policy='service-time 0' prio=1 status=active
+  |- 16:0:0:0 sdd 8:48 active ready running  #多路径下已经整合了sdd和sdb两块盘
+  `- 15:0:0:0 sdb 8:16 active ready running
+hdddata (360060e8012651e005040651e00000004) dm-3 HITACHI ,OPEN-V
+size=7.3T features='0' hwhandler='0' wp=rw
+`-+- policy='service-time 0' prio=1 status=active
+  |- 16:0:0:1 sde 8:64 active ready running
+  `- 15:0:0:1 sdc 8:32 active ready running
+[root@mjdb class]# multipath -v3 | grep uid  #查看wwid
+Jul 06 15:29:35 | sdb: uid_attribute = ID_SERIAL (internal default)
+Jul 06 15:29:35 | sdb: uid = 360060e8012651e005040651e00000000 (udev)
+Jul 06 15:29:35 | sdc: uid_attribute = ID_SERIAL (internal default)
+Jul 06 15:29:35 | sdc: uid = 360060e8012651e005040651e00000004 (udev)
+Jul 06 15:29:35 | sdd: uid_attribute = ID_SERIAL (internal default)
+Jul 06 15:29:35 | sdd: uid = 360060e8012651e005040651e00000000 (udev)
+Jul 06 15:29:35 | sde: uid_attribute = ID_SERIAL (internal default)
+Jul 06 15:29:35 | sde: uid = 360060e8012651e005040651e00000004 (udev)
+uuid                              hcil     dev dev_t pri dm_st chk_st vend/pro
+
+4. 在对多路径软件生成的磁盘进行分区之前最好运行一下pvcreate命令:
+# pvcreate /dev/mapper/mpatha
+# mkfs.ext4 /dev/mapper/mpatha
+然后挂载即可使用
+
+5. 使用iostat工具进行测试多路负载均衡测试
+[root@mjdb class]# iostat
+Linux 3.10.0-957.10.1.el7.x86_64 (mjdb)         07/06/2019      _x86_64_        (40 CPU)
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           3.42    0.00    0.46    0.22    0.00   95.90
+
+Device:            tps    kB_read/s    kB_wrtn/s    kB_read    kB_wrtn
+sda               0.93         8.89        21.04   29883028   70696237
+dm-0              0.93         8.72        20.71   29290709   69597817
+dm-1              0.12         0.17         0.33     557636    1096352
+sdb             238.97     11414.47      1500.67 38353282631 5042344724  #sdb和sdd负载均衡
+sdc              18.90       415.94      7865.08 1397569729 26427111993  #sdc和sde负载均衡
+sdd             243.28     11580.15      1522.88 38909963105 5116947563
+sde              18.97       418.36      7890.97 1405719960 26514122646
+dm-2            487.03     22994.62      3023.55 77263239080 10159292535
+dm-3             37.80       834.30     15756.05 2803280833 52941234639
+
+------------------------------------------------------------------------------------------
+####用iscsi来模块IPSAN实战：
+环境介绍：
+node1:两个网卡：ip1:192.168.1.31,ip2:192.168.1.232,两块盘
+node2:一个网卡：ip：192.168.1.37，一块盘
+注：node1模拟服务端，node2模拟客户端 
+##node1（target端配置）:
+[root@mysql-master ~]# yum install epel-release -y 
+[root@mysql-master ~]# ip add show
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    link/ether 00:0c:29:ee:3e:65 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.31/24 brd 192.168.1.255 scope global noprefixroute eth0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::20c:29ff:feee:3e65/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    link/ether 00:0c:29:ee:3e:6f brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.232/24 brd 192.168.1.255 scope global noprefixroute eth1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::20c:29ff:feee:3e6f/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+[root@mysql-master ~]# echo '- - -' > /sys/class/scsi_host/host0/scan  #不重启系统识别新增加硬盘
+[root@mysql-master ~]# fdisk -l
+Disk /dev/sda: 107.4 GB, 107374182400 bytes, 209715200 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk label type: dos
+Disk identifier: 0x000b0456
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sda1   *        2048     2099199     1048576   83  Linux
+/dev/sda2         2099200   209715199   103808000   83  Linux
+
+Disk /dev/sdb: 53.7 GB, 53687091200 bytes, 104857600 sectors #这块为新增加硬盘
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+[root@mysql-master ~]# yum install -y scsi-target-utils #安装服务端iscsi工具
+[root@mysql-master ~]# vim /etc/tgt/targets.conf 
+default-driver iscsi
+<target iqn.2019-07.jack.com:target00>
+        backing-store /dev/sdb
+        initiator-address 192.168.1.37  #可选，指定客户端的ip
+        incominguser jack jack  #可选，设置客户端的帐户和密码
+</target>
+[root@mysql-master ~]# systemctl enable tgtd.service 
+Created symlink from /etc/systemd/system/multi-user.target.wants/tgtd.service to /usr/lib/systemd/system/tgtd.service.
+[root@mysql-master ~]# systemctl start tgtd.service 
+[root@mysql-master ~]# tgtadm --mode target --op show  #查看服务状态
+Target 1: iqn.2019-07.jack.com:target00
+    System information:
+        Driver: iscsi
+        State: ready
+    I_T nexus information:
+    LUN information:
+        LUN: 0
+            Type: controller
+            SCSI ID: IET     00010000
+            SCSI SN: beaf10
+            Size: 0 MB, Block size: 1
+            Online: Yes
+            Removable media: No
+            Prevent removal: No
+            Readonly: No
+            SWP: No
+            Thin-provisioning: No
+            Backing store type: null
+            Backing store path: None
+            Backing store flags: 
+        LUN: 1
+            Type: disk
+            SCSI ID: IET     00010001
+            SCSI SN: beaf11
+            Size: 53687 MB, Block size: 512
+            Online: Yes
+            Removable media: No
+            Prevent removal: No
+            Readonly: No
+            SWP: No
+            Thin-provisioning: No
+            Backing store type: rdwr
+            Backing store path: /dev/sdb
+            Backing store flags: 
+    Account information:
+        jack
+    ACL information:
+        192.168.1.37
+##node2(initiator端配置)
+[root@mysql-slave ~]# yum install -y iscsi-initiator-utils
+[root@mysql-slave ~]# vim /etc/iscsi/initiatorname.iscsi
+InitiatorName=iqn.2019-07.jack.com:target00  #与服务端设置一样
+[root@mysql-slave ~]# vi /etc/iscsi/iscsid.conf  #如果服务端没有设置用户谁，这一步可以不用操作
+node.session.auth.authmethod = CHAP
+node.session.auth.username = jack
+node.session.auth.password = jack
+[root@mysql-slave ~]# iscsiadm -m discovery -t st -p 192.168.1.232 #在node2上扫描设备，这个ip是232
+192.168.1.232:3260,1 iqn.2019-07.jack.com:target00
+[root@mysql-slave ~]# iscsiadm -m discovery -t st -p 192.168.1.31  #在node2上扫描设备，这个ip是31
+192.168.1.31:3260,1 iqn.2019-07.jack.com:target00
+[root@mysql-slave ~]# iscsiadm -m node -o show  #展示结果
+# BEGIN RECORD 6.2.0.874-10
+node.name = iqn.2019-07.jack.com:target00
+node.tpgt = 1
+node.startup = automatic
+node.leading_login = No
+iface.hwaddress = <empty>
+iface.ipaddress = <empty>
+iface.iscsi_ifacename = default
+iface.net_ifacename = <empty>
+iface.gateway = <empty>
+iface.subnet_mask = <empty>
+iface.transport_name = tcp
+iface.initiatorname = <empty>
+iface.state = <empty>
+iface.vlan_id = 0
+iface.vlan_priority = 0
+iface.vlan_state = <empty>
+iface.iface_num = 0
+iface.mtu = 0
+iface.port = 0
+iface.bootproto = <empty>
+iface.dhcp_alt_client_id_state = <empty>
+iface.dhcp_alt_client_id = <empty>
+iface.dhcp_dns = <empty>
+iface.dhcp_learn_iqn = <empty>
+iface.dhcp_req_vendor_id_state = <empty>
+iface.dhcp_vendor_id_state = <empty>
+iface.dhcp_vendor_id = <empty>
+iface.dhcp_slp_da = <empty>
+iface.fragmentation = <empty>
+iface.gratuitous_arp = <empty>
+iface.incoming_forwarding = <empty>
+iface.tos_state = <empty>
+iface.tos = 0
+iface.ttl = 0
+iface.delayed_ack = <empty>
+iface.tcp_nagle = <empty>
+iface.tcp_wsf_state = <empty>
+iface.tcp_wsf = 0
+iface.tcp_timer_scale = 0
+iface.tcp_timestamp = <empty>
+iface.redirect = <empty>
+iface.def_task_mgmt_timeout = 0
+iface.header_digest = <empty>
+iface.data_digest = <empty>
+iface.immediate_data = <empty>
+iface.initial_r2t = <empty>
+iface.data_seq_inorder = <empty>
+iface.data_pdu_inorder = <empty>
+iface.erl = 0
+iface.max_receive_data_len = 0
+iface.first_burst_len = 0
+iface.max_outstanding_r2t = 0
+iface.max_burst_len = 0
+iface.chap_auth = <empty>
+iface.bidi_chap = <empty>
+iface.strict_login_compliance = <empty>
+iface.discovery_auth = <empty>
+iface.discovery_logout = <empty>
+node.discovery_address = 192.168.1.232
+node.discovery_port = 3260
+node.discovery_type = send_targets
+node.session.initial_cmdsn = 0
+node.session.initial_login_retry_max = 8
+node.session.xmit_thread_priority = -20
+node.session.cmds_max = 128
+node.session.queue_depth = 32
+node.session.nr_sessions = 1
+node.session.auth.authmethod = CHAP
+node.session.auth.username = jack
+node.session.auth.password = ********
+node.session.auth.username_in = <empty>
+node.session.auth.password_in = <empty>
+node.session.timeo.replacement_timeout = 120
+node.session.err_timeo.abort_timeout = 15
+node.session.err_timeo.lu_reset_timeout = 30
+node.session.err_timeo.tgt_reset_timeout = 30
+node.session.err_timeo.host_reset_timeout = 60
+node.session.iscsi.FastAbort = Yes
+node.session.iscsi.InitialR2T = No
+node.session.iscsi.ImmediateData = Yes
+node.session.iscsi.FirstBurstLength = 262144
+node.session.iscsi.MaxBurstLength = 16776192
+node.session.iscsi.DefaultTime2Retain = 0
+node.session.iscsi.DefaultTime2Wait = 2
+node.session.iscsi.MaxConnections = 1
+node.session.iscsi.MaxOutstandingR2T = 1
+node.session.iscsi.ERL = 0
+node.session.scan = auto
+node.conn[0].address = 192.168.1.232
+node.conn[0].port = 3260
+node.conn[0].startup = manual
+node.conn[0].tcp.window_size = 524288
+node.conn[0].tcp.type_of_service = 0
+node.conn[0].timeo.logout_timeout = 15
+node.conn[0].timeo.login_timeout = 15
+node.conn[0].timeo.auth_timeout = 45
+node.conn[0].timeo.noop_out_interval = 5
+node.conn[0].timeo.noop_out_timeout = 5
+node.conn[0].iscsi.MaxXmitDataSegmentLength = 0
+node.conn[0].iscsi.MaxRecvDataSegmentLength = 262144
+node.conn[0].iscsi.HeaderDigest = None
+node.conn[0].iscsi.IFMarker = No
+node.conn[0].iscsi.OFMarker = No
+# END RECORD
+# BEGIN RECORD 6.2.0.874-10
+node.name = iqn.2019-07.jack.com:target00
+node.tpgt = 1
+node.startup = automatic
+node.leading_login = No
+iface.hwaddress = <empty>
+iface.ipaddress = <empty>
+iface.iscsi_ifacename = default
+iface.net_ifacename = <empty>
+iface.gateway = <empty>
+iface.subnet_mask = <empty>
+iface.transport_name = tcp
+iface.initiatorname = <empty>
+iface.state = <empty>
+iface.vlan_id = 0
+iface.vlan_priority = 0
+iface.vlan_state = <empty>
+iface.iface_num = 0
+iface.mtu = 0
+iface.port = 0
+iface.bootproto = <empty>
+iface.dhcp_alt_client_id_state = <empty>
+iface.dhcp_alt_client_id = <empty>
+iface.dhcp_dns = <empty>
+iface.dhcp_learn_iqn = <empty>
+iface.dhcp_req_vendor_id_state = <empty>
+iface.dhcp_vendor_id_state = <empty>
+iface.dhcp_vendor_id = <empty>
+iface.dhcp_slp_da = <empty>
+iface.fragmentation = <empty>
+iface.gratuitous_arp = <empty>
+iface.incoming_forwarding = <empty>
+iface.tos_state = <empty>
+iface.tos = 0
+iface.ttl = 0
+iface.delayed_ack = <empty>
+iface.tcp_nagle = <empty>
+iface.tcp_wsf_state = <empty>
+iface.tcp_wsf = 0
+iface.tcp_timer_scale = 0
+iface.tcp_timestamp = <empty>
+iface.redirect = <empty>
+iface.def_task_mgmt_timeout = 0
+iface.header_digest = <empty>
+iface.data_digest = <empty>
+iface.immediate_data = <empty>
+iface.initial_r2t = <empty>
+iface.data_seq_inorder = <empty>
+iface.data_pdu_inorder = <empty>
+iface.erl = 0
+iface.max_receive_data_len = 0
+iface.first_burst_len = 0
+iface.max_outstanding_r2t = 0
+iface.max_burst_len = 0
+iface.chap_auth = <empty>
+iface.bidi_chap = <empty>
+iface.strict_login_compliance = <empty>
+iface.discovery_auth = <empty>
+iface.discovery_logout = <empty>
+node.discovery_address = 192.168.1.31
+node.discovery_port = 3260
+node.discovery_type = send_targets
+node.session.initial_cmdsn = 0
+node.session.initial_login_retry_max = 8
+node.session.xmit_thread_priority = -20
+node.session.cmds_max = 128
+node.session.queue_depth = 32
+node.session.nr_sessions = 1
+node.session.auth.authmethod = CHAP
+node.session.auth.username = jack
+node.session.auth.password = ********
+node.session.auth.username_in = <empty>
+node.session.auth.password_in = <empty>
+node.session.timeo.replacement_timeout = 120
+node.session.err_timeo.abort_timeout = 15
+node.session.err_timeo.lu_reset_timeout = 30
+node.session.err_timeo.tgt_reset_timeout = 30
+node.session.err_timeo.host_reset_timeout = 60
+node.session.iscsi.FastAbort = Yes
+node.session.iscsi.InitialR2T = No
+node.session.iscsi.ImmediateData = Yes
+node.session.iscsi.FirstBurstLength = 262144
+node.session.iscsi.MaxBurstLength = 16776192
+node.session.iscsi.DefaultTime2Retain = 0
+node.session.iscsi.DefaultTime2Wait = 2
+node.session.iscsi.MaxConnections = 1
+node.session.iscsi.MaxOutstandingR2T = 1
+node.session.iscsi.ERL = 0
+node.session.scan = auto
+node.conn[0].address = 192.168.1.31
+node.conn[0].port = 3260
+node.conn[0].startup = manual
+node.conn[0].tcp.window_size = 524288
+node.conn[0].tcp.type_of_service = 0
+node.conn[0].timeo.logout_timeout = 15
+node.conn[0].timeo.login_timeout = 15
+node.conn[0].timeo.auth_timeout = 45
+node.conn[0].timeo.noop_out_interval = 5
+node.conn[0].timeo.noop_out_timeout = 5
+node.conn[0].iscsi.MaxXmitDataSegmentLength = 0
+node.conn[0].iscsi.MaxRecvDataSegmentLength = 262144
+node.conn[0].iscsi.HeaderDigest = None
+node.conn[0].iscsi.IFMarker = No
+node.conn[0].iscsi.OFMarker = No
+# END RECORD
+[root@mysql-slave ~]# iscsiadm -m node --login  #登录认证target，使用/etc/iscsi/iscsid.conf配置文件帐号密码进行认证的
+Logging in to [iface: default, target: iqn.2019-07.jack.com:target00, portal: 192.168.1.232,3260] (multiple)
+Logging in to [iface: default, target: iqn.2019-07.jack.com:target00, portal: 192.168.1.31,3260] (multiple)
+Login to [iface: default, target: iqn.2019-07.jack.com:target00, portal: 192.168.1.232,3260] successful.
+Login to [iface: default, target: iqn.2019-07.jack.com:target00, portal: 192.168.1.31,3260] successful.
+[root@mysql-slave ~]# iscsiadm -m session -o show  #查看并确认信息
+tcp: [1] 192.168.1.232:3260,1 iqn.2019-07.jack.com:target00 (non-flash)
+tcp: [2] 192.168.1.31:3260,1 iqn.2019-07.jack.com:target00 (non-flash)
+[root@mysql-slave ~]# cat /proc/partitions 
+major minor  #blocks  name
+
+   2        0          4 fd0
+   8        0  104857600 sda
+   8        1    1048576 sda1
+   8        2  103808000 sda2
+  11        0    1048575 sr0
+   8       16   52428800 sdb  #sdb和sdc就是node1的一块共享磁盘，但是有两个网口，所以有两块逻辑磁盘
+   8       32   52428800 sdc
+[root@mysql-slave ~]# fdisk -l #查看sdb和sdc信息
+Disk /dev/sda: 107.4 GB, 107374182400 bytes, 209715200 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk label type: dos
+Disk identifier: 0x000a9992
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sda1   *        2048     2099199     1048576   83  Linux
+/dev/sda2         2099200   209715199   103808000   83  Linux
+
+Disk /dev/sdb: 53.7 GB, 53687091200 bytes, 104857600 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+
+Disk /dev/sdc: 53.7 GB, 53687091200 bytes, 104857600 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+
+###安装多路径软件
+[root@mysql-slave ~]# yum install -y device-mapper-multipath
+[root@mysql-slave ~]# systemctl enable multipathd  #设置开机启动
+[root@mysql-slave ~]# modprobe dm_multipath  #装载多路径模块
+[root@mysql-slave ~]# vim /etc/multipath.conf  #多路径软件配置
+blacklist {
+    devnode "^sda"
+}
+defaults {
+    user_friendly_names yes
+    path_grouping_policy multibus
+    failback immediate
+    no_path_retry fail
+}
+[root@mysql-slave ~]# systemctl start multipathd.service  #启动服务，系统会加载内核模块
+[root@mysql-slave ~]# lsmod | grep multipath
+dm_multipath           27792  2 dm_service_time
+dm_mod                124407  5 dm_multipath,dm_log,dm_mirror
+[root@mysql-slave ~]# multipath -ll  #查看状态
+mpatha (360000000000000000e00000000010001) dm-0 IET     ,VIRTUAL-DISK    
+size=50G features='0' hwhandler='0' wp=rw
+`-+- policy='service-time 0' prio=1 status=active
+  |- 3:0:0:1 sdc 8:32 active ready running
+  `- 4:0:0:1 sdb 8:16 active ready running
+[root@mysql-slave ~]# lsblk   #可以查看多路径磁盘
+NAME     MAJ:MIN RM  SIZE RO TYPE  MOUNTPOINT
+fd0        2:0    1    4K  0 disk  
+sda        8:0    0  100G  0 disk  
+├─sda1     8:1    0    1G  0 part  /boot
+└─sda2     8:2    0   99G  0 part  /
+sdb        8:16   0   50G  0 disk  
+└─mpatha 253:0    0   50G  0 mpath 
+sdc        8:32   0   50G  0 disk  
+└─mpatha 253:0    0   50G  0 mpath 
+sr0       11:0    1 1024M  0 rom   
+[root@mysql-slave ~]# fdisk -l
+
+Disk /dev/sda: 107.4 GB, 107374182400 bytes, 209715200 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk label type: dos
+Disk identifier: 0x000a9992
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sda1   *        2048     2099199     1048576   83  Linux
+/dev/sda2         2099200   209715199   103808000   83  Linux
+
+Disk /dev/sdb: 53.7 GB, 53687091200 bytes, 104857600 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+
+Disk /dev/sdc: 53.7 GB, 53687091200 bytes, 104857600 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+
+Disk /dev/mapper/mpatha: 53.7 GB, 53687091200 bytes, 104857600 sectors  #多了一个mpatha多路径磁盘
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+[root@mysql-slave ~]# mkfs.xfs /dev/mapper/mpatha #格式化
+[root@mysql-slave ~]# mount /dev/mapper/mpatha /mnt/
+[root@mysql-slave ~]# cd /mnt/
+[root@mysql-slave mnt]# for ((i=1;i<=5;i++));do dd if=/dev/zero of=/mnt/1Gfile bs=8k count=131072 2>&1|grep MB;done;  #进行测试负载均衡效果
+1073741824 bytes (1.1 GB) copied, 1.34263 s, 800 MB/s
+1073741824 bytes (1.1 GB) copied, 1.29873 s, 827 MB/s
+1073741824 bytes (1.1 GB) copied, 2.70738 s, 397 MB/s
+1073741824 bytes (1.1 GB) copied, 9.33689 s, 115 MB/s
+[root@mysql-slave ~]# iostat 1
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           0.26    0.00   21.65   24.48    0.00   53.61
+
+Device:            tps    kB_read/s    kB_wrtn/s    kB_read    kB_wrtn
+fd0               0.00         0.00         0.00          0          0
+sda               0.00         0.00         0.00          0          0
+sdb             364.00         0.00    186240.00          0     186240  #可以看到sdb和sdc写入速度是差不多的
+sdc             386.00         0.00    196228.00          0     196228
+dm-0            750.00         0.00    382468.00          0     382468
+[root@mysql-master ~]# ip link set eth1 down #测试当node1的一个网口down掉时，node2是否不会断开连接，而达到高可用的作用
+[root@mysql-slave mnt]# for ((i=1;i<=5;i++));do dd if=/dev/zero of=/mnt/1Gfile bs=8k count=131072 2>&1|grep MB;done; 
+1073741824 bytes (1.1 GB) copied, 1.39296 s, 771 MB/s
+[root@mysql-slave ~]# iostat 1
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           0.77    0.00   36.32   14.58    0.00   48.34
+
+Device:            tps    kB_read/s    kB_wrtn/s    kB_read    kB_wrtn
+fd0               0.00         0.00         0.00          0          0
+sda               0.00         0.00         0.00          0          0
+sdb            1122.00         0.00    572932.00          0     572932  #显示sdb还在工作，sdc已经断开了，达到了高可用的作用
+sdc               0.00         0.00         0.00          0          0
+dm-0           1122.00         0.00    572932.00          0     572932
+[root@mysql-slave ~]# multipath -ll
+mpatha (360000000000000000e00000000010001) dm-0 IET     ,VIRTUAL-DISK    
+size=50G features='0' hwhandler='0' wp=rw
+`-+- policy='service-time 0' prio=1 status=active
+  |- 3:0:0:1 sdc 8:32 active undef running  #此时sdc状态是undef的
+  `- 4:0:0:1 sdb 8:16 active ready running
+
+[root@mysql-master ~]# ip link set eth1 up  #当node1接口up时，测试是否负载均衡
+[root@mysql-slave mnt]# for ((i=1;i<=5;i++));do dd if=/dev/zero of=/mnt/1Gfile bs=8k count=131072 2>&1|grep MB;done; 
+[root@mysql-slave ~]# iostat 1
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           0.51    0.00   10.43   35.88    0.00   53.18
+
+Device:            tps    kB_read/s    kB_wrtn/s    kB_read    kB_wrtn
+fd0               0.00         0.00         0.00          0          0
+sda               0.00         0.00         0.00          0          0
+sdb             251.00         0.00    128344.00          0     128344  结果显示负载均衡
+sdc             242.00         0.00    123560.00          0     123560
+dm-0            493.00         0.00    251904.00          0     251904
+[root@mysql-slave ~]# multipath -ll
+mpatha (360000000000000000e00000000010001) dm-0 IET     ,VIRTUAL-DISK    
+size=50G features='0' hwhandler='0' wp=rw
+`-+- policy='service-time 0' prio=1 status=active
+  |- 3:0:0:1 sdc 8:32 failed faulty running
+  `- 4:0:0:1 sdb 8:16 active ready running
+[root@mysql-slave ~]# multipath -ll
+mpatha (360000000000000000e00000000010001) dm-0 IET     ,VIRTUAL-DISK    
+size=50G features='0' hwhandler='0' wp=rw
+`-+- policy='service-time 0' prio=1 status=active
+  |- 3:0:0:1 sdc 8:32 failed ready running
+  `- 4:0:0:1 sdb 8:16 active ready running
+[root@mysql-slave ~]# multipath -ll
+mpatha (360000000000000000e00000000010001) dm-0 IET     ,VIRTUAL-DISK    
+size=50G features='0' hwhandler='0' wp=rw
+`-+- policy='service-time 0' prio=1 status=active
+  |- 3:0:0:1 sdc 8:32 active ready running   #当接口回归时，sdc从失败状态逐渐走向装备状态
+  `- 4:0:0:1 sdb 8:16 active ready running
+
+注：此操作是服务端两个网卡，客户端一个网卡，达到去往服务端的流量有两条路径可走，客户端在总流量不大于本身网卡1000M时效果很好，如果大于本身网卡流量，则效果会差。
+注：例如：服务端两个网卡，客户端两个网卡，这个跟上面例子一样，不同点在于客户端也可以达到高可用冗余功能，并且客户端发送的总流量由一个网卡的总容量变成两上个网卡的总容量，大大提升容量
+
+[root@mysql-slave ~]# cat /etc/multipath.conf  #配置还可以加上wwid。从multipath -v3可以看出uid，udev值
+blacklist {
+    devnode "^sda"
+}
+defaults {
+    user_friendly_names yes
+    path_grouping_policy multibus
+    failback immediate
+    no_path_retry fail
+}
+multipaths{
+        multipath{
+                wwid 360000000000000000e00000000010001
+                alias hdddata  #设置别名
+        }
+}
+
+------------------------------------------------------------------------------------------
 
 </pre>
