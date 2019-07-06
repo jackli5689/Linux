@@ -1223,22 +1223,149 @@ size=50G features='0' hwhandler='0' wp=rw
 注：例如：服务端两个网卡，客户端两个网卡，这个跟上面例子一样，不同点在于客户端也可以达到高可用冗余功能，并且客户端发送的总流量由一个网卡的总容量变成两上个网卡的总容量，大大提升容量
 
 [root@mysql-slave ~]# cat /etc/multipath.conf  #配置还可以加上wwid。从multipath -v3可以看出uid，udev值
-blacklist {
-    devnode "^sda"
+blacklist {   #黑名单，会忽略黑名单的设备
+    devnode "^sda"   #devnode后跟设备名称的正则表达式；
 }
-defaults {
-    user_friendly_names yes
-    path_grouping_policy multibus
-    failback immediate
-    no_path_retry fail
+defaults {   #全局属性的默认配置
+    user_friendly_names yes   #如为yes，则用/etc/multipath/bindings中的设置命名；如为no，则使用wwid命名（可被multipaths中的设置覆盖），默认值为no。
+    path_grouping_policy multibus  #路径分组策略，“multibus”表示所有路径在一个组
+    failback immediate  #恢复路径的方法，其中，“Immediate”表示立即恢复到包含活动路径的高优先级路径组
+    no_path_retry fail  #禁用队列前系统重试的次数，“fail”表示直接返回错误
 }
-multipaths{
+multipaths{  #multipaths单独配置单条路径，每条路径单独使用multipath子节
         multipath{
-                wwid 360000000000000000e00000000010001
-                alias hdddata  #设置别名
+                wwid 360000000000000000e00000000010001  #路径WWID(必选)，可用命令/lib/udev/scsi_id -g -u /dev/sdX获取
+                alias hdddata  #设备别名
         }
 }
 
 ------------------------------------------------------------------------------------------
+#####multipath的配置参数详解：
+---------------------------
+1.配置文件结构及位置
+multipath配置文件/etc/multipath.conf由节（section），子节（sub-section），属性（atribute）和属性值（value）等组成，其结构具体如下所示：
+<section> {
+    <attribute> <value>
+    ...
+    <subsection> {
+    <attribute> <value>
+    ...
+    }
+}
+配置文件的模板默认位于/usr/share/doc/device-mapper-multipath-X.Y.Z/multipath.conf（X,Y,Z为multipath的实际版本号），配置multipath配置文件时，可以将该文件复制于/etc/multipath.conf，
+然后，在进行定制配置。
+
+其中，可用的节关键字如下:
+1)defaults:全局属性的默认设置。
+2)blacklist:黑名单，multipath会忽略黑名单中的设备。
+3)blacklist_exceptions:免除黑名单，加入黑名单内，但包含在这里的设备不会被忽略。
+4)multipaths:多路径相关配置。
+5)devices:存储设备相关配置。
+
+2.defaults节可用属性
+1)polling_interval:路径检查的时间间隔，单位秒(s)。
+2)max_polling_interval:路径检查的最大时间间隔，默认为polling_interval的4倍，单位秒(s)。
+3)multipath_dir:多路径共享库的路径，具体与系统相关，默认为/lib/multipath或/lib64/multipath。
+4)find_multipaths:默认值no，这将为黑名单外的所有设备创建多路径设备。如置为yes，则将为3种场景创建多路径设备：不在黑名单的两个路径的wwid相同；用户手动强制创建；一个路径的wwid与之前已经创建的多路径设备相同。
+5)verbosity:信息输出等级，最低为0，最高为6，默认为2。
+6)path_selector:路径选择算法，其中，“round-robin 0”表示在多个路径间不断循环；“queue-length 0”表示选择当前处理IO数最少的路径；“service-time 0”表示选择IO服务时间最短的路径。
+7)path_grouping_policy:路径分组策略，其中，“failover” 表示一条路径一个组（默认值）；“multibus”表示所有路径在一个组；“group_by_serial”表示根据序列号分组；“group_by_prio”表示根据优先级分组；
+  “group_by_node_name”表示根据名字分组。
+8)uid_attribute:用udev的哪个属性唯一标识一个设备，默认值为ID_SERIAL。
+9)prio:路径优先级获取方法,其中，“const”返回1（默认值）；“emc”为emc盘阵生成优先级；“alua”基于SCSI-3 ALUA配置生成优先级；“ontap”为NetAPP盘阵生成优先级；
+  “rdac”为LSI/Engenio/NetApp E-Series RDAC控制器生成优先级；“hp_sw”根据Compaq/HP控制器active/standby模式生成优先级；“hds”为日立HDS模块化阵列生成优先级；
+  “random”随机生成优先级，其值在1到10间；“weightedpath”根据正则表达式及prio_args参数值生成优先级。
+10)prio_args:计算优先级函数的参数。
+11)features:指定使用Device Mapper的特性，其中，“queue_if_no_path”表示没有可用路径时，将请求加入队列；“no_partitions”表示禁止使用kpartx生成分区。
+12)path_checker:路径检查方法，其中，“readsector0”表示通过读取设备的第一扇区来决定路径状态，已废弃，用directio替代；“tur”表示运行“TEST UNIT READY”命令来决定路径状态；
+   “emc_clariion”表示执行“EMC Clariion specific EVPD page 0xC0”来决定路径的状态；“hp_sw”表示检查惠普Active/Standby盘阵；“rdac”表示检查“LSI/Engenio/NetApp E-Series RDAC”存储控制器的状态；
+   “direction”表示用DirectIO读取设备的第一个扇区。
+13)failback:恢复路径的方法，其中，“Immediate”表示立即恢复到包含活动路径的高优先级路径组；“manual”表示手动恢复（默认值）；“followover”表示只有路径组的第一条路径可用时才恢复；
+   “values>0”表示延迟恢复。
+14)rr_min_io:切换到当前路径组中下一条路径前进行的IO数，仅用于2.6.31的核心版本号，默认值为1000。
+15)rr_min_io_rq:切换到当前路径组中下一条路径前进行IO数，仅用于2.6.31及以后的核心版本号，默认值为1。
+16)no_path_retry:禁用队列前系统重试的次数，“fail”表示直接返回错误，“queue”表示全部加入队列，默认值为0。
+17)user_friendly_names:如为yes，则用/etc/multipath/bindings中的设置命名；如为no，则使用wwid命名（可被multipaths中的设置覆盖），默认值为no。
+18)max_fds:multipathd和multipath可打开的最大文件描述符数。
+19)checker_timeout:路径检查的超时时间，单位秒(s)，默认值为/sys/block/sd<x>/device/timeout值。
+20)fast_io_fail_tmo:SCSI IO错误超时，应比dev_loss_tmo小，为off则禁用超时。
+21)dev_loss_tmo:SCSI设备移除超时，Linux下的默认为为300，单位秒(s)。
+22)queue_without_daemon:如置为no，如multipathd没启动，则禁止所有设备的IO加入队列。
+23)bindings_file:设置了user_friendly_names时，名称绑定文件的路径，默认值为/etc/multipath/bindings。
+24)wwids_file:wwids跟踪文件路径，默认为/etc/multipath/wwids。
+25)log_checker_err:路径检查出错时的日志记录方式，默认为always。
+26)reservation_key:为mpathpersist命令指定的key。
+27)retain_attached_hw_handler:是否继续使用hardware_handler，默认为no。
+28)detect_prio:如置为yes，则首先尝试使用alua检测，默认为no。
+29)hw_str_match:如置为yes，则优先使用字符串匹配名称、厂商等信息，默认为no。
+30)force_sync:如置为yes，则强制使用同步模式检查路径，默认为no。
+31)deferred_remove:如置为yes，则延迟删除没有路径的设备，默认为no。
+32)config_dir:指定配置文件的目录，如不为“”，则按照字母排序搜索目录中的*.conf文件，像使用/etc/multipath.conf一样对其进行读取，默认为/etc/multipath/conf.d。
+33)delay_watch_checks:如大于0，则只有连续delay_watch_checks检查路径有效时,才认为有效，默认为no。
+34)delay_wait_checks: 如大于0，经过delay_watch_check检查有效后，延迟delay_wait_checks次检查后,才正式重新启用，默认为no。
+35)missing_uev_msg_delay:   当一个新的设备被创建后，在延迟missing_uev_msg_delay秒后开始接受udev信息，默认值是30。
+
+3.blacklist配置
+blacklist内的设备将会被多路径忽略，有三种格式：
+1)wwid后跟设备的WWID；
+2)devnode后跟设备名称的正则表达式；
+3)device设备描述，为一个子节（Subsection），其需包含vendor、product，详细可参考devices节的描述。
+blacklist_exceptions语法与blacklist相同，表示取消对blacklist中设备的忽略。
+
+4.multipaths配置
+multipaths单独配置单条路径，每条路径单独使用multipath子节，其可包含如下属性：
+1)wwid:路径WWID(必选)，可用命令/lib/udev/scsi_id -g -u /dev/sdX获取。
+2)alias:设备别名。
+3)path_grouping_policy
+4)path_selector    
+5)prio    
+6)prio_args    
+7)failback    
+8)rr_weight    
+9)flush_on_last_del    
+10)no_path_retry    
+11)rr_min_io    
+12)rr_min_io_q    
+13)features    
+14)reservation_key    
+15)deferred_remove    
+16)delay_watch_checks    
+17)delay_wait_checks    
+
+5.devices配置
+devices节中每个device子节用于描述一个设备，其主要属性如下：
+1)vendor:生产商(必选)。
+2)product:产品型号。
+3)revision:版本号。
+4)product_blacklist:产品型号黑名单。
+5)alias_prefix:设备名称前缀，默认为mapth。
+6)hardware_handler:硬件相关操作的型号，主要有：
+  "emc":Hardware handler for EMC storage arrays.
+  "rdac":Hardware handler for LSI/Engenio/NetApp E-Series RDAC storage controller.
+  "hp_sw":Hardware handler for Compaq/HP storage arrays in active/standby mode.
+  "alua":Hardware handler for SCSI-3 ALUA compatible arrays.
+7)path_grouping_policy    下面的与defaults节说明相同。
+8)uid_attribute    
+9)path_selector    
+10)path_checker    
+11)prio    
+12)prio_args    
+13)features    
+14)failback    
+15)rr_weight    
+16)no_path_retry    
+17)rr_min_io    
+18)rr_min_io_rq    
+19)fast_io_fail_tmo    
+20)dev_loss_tmo    
+21)flush_on_last_del    
+22)retain_attached_hw_handler    
+23)detect_prio    
+24)deferred_remove    
+25)delay_watch_checks    
+16)delay_wait_checks    
+---------------------------
+
+
 
 </pre>
