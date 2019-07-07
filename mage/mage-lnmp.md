@@ -160,7 +160,7 @@ nginx配置文件解析：
 process 1 ;表示进程数，cpu密集型的为cpu个数相等，非密集型的为cpu个数的1.5-2倍
 worker_connections 1024 ;每个工作进程最大请求数
 tcp_nopush或tcp_nodelay off ;表示关闭http的nagle算法
-对于nginx而言，每一个server断为一个虚拟主机;
+对于nginx而言，每一个server称为一个虚拟主机;
 location /URI/ { #对当前的URI及其子目录都生效
 	root /web/www #表示/URI路径是本地文件系统路径/web/www/下的所有文件
 	index index.html #默认页面
@@ -177,7 +177,7 @@ location / {
 }
 location / {        ##yum install -y httpd-tools  #需要借助httpd的工具对nginx进行做认证
 	auth_basic	"htpasswd" ; #开户用户认证，借助httpd的htpasswd来创建用户密码，nginx无，htpasswd -c -m /etc/nginx/.users tom，第二次不能使用-c选项再创建文件
-	auth_basic_user_file /etc/nginx.users ;
+	auth_basic_user_file /etc/nginx/.users ;
 }
 
 [root@lamp down]# htpasswd -c -m /usr/local/nginx/.users jack
@@ -196,11 +196,7 @@ location /status｛
 	stub_status on ; #开启nginx状态
 ｝
 
-
-
-
-
-ssl 跟httpd一样
+#ssl 跟httpd一样
 ##LEMP或LNMP:
 NGINX支持FastCGI
 #mysql使用通用二进制安装:
@@ -431,8 +427,8 @@ NoSQL是一类数据库，不是一种数据库，有文档数据库，图片数
 Nginx反向代理：
         lvs：四层，工作在内核内，性能好，调用ldirect检查后端状态
         nginx：七层，工作在用户空间，性能稍差，转发能力不如haproxy,但差别不是很大，但是nginx占用资源小
-        haproxy:七层，工作在用户空间，性能稍差，转发能力虽多nginx好，但是占用资源稍大
-virnesh缓存服务器
+        haproxy:七层，工作在用户空间，性能稍差，转发能力虽比nginx好，但是占用资源稍大
+#virnesh缓存服务器
 
 反向代理学习：
 反向代理某个路径：
@@ -448,7 +444,7 @@ location / {
 		proxy_pass http://192.168.1.201:8080/;
 }
 负载均衡：
-upstream webserver {  #设定upstream名称，必须为唯五，可以为多个，必须设置在server外
+upstream webserver {  #设定upstream名称，必须为唯一，可以为多个，必须设置在server外
 		server httpd.jack.com:8080 weight=5; #weight权重比重
 		server tomcat.jack.com weight=5; #权限比重
 		server my.jack.com ;  #如果不设置权重则表示分配到此主机的请求用户跟这台主机绑定
@@ -472,8 +468,10 @@ location / {
 server {
 	listen 8080;
 	server_name localhost;
-	root /web/errorpages;
-	index index.html;
+	location / {
+		root /web/errorpages;
+		ndex index.html;
+	}
 }
 upstream webserver { 
 	server httpd.jack.com:8080 weight=5 max_fail=2 fail_timeout=2;  #当httpd和tomcat挂掉后会使用127.0.0.1:8080这个端口
@@ -618,7 +616,7 @@ nginx:
         server 192.168.1.239:8080 weight=5; #上游服务器2，轮询
     }
 
-[root@smb-server ~]# netstat -ant | awk '/:80\>/{S[$NF]++} END{for(A in S) {print A,S[A]}}' #查看连接某个端口的状态数量，:80\>为:80结尾的，\>为词尾
+[root@smb-server ~]# netstat -ant | awk '/:80\>/{S[$NF]++} END{for(A in S) {print A,S[A]}}' #查看连接某个端口的状态数量，:80\>为:80结尾的，\>为词尾，S[$NF]++为把最后一个字段的值放入数据S上并进行汇总，for(A in S)表示A读取S中的每一个第一列值，{print A,S[A]}表示遍厉打印S的第一列值，S[A]表示取出数组中对应键的值
 TIME_WAIT 3
 LISTEN 1
 
@@ -694,9 +692,7 @@ location / {
 }
 上面的重写结果会引用死循环：http://www.magedu.com/bbs/a/images/b.jpg --> http://www.magedu.com/bbs/b/images/a.jpg --> http://www.magedu.com/bbs/a/images/b.jpg,这种情况所以要用break，不应该用last。
 last:本次重写完成之后，重启下一轮检查；
-break:本次重写完成之后，直接执行后续操作；
-
-
+break:本次重写完成之后，直接执行后续操作，不再对本次操作再做检查；
 
 
 location /photos/ {  #设置图片盗链不允许访问的操作
@@ -705,6 +701,8 @@ location /photos/ {  #设置图片盗链不允许访问的操作
 		return 403;
 	}
 }
+#注：none代表没有referer，blocked代表有referer但是被防火墙或者是代理给去除了
+
 
 WebDAV:一种基于http1.1协议的通信协议，它扩展了http1.1，在GET,POST,HEAD等几个http标准方法以外添加了一些新的方法，使应用程序可直接对web server直接读写，并支持写文件锁定(locking)及解锁(unlock)，还可以支持文件的版本控制。
 PUT:上传
@@ -764,7 +762,7 @@ location / {
                 }
 }
 
-[root@lnmp conf]# curl http://lnmp.jack.com  #读
+[root@lnmp conf]# curl http://lnmp.jack.com  #读，lnmp.jack.com解析为192.168.1.233
 <h1>sorry,web server is down,please later visit!<h1>
 [root@lnmp conf]# curl -T /etc/e2fsck.conf http://lnmp.jack.com/ #写
 <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
