@@ -357,10 +357,10 @@ http {
     default_type  application/octet-stream;
     sendfile        on;
     keepalive_timeout  65;
-upstream web_pools {
+	upstream web_pools {
         server 127.0.0.1:8081;
         server 127.0.0.1:8082;
-        }
+	}
     server {
         listen       80;
         server_name  localhost;
