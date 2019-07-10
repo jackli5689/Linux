@@ -90,6 +90,194 @@ Sun JDK监控和故障处理工具：
 	jconsole:java的监控与管理控制平台
 	jvisualvm:
 
+
+#tomcat的安装和配置
+server-->service-->Connector-->engine|Servlet Container-->Host,context--JVM
+容器类组件：
+	1. Engine
+	2. Host
+	3. Context
+顶级组件：
+	1. Server
+	2. Service
+Realm（领域）: 用户帐号数据库
+Valve（阀门）: 说明哪些日志可以记录，是一个过滤器，基于IP认证的
+Logger: 日志记录器，用于定义日志在什么地方。
+
+###tomcat的配置文件
+server.xml：tomcat的核心配置文件
+<Server>
+	<Service>
+		<Connector />
+		<Engine>
+			<Host>
+				<Context>  </Context>
+			</Host>
+		</Engine>
+	</Service>
+</Server>
+#注：tomcat依赖的是jdk而不是jre，因为需要的不光是jvm，而且需要库编译
+
+#安装tomcat方式：
+	1. rpm包
+	2. 通用二进制包
+	3. 源码包
+
+##通用二进制安装：
+1. 先安装jdk:
+#bin包安装javaJDK:
+[root@mysql-slave download]# ./jdk-6u45-linux-x64.bin 
+[root@mysql-slave download]# mv jdk1.6.0_45/ /usr/local/
+[root@mysql-slave download]# ln -sv /usr/local/jdk1.6.0_45/ /usr/local/jdk
+‘/usr/local/jdk’ -> ‘/usr/local/jdk1.6.0_45
+配置java环境变量:
+[root@mysql-slave download]# vim /etc/profile.d/java.sh
+export JAVA_HOME=/usr/local/jdk
+export PATH=$PATH:$JAVA_HOME/bin
+[root@mysql-slave download]# . /etc/profile.d/java.sh 
+[root@mysql-slave download]# java -version
+java version "1.6.0_45"  #说明已经安装好
+Java(TM) SE Runtime Environment (build 1.6.0_45-b06)
+Java HotSpot(TM) 64-Bit Server VM (build 20.45-b01, mixed mode)
+#安装tomcat:
+[root@mysql-slave download]# wget http://mirrors.tuna.tsinghua.edu.cn/apache/tomcat/tomcat-7/v7.0.94/bin/apache-tomcat-7.0.94.tar.gz
+[root@mysql-slave download]# tar xf apache-tomcat-7.0.94.tar.gz -C /usr/local/
+[root@mysql-slave local]# ln -sv /usr/local/apache-tomcat-7.0.94/ /usr/local/tomcat
+‘/usr/local/tomcat’ -> ‘/usr/local/apache-tomcat-7.0.9
+[root@mysql-slave tomcat]# ll
+total 132
+drwxr-xr-x 2 root root  4096 Jul 10 21:21 bin
+-rw-r--r-- 1 root root 18099 Apr 11 00:57 BUILDING.txt
+drwxr-xr-x 2 root root   158 Apr 11 00:57 conf
+-rw-r--r-- 1 root root  6090 Apr 11 00:57 CONTRIBUTING.md
+drwxr-xr-x 2 root root  4096 Jul 10 21:21 lib
+-rw-r--r-- 1 root root 56846 Apr 11 00:57 LICENSE
+drwxr-xr-x 2 root root     6 Apr 11 00:56 logs
+-rw-r--r-- 1 root root  1241 Apr 11 00:57 NOTICE
+-rw-r--r-- 1 root root  3255 Apr 11 00:57 README.md
+-rw-r--r-- 1 root root  9365 Apr 11 00:57 RELEASE-NOTES
+-rw-r--r-- 1 root root 16978 Apr 11 00:57 RUNNING.txt
+drwxr-xr-x 2 root root    30 Jul 10 21:21 temp
+drwxr-xr-x 7 root root    81 Apr 11 00:57 webapps
+drwxr-xr-x 2 root root     6 Apr 11 00:56 work
+[root@mysql-slave tomcat]# ls bin/  #catalina.sh是核心脚本，其他.sh脚本可以当做参数传给catalina.sh调用的
+bootstrap.jar                 daemon.sh         startup.sh
+catalina.bat                  digest.bat        tomcat-juli.jar
+catalina.sh                   digest.sh         tomcat-native.tar.gz
+catalina-tasks.xml            setclasspath.bat  tool-wrapper.bat
+commons-daemon.jar            setclasspath.sh   tool-wrapper.sh
+commons-daemon-native.tar.gz  shutdown.bat      version.bat
+configtest.bat                shutdown.sh       version.sh
+configtest.sh                 startup.bat
+[root@mysql-slave tomcat]# ll conf/
+total 212
+-rw------- 1 root root  13342 Apr 11 00:57 catalina.policy #定义tomcat的安全策略
+-rw------- 1 root root   6776 Apr 11 00:57 catalina.properties #应用程序属性的
+-rw------- 1 root root   1394 Apr 11 00:57 context.xml #上下文文件
+-rw------- 1 root root   3562 Apr 11 00:57 logging.properties  #日志属性的
+-rw------- 1 root root   6613 Apr 11 00:57 server.xml #核心配置文件
+-rw------- 1 root root   1950 Apr 11 00:57 tomcat-users.xml #用户帐户认证文件
+-rw------- 1 root root 170604 Apr 11 00:57 web.xml #默认的部署描述符
+部署描述符：将一个web应用程序所依赖到的类装载进JVM
+#运行tomcat
+export CATALINA_HOME=/usr/local/tomcat #定义变量CATALINA_HOME或者CATALINA_BASE来定义tomcat的目录的，一个物理机上可以运行多个tomcat,但端口不能冲突
+[root@mysql-slave tomcat]# vim /etc/profile.d/tomcat.sh #为永久有效写入文件
+export CATALINA_HOME=/usr/local/tomcat
+export PATH=$PATH:$CATALINA_HOME/bin
+[root@mysql-slave tomcat]# . /etc/profile.d/tomcat.sh 
+[root@mysql-slave tomcat]# catalina.sh version #其实是version.sh脚本，但是建议这样用
+Using CATALINA_BASE:   /usr/local/tomcat
+Using CATALINA_HOME:   /usr/local/tomcat
+Using CATALINA_TMPDIR: /usr/local/tomcat/temp
+Using JRE_HOME:        /usr/local/jdk
+Using CLASSPATH:       /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar
+Server version: Apache Tomcat/7.0.94
+Server built:   Apr 10 2019 16:56:40 UTC
+Server number:  7.0.94.0
+OS Name:        Linux
+OS Version:     3.10.0-957.el7.x86_64
+Architecture:   amd64
+JVM Version:    1.6.0_45-b06
+JVM Vendor:     Sun Microsystems Inc
+[root@mysql-slave tomcat]# catalina.sh start #启动tomcat
+Using CATALINA_BASE:   /usr/local/tomcat
+Using CATALINA_HOME:   /usr/local/tomcat
+Using CATALINA_TMPDIR: /usr/local/tomcat/temp
+Using JRE_HOME:        /usr/local/jdk
+Using CLASSPATH:       /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar
+Tomcat started.
+[root@mysql-slave tomcat]# netstat -tunlp | grep 80 #验证已经启动成功
+tcp6       0      0 :::8009                 :::*                    LISTEN      27199/java          
+tcp6       0      0 :::8080                 :::*                    LISTEN      27199/java          
+tcp6       0      0 127.0.0.1:8005          :::*                    LISTEN      27199/java          
+[root@mysql-slave logs]# ll /usr/local/tomcat/logs/
+total 20
+-rw-r--r-- 1 root root 6237 Jul 10 21:43 catalina.2019-07-10.log #tomcat启动时记录的日志
+-rw-r--r-- 1 root root 6237 Jul 10 21:43 catalina.out #当前正在使用的文件
+-rw-r--r-- 1 root root    0 Jul 10 21:43 host-manager.2019-07-10.log #host-manager的日志文件
+-rw-r--r-- 1 root root  601 Jul 10 21:43 localhost.2019-07-10.log #定义的主机日志文件，包括错误日志文件等信息
+-rw-r--r-- 1 root root    0 Jul 10 21:43 localhost_access_log.2019-07-10.txt #定义的主机访问日志文件
+-rw-r--r-- 1 root root    0 Jul 10 21:43 manager.2019-07-10.log #manager的日志文件
+#日志对应的URI，从catalina.2019-07-10.log可以看出
+/usr/local/apache-tomcat-7.0.94/webapps/host-manager #host-manager日志记录的对应位置
+ /usr/local/apache-tomcat-7.0.94/webapps/manager #manager日志记录的对应位置
+[root@mysql-slave tomcat]# ls webapps/ROOT/ #每一个webapps目录下的WEB-INF、META-INF表示私有信息，绝不允许用户URI访问，也访问不到的。
+asf-logo-wide.svg  bg-middle.png    bg-nav.png    favicon.ico  RELEASE-NOTES.txt  tomcat.gif  tomcat-power.gif  WEB-INF
+bg-button.png      bg-nav-item.png  bg-upper.png  index.jsp    tomcat.css         tomcat.png  tomcat.svg
+[root@mysql-slave tomcat]# ls work/  #tomcat的工作目录
+Catalina
+[root@mysql-slave tomcat]# ls work/Catalina/ #表示Catalina这个引擎
+localhost
+[root@mysql-slave tomcat]# ls work/Catalina/localhost/ #表示引擎下的主机localhost
+_  docs  examples  host-manager  manager  #这些都是主机下的实例，context
+[root@mysql-slave tomcat]# ls work/Catalina/localhost/_/ #下面无任何信息，需要访问才可编译生成
+注：访问http://192.168.1.37:8080/
+[root@mysql-slave tomcat]# ls work/Catalina/localhost/_/
+org  #现在生成了编译的文件
+[root@mysql-slave tomcat]# tree  work/Catalina/localhost/_/
+work/Catalina/localhost/_/
+└── org
+    └── apache
+        └── jsp
+            ├── index_jsp.class  #这个就是编译的文件
+            └── index_jsp.java
+[root@mysql-slave tomcat]# jps
+27369 Jps
+27199 Bootstrap  #已经运行了
+###tomcat脚本
+[root@mysql-slave tomcat]# vim /etc/init.d/tomcatd
+[root@mysql-slave ~]# cat /etc/init.d/tomcatd 
+#!/bin/sh
+# Tomcat init script for Linux.
+# chkconfig: 2345 96 04
+# description: The Apache Tomcat servlet/JSP container.
+export JAVA_HOME=/usr/local/jdk
+export CATALINA_HOME=/usr/local/tomcat
+#export CATALINA_OPTS="-Xms128m -Xmx256m"
+case $1 in
+        restart)
+                $CATALINA_HOME/bin/catalina.sh stop
+                sleep 2
+                $CATALINA_HOME/bin/catalina.sh start
+                ;;
+        *)
+                $CATALINA_HOME/bin/catalina.sh $*
+                ;;
+esac
+[root@mysql-slave tomcat]# chmod +x /etc/init.d/tomcatd
+[root@mysql-slave tomcat]# chkconfig --add tomcatd
+[root@mysql-slave tomcat]# chkconfig --list tomcatd
+tomcatd         0:off   1:off   2:on    3:on    4:on    5:on    6:off
+[root@mysql-slave tomcat]# service tomcatd stop
+[root@mysql-slave tomcat]# service tomcatd start
+
+
+
+
+
+
+
+
 </pre>
 
 
