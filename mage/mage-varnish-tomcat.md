@@ -1,4 +1,4 @@
-﻿#varnish详解并无实操
+#varnish详解并无实操
 <pre>
 #缓存类型：
 公共缓存:缓存服务器，不能缓存cooking的
@@ -271,11 +271,152 @@ tomcatd         0:off   1:off   2:on    3:on    4:on    5:on    6:off
 [root@mysql-slave tomcat]# service tomcatd stop
 [root@mysql-slave tomcat]# service tomcatd start
 
+#会话保持的几种方式：
+             1、session sticky      注： 会话粘性
+                      source ip     注:  基于ip地址的会话保持
+                      cookie        注: 基于cookie绑定
+             2、session cluster:    注：session集群，不同节点之间可以通过session复制的方式来同步session    
+             3、session server      注:  session服务器，专门建立一个服务器来保存session   
+                                         session server上装一个memcache或者redis           
+                                         它们是用key-value技术实现的
+
+########tomcat的负载均衡实现方式，
+  1、 nginx做反向代理   nginx+tomcat
+  2、 apache做方向代理  apache+tomcat
+#apache实现反向代3种方式需要的模块
+    1、apache: 
+                mod_proxy
+                mod_proxy_http
+                mod_proxy_balancer
+
+              tomcat:
+                http connector
+
+    2 、apache: 
+                 mod_proxy
+                 mod_proxy_ajp
+                 mod_proxy_balancer                
+
+            tomcat:
+                ajp connector
+
+    3、 apache:
+                mod_jk
+             tomcat:
+                ajp connector
+
+#nginx+tomcat部署：
+实验部署：
+1、三个节点，第一个几点的ip地址为172.16.0.131，后两个几点分别为172.16.0.134和172.16.0.135
+2、后两个节点分别准备jdk和tomcat的安装包
+3、第一个节点安装nginx
+#tomcat-node1:
+[root@mysql-slave conf]# vim server.xml 
+<Engine name="Catalina" defaultHost="www.magedu.com" jvmRoute="TomcatA"> #设置默认虚拟主机，并且设置jvmRouteID
+<Host name="www.magedu.com"  appBase="/web"
+    unpackWARs="true" autoDeploy="true">
+    <Context path="" docBase="webapps" reLoadable="true" />
+</Host>
+#tomcat-node2:
+[root@mysql-slave conf]# vim server.xml 
+<Engine name="Catalina" defaultHost="TC2.magedu.com" jvmRoute="TomcatB"> #设置默认虚拟主机，并且设置jvmRouteID
+<Host name="TC2.magedu.com"  appBase="/web"
+    unpackWARs="true" autoDeploy="true">
+    <Context path="" docBase="webapps" reLoadable="true" />
+</Host>
+#nginx:
+upstream tomcatserver{
+	server www.magedu.com:8080;
+	server TC2.magedu.com:8080;
+}
+location / {
+            root   html;
+            index  index.html index.htm;     
+}
+location ~* \.(jsp|do)$ {
+	  		proxy_redirect          off;  
+            proxy_set_header        Host            $host;  
+            proxy_set_header        X-Real-IP       $remote_addr;  
+            proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;  
+            proxy_set_header        X-Forwarded-Proto  $scheme;  
+            proxy_pass http://tomcatserver;  
+}
+
 ##apache+tomcat
 apache使用ajp协议（比http协议快）代理到后端的tomcat上
 apache代理模块：
 	1. mod_proxy(用得比mod_jk多，下级模块：mod_proxy_http,mod_proxy_ajp,mod_proxy_balancer)
 	2. mod_jk
+
+连接器：
+	1. AJP
+	2. HTTP
+	3. https
+	4. proxy
+	注：需要java类来实现
+
+###基于apache反向代理到tomcat,(使用ajp协议)
+#配置tomcat：
+[root@mysql-slave conf]# vim server.xml 
+<Engine name="Catalina" defaultHost="www.magedu.com" jvmRoute="TomcatA"> #设置默认虚拟主机，并且设置jvmRouteID
+<Host name="www.magedu.com"  appBase="/web"
+    unpackWARs="true" autoDeploy="true">
+    <Context path="" docBase="webapps" reLoadable="true" />
+</Host>
+service tomcat start #启动服务 
+
+#前端apache配置：
+./configure --prefix=/usr/local/apache --sysconfdir=/etc/httpd --enable-so --enable-ssl --enable-cgi --enable-rewrite --with-zlib --with-pcre --with-apr=/usr/local/apr --with-apr-util=/usr/local/apr-util --enable-mpms-shared=all --with-mpm=event --enable-proxy --enable-proxy-http --enable-proxy-ajp --enable-proxy-balancer --enable-lbmethod-heartbeat --enable-heartbeat --enable-slotmem-shm --enable-slotmem-plain --enable-watchdog  #后面是开启proxy反向代理和hearbeat健康检查的。 
+#配置apache通过mod_proxy模块与tomcat连接
+需要apache已经装载mod_proxy,mod_proy_http，mod_proxy_ajp和proxy_balancer_module(实现tomcat集群时用到)等模块
+httpd -D DUMP_MODULES | grep proxy #来查找proxy模块装载了哪些
+#在httpd.conf的全局配置段或虚拟主机段加入如下内容(全局配置段是可以生效的，虚拟主机未试)：
+##此段是基于ajp协议反向代理到tomcat的
+ProxyVia Off #用于控制在httpd首部是否使用Via,主要用于在多级代理中控制代理请求的流向
+ProxyRequests Off  #关闭正向代理功能
+ProxyPreserveHost Off #如果启用此功能，代理会将用户请求报文中的Host:行发送给后端的服务器，而不再使用ProxyPass指定的服务器地址，如果想在反向代理中支持虚拟主机，则需要开启此项，否则就无需打开此功能。
+<Proxy *>
+	Require all granted
+</Proxy>
+	ProxyPass / ajp://172.16.100.1:8009/
+	ProxyPassReverse / ajp://172.16.100.1:8009/ #用于让apache调整HTTP重写向响应报文中的Location,Content-Location及URI标签所对应的URL,在反向代理环境中必须使用此指令避免重写向报文绕过proxy服务器。
+<Location />
+	Require all granted
+</Location>
+##此段是基于http反向代理是tomcat的
+ProxyVia Off
+ProxyRequests Off
+ProxyPreserveHost Off 
+<Proxy *>
+	Require all granted
+</Proxy>
+	ProxyPass / http://172.16.100.1:8080/
+	ProxyPassReverse / http://172.16.100.1:8080/ 
+<Location />
+	Require all granted
+</Location>
+#注：由于balancer需要slotmem_shm_module模块，所以需要开启来才可运行
+#配置tomcatl连接器mod_jk，需要单独下载tomcat-connector
+wget http://mirror.bit.edu.cn/apache/tomcat/tomcat-connectors/jk/tomcat-connectors-1.2.46-src.tar.gz
+tar xf tomcat-connectors-1.2.46-src.tar.gz
+cd tomcat-connectors-1.2.46-src/nativel
+./configure --with-apxs=/usr/local/apache/bin/apxs #把tomcat-connector连接器编译成模块，php_mod也是这样编译成模块的，只要可以编译成为apache的模块就是用这种方式编译的
+make && make install #安装后模块就在apache的模块目录下
+#vim /etc/httpd/extra/httpd-jk.conf #编辑jk配置文件
+LoadModule jk_module modules/mod_jk.so #装载模块
+JKWorkersFile /etc/httpd/extra/workers.properties #指定jk工作文件
+JKLogFile logs/mod_jd.log
+JKLogLevel debug  #为了测试才打开debug
+JKMount /* TomcatA  #把哪下个URI路径送到后端的哪一个tomcat的routeID中
+JKMount /status/ stat1  #stat1这个实例是在/etc/httpd/extra/workers.properties文件当中，文件中定义了什么实例，这里就使用什么名称
+#vim /etc/httpd/extra/workers.properties
+worker.list=TomcatA,stat1 #stat是jk模块自带内嵌的实例，我们取了个名是stat1
+worker.TomcatA.port=8009
+worker.TomcatA.host=192.168.10.8 #TomcatA的ip和端口
+worker.TomcatA.type=ajp13  #使用ajp的协议版本为1.3
+worker.TomcatA.lbfactor=1  #负载均衡权重
+worker.stat1.type=status  #指定stat1输出状态信息的
+#重启httpd服务即可访问后端的tomcat，使用的是ajp协议
 
 
 
