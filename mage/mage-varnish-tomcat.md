@@ -1,4 +1,4 @@
-#varnish详解并无实操
+﻿#varnish详解并无实操
 <pre>
 #缓存类型：
 公共缓存:缓存服务器，不能缓存cooking的
@@ -89,20 +89,20 @@ Sun JDK监控和故障处理工具：
 可视化工具：
 	jconsole:java的监控与管理控制平台
 	jvisualvm:
-
-
-#tomcat的安装和配置
+###Tomcat的实例
+#tomcat的访问由外到里：
+Server(每一个实例)，顶级组件
+	service（将一个或多个连接器关联到一个引擎去的，一个service只有一个引擎）
+		Engine(Serverlet Container)[一个引擎有多个虚拟主机，还有多个context，context类似httpd的别名URI路径，主机和context都可以运行一个实例的]
+			JVM
 server-->service-->Connector-->engine|Servlet Container-->Host,context--JVM
-容器类组件：
-	1. Engine
-	2. Host
-	3. Context
-顶级组件：
-	1. Server
-	2. Service
-Realm（领域）: 用户帐号数据库
-Valve（阀门）: 说明哪些日志可以记录，是一个过滤器，基于IP认证的
-Logger: 日志记录器，用于定义日志在什么地方。
+
+容器组件：Engine,host,context
+顶级组件：server,service
+Realm（领域）:用户帐号数据库，对用户进行认证的
+Valve（阀门）:基于ip认证，过滤访问日志类型，需要logger进行记录日志
+logger: 日志记录器，定义日志位置
+#如果想让整个引擎上定义Realm，则在引擎上定义即可，如果想定义在host或context，则在相应位置定义即可。
 
 ###tomcat的配置文件
 server.xml：tomcat的核心配置文件
@@ -271,7 +271,11 @@ tomcatd         0:off   1:off   2:on    3:on    4:on    5:on    6:off
 [root@mysql-slave tomcat]# service tomcatd stop
 [root@mysql-slave tomcat]# service tomcatd start
 
-
+##apache+tomcat
+apache使用ajp协议（比http协议快）代理到后端的tomcat上
+apache代理模块：
+	1. mod_proxy(用得比mod_jk多，下级模块：mod_proxy_http,mod_proxy_ajp,mod_proxy_balancer)
+	2. mod_jk
 
 
 
