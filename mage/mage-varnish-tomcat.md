@@ -1,5 +1,31 @@
 ﻿#varnish详解并无实操
 <pre>
+#varnish与memcached区别：
+#缓存服务器也可以根据缓存数据内容分类：
+1.数据缓存；data cache（memcached）
+2.页面缓存；page cache（varnish）
+数据存在访问热区，指被经常访问的数据。
+#缓存服务器代理方式分类：
+memcached是旁挂式缓存服务器
+varnish是代理式缓存服务器
+#memcached缓存服务器：
+属于旁挂式缓存服务器，也属于数据缓存；
+memcached存储形式：
+1.将所有数据采用键值对儿的形式存储于内存当中；
+2.无持久存储功能；
+3.通常用于缓存小文件，小数据，单项缓存数据内容上限是1MB；
+可以构建分布式缓存系统，各服务器之间互不通信的分布式集群系统
+缓存空间耗尽：根据LRU（最近最少使用算法）完成清理过期数据；
+缓存项过期：惰性清理机制---用来尽可能减少内存碎片
+#VARNISH缓存服务器：
+varnish缓存服务器是属于页面缓存服务器的一种，用来为客户端请求提供查询结果，也属于代理式缓存服务器。
+varnish缓存服务器可以实现的功能：反向代理 + 缓存服务器
+varnish缓存服务器默认在内存中占用128M内存空间去进行缓存服务
+缓存服务器的实现：
+开源解决方案：
+squid：上世纪90年代中期出现；使用率较低
+varnish：反向代理式缓存：使用率较高的缓存服务器实现方案；
+
 #缓存类型：
 公共缓存:缓存服务器，不能缓存cooking的
 私有缓存：客户端缓存
@@ -477,6 +503,34 @@ conf/tomcat-users.xml
              tomcat:
                 ajp connector
 
+#tomcat的index.jsp测试页面源码：
+[root@lamp-zabbix ROOT]# cat index.jsp
+----------
+ <%@ page language="java" %>
+ <html>
+   <head><title>TomcatB</title></head>
+   <body>
+     <h1><font color="blue">TomcatB.magedu.com</font></h1>
+     <table align="centre" border="1">
+       <tr>
+         <td>Session ID</td>
+     <% session.setAttribute("magedu.com","magedu.com"); %>
+         <td><%= session.getId() %></td>
+       </tr>
+       <tr>
+         <td>Created on</td>
+         <td><%= session.getCreationTime() %></td>
+      </tr>
+     </table>
+   </body>
+ </html>
+----------
+[root@lnmp ROOT]# mkdir -pv ./{classes,lib,WEB-INF,META-INF}  #创建所需目录
+mkdir: created directory ‘./classes’
+mkdir: created directory ‘./lib’
+mkdir: created directory ‘./WEB-INF’
+mkdir: created directory ‘./META-INF
+
 #nginx+tomcat部署：
 实验部署：
 1、三个节点，第一个几点的ip地址为172.16.0.131，后两个几点分别为172.16.0.134和172.16.0.135
@@ -551,7 +605,6 @@ apache使用ajp协议（比http协议快）代理到后端的tomcat上
 apache代理模块：
 	1. mod_proxy(用得比mod_jk多，下级模块：mod_proxy_http,mod_proxy_ajp,mod_proxy_balancer)
 	2. mod_jk
-
 连接器：
 	1. AJP
 	2. HTTP
@@ -561,19 +614,35 @@ apache代理模块：
 
 ###基于apache反向代理到tomcat,(使用ajp协议)
 #配置tomcat：
-[root@mysql-slave conf]# vim server.xml 
-<Engine name="Catalina" defaultHost="www.magedu.com" jvmRoute="TomcatA"> #设置默认虚拟主机，并且设置jvmRouteID
-<Host name="www.magedu.com"  appBase="/web"
-    unpackWARs="true" autoDeploy="true">
-    <Context path="" docBase="webapps" reLoadable="true" />
-</Host>
+#node1
+[root@lnmp conf]# vim server.xml 
+ <Engine name="Catalina" defaultHost="tomcat.jack.com" jvmRoute=tomcatA> #设置默认虚拟主机，并且设置jvmRouteID
+<Host name="tomcat.jack.com"  appBase="webapps"
+            unpackWARs="true" autoDeploy="true">
+    <Valve className="org.apache.catalina.valves.AccessLogValve" directory="logs"
+               prefix="localhost_access_log." suffix=".txt"
+               pattern="%{X-Real-IP}i %l %u %t &quot;%r&quot; %s %b" />
+      </Host>
 service tomcat start #启动服务 
+#node2
+<Engine name="Catalina" defaultHost="my.jack.com" jvmRoute="tomcatB">
+<Host name="my.jack.com"  appBase="webapps"
+            unpackWARs="true" autoDeploy="true">
+ <Valve className="org.apache.catalina.valves.AccessLogValve" directory=
+"logs"
+               prefix="localhost_access_log." suffix=".txt"
+               pattern="%{X-Real-IP}i %l %u %t &quot;%r&quot; %s %b" />
+      </Host>
 
 #前端apache配置：
 ./configure --prefix=/usr/local/apache --sysconfdir=/etc/httpd --enable-so --enable-ssl --enable-cgi --enable-rewrite --with-zlib --with-pcre --with-apr=/usr/local/apr --with-apr-util=/usr/local/apr-util --enable-mpms-shared=all --with-mpm=event --enable-proxy --enable-proxy-http --enable-proxy-ajp --enable-proxy-balancer --enable-lbmethod-heartbeat --enable-heartbeat --enable-slotmem-shm --enable-slotmem-plain --enable-watchdog  #后面是开启proxy反向代理和hearbeat健康检查的。 
 #配置apache通过mod_proxy模块与tomcat连接
-需要apache已经装载mod_proxy,mod_proy_http，mod_proxy_ajp和proxy_balancer_module(实现tomcat集群时用到)等模块
-httpd -D DUMP_MODULES | grep proxy #来查找proxy模块装载了哪些
+需要apache已经装载mod_proxy,mod_proy_http，mod_proxy_ajp和proxy_balancer_module(实现tomcat集群时用到)，slotmem_shm_module，lbmethod_byrequests_module等模块
+[root@saltsrv httpd-2.4.38]# httpd -D DUMP_MODULES | grep proxy #来查找proxy模块装载了哪些
+ proxy_module (shared)
+ proxy_http_module (shared)
+ proxy_ajp_module (shared)
+ proxy_balancer_module (shared)
 #在httpd.conf的全局配置段或虚拟主机段加入如下内容(全局配置段是可以生效的，虚拟主机未试)：
 ##此段是基于ajp协议反向代理到tomcat的
 ProxyVia Off #用于控制在httpd首部是否使用Via,主要用于在多级代理中控制代理请求的流向
@@ -587,19 +656,71 @@ ProxyPreserveHost Off #如果启用此功能，代理会将用户请求报文中
 <Location />
 	Require all granted
 </Location>
-##此段是基于http反向代理是tomcat的
+------------------
 ProxyVia Off
 ProxyRequests Off
-ProxyPreserveHost Off 
+ProxyPreserveHost Off
 <Proxy *>
-	Require all granted
+        Require all granted
 </Proxy>
-	ProxyPass / http://172.16.100.1:8080/
-	ProxyPassReverse / http://172.16.100.1:8080/ 
+        ProxyPass / ajp://192.168.1.233:8009/
+        ProxyPassReverse / ajp://192.168.1.233:8009/
 <Location />
-	Require all granted
+        Require all granted
 </Location>
+------------------
+##此段是基于http反向代理是tomcat的
+------------------
+ProxyVia Off
+ProxyRequests Off
+ProxyPreserveHost Off
+<Proxy *>
+        Require all granted
+</Proxy>
+        ProxyPass / http://172.16.100.1:8080/
+        ProxyPassReverse / http://172.16.100.1:8080/
+<Location />
+        Require all granted
+</Location>
+------------------
+#使用基于mod_proxy，mod_balancer的ajp协议来反向代理负载均衡tomcat
+[root@saltsrv extra]# httpd -D DUMP_MODULES | egrep 'proxy|shm|lbmethod' #首先要装载如下些模块
+ proxy_module (shared)
+ proxy_http_module (shared)
+ proxy_ajp_module (shared)
+ proxy_balancer_module (shared)
+ slotmem_shm_module (shared)
+[root@saltsrv extra]# vim /etc/httpd/httpd.conf #如下配置是基于ajp协议的
+--------------
+<IfModule proxy_balancer_module>
+    <IfModule proxy_ajp_module>
+        <Proxy balancer://mybalancer>
+            BalancerMember ajp://192.168.1.233:8009/ loadfactor=80 route=tomcatA
+            BalancerMember ajp://192.168.1.239:8009/ loadfactor=20 route=tomcatB
+        </Proxy>
+
+        ProxyRequests off
+        ProxyPass / balancer://mybalancer/ stickySession=JSESSIONID nofailover=Off
+        ProxyPassReverse / balancer://mybalancer/
+    </IfModule>
+</IfModule>
+-------------
+<IfModule proxy_balancer_module>  #以下配置是基于http的，跟ajp写在一起或分开只写一个都可以
+    <IfModule proxy_http_module>
+        <Proxy balancer://mybalancer>
+            BalancerMember http://192.168.1.233:8080/ loadfactor=80 route=tomcatA
+            BalancerMember http://192.168.1.239:8080/ loadfactor=20 route=tomcatB
+        </Proxy>
+
+        ProxyRequests off
+        ProxyPass / balancer://mybalancer/ stickySession=JSESSIONID nofailover=Off
+        ProxyPassReverse / balancer://mybalancer/
+    </IfModule>
+</IfModule>
+--------------
+#注：stickySession 表示启用粘性会话。Nofailover用于配置故障转移的。loadfactor=20表示负载优先级，route=tomcatB指定tomcat的routeID
 #注：由于balancer需要slotmem_shm_module模块，所以需要开启来才可运行
+
 #配置tomcatl连接器mod_jk，需要单独下载tomcat-connector
 wget http://mirror.bit.edu.cn/apache/tomcat/tomcat-connectors/jk/tomcat-connectors-1.2.46-src.tar.gz
 tar xf tomcat-connectors-1.2.46-src.tar.gz
@@ -613,6 +734,15 @@ JKLogFile logs/mod_jd.log
 JKLogLevel debug  #为了测试才打开debug
 JKMount /* TomcatA  #把哪下个URI路径送到后端的哪一个tomcat的routeID中
 JKMount /status/ stat1  #stat1这个实例是在/etc/httpd/extra/workers.properties文件当中，文件中定义了什么实例，这里就使用什么名称
+-------------
+[root@saltsrv extra]# cat httpd-jk.conf 
+LoadModule jk_module modules/mod_jk.so
+JKWorkersFile /etc/httpd/extra/workers.properties 
+JKLogFile logs/mod_jd.log
+JKLogLevel debug 
+JKMount /* tomcatA
+JKMount /status/ stat1
+-------------
 #vim /etc/httpd/extra/workers.properties
 worker.list=TomcatA,stat1 #stat是jk模块自带内嵌的实例，我们取了个名是stat1
 worker.TomcatA.port=8009
@@ -620,10 +750,44 @@ worker.TomcatA.host=192.168.10.8 #TomcatA的ip和端口
 worker.TomcatA.type=ajp13  #使用ajp的协议版本为1.3
 worker.TomcatA.lbfactor=1  #负载均衡权重
 worker.stat1.type=status  #指定stat1输出状态信息的
-#重启httpd服务即可访问后端的tomcat，使用的是ajp协议
+-----------
+[root@saltsrv extra]# cat workers.properties 
+worker.list=tomcatA,stat1 
+worker.tomcatA.port=8009
+worker.tomcatA.host=192.168.1.233
+worker.tomcatA.type=ajp13
+worker.tomcatA.lbfactor=1
+worker.stat1.type=status 
+-----------
+#[root@saltsrv httpd]# echo 'Include /etc/httpd/extra/httpd-jk.conf' >> /etc/httpd/httpd.conf      
+#重启httpd服务即可访问后端的tomcat，使用的是ajp协议的mod_jk模块
 
-
-
+##基于httpd的ajp协议反向代理负载均衡实现配置：
+[root@saltsrv ~]# cat /etc/httpd/extra/httpd-jk.conf 
+LoadModule jk_module modules/mod_jk.so
+JKWorkersFile /etc/httpd/extra/workers.properties 
+JKLogFile logs/mod_jd.log
+JKLogLevel debug 
+JKMount /* tomcatGroup  #反向代理至tomcat组
+JKMount /status/ statA
+[root@saltsrv ~]# cat /etc/httpd/extra/workers.properties    
+worker.list=tomcatGroup,statA  #设定tomcatGroup集群组，statA为这个集群组的状态名
+worker.tomcatA.port=8009
+worker.tomcatA.host=192.168.1.233
+worker.tomcatA.type=ajp13
+worker.tomcatA.lbfactor=1
+worker.tomcatB.port=8009
+worker.tomcatB.host=192.168.1.239
+worker.tomcatB.type=ajp13
+worker.tomcatB.lbfactor=1
+worker.statA.type=status  #定义statA为状态
+worker.tomcatGroup.type=lb  #设定这个集群组的类型为lb
+worker.tomcatGroup.balance_workers=tomcatA,tomcatB  #定义负载均衡工作的主机为tomcatA,tomcatB
+workstick.tomcatGroup.sticky_session=0 #这是为不启用会话保持功能sticky_session
+#在负载均衡模式中，专用的属性还有：
+◇balance_workers：用于负载均衡模式中的各worker的名称列表，需要注意的是，出现在此处的worker名称一定不能在任何worker.list属性列表中定义过，并且worker.list属性中定义的worker名字必须包含负载均衡worker。具体示例请参见后文中的定义。
+◇ method：可以设定为R、T或B；默认为R，即根据请求的个数进行调度；T表示根据已经发送给worker的实际流量大小进行调度；B表示根据实际负载情况进行调度。
+◇sticky_session：在将某请求调度至某worker后，源于此址的所有后续请求都将直接调度至此worker，实现将用户session与某worker绑定。默认为值为1，即启用此功能。如果后端的各worker之间支持session复制，则可以将此属性值设为0。
 
 
 
