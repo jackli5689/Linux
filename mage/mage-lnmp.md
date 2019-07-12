@@ -428,7 +428,6 @@ Nginx反向代理：
         lvs：四层，工作在内核内，性能好，调用ldirect检查后端状态
         nginx：七层，工作在用户空间，性能稍差，转发能力不如haproxy,但差别不是很大，但是nginx占用资源小
         haproxy:七层，工作在用户空间，性能稍差，转发能力虽比nginx好，但是占用资源稍大
-#virnesh缓存服务器
 
 反向代理学习：
 反向代理某个路径：
@@ -452,7 +451,7 @@ upstream webserver {  #设定upstream名称，必须为唯一，可以为多个�
 location / {
 		proxy_pass http://webserver/; #反向代理至负载均衡组webserver
 }
-upstream健康检查：
+upstream上游群组：
 weight:权重调用
 max_fails:最多错误次数
 fail_timeout：错误检查超时时间
@@ -470,7 +469,7 @@ server {
 	server_name localhost;
 	location / {
 		root /web/errorpages;
-		ndex index.html;
+		index index.html;
 	}
 }
 upstream webserver { 
