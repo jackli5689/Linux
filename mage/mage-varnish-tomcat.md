@@ -475,10 +475,8 @@ conf/tomcat-users.xml
              1、session sticky      注： 会话粘性
                       source ip     注:  基于ip地址的会话保持
                       cookie        注: 基于cookie绑定
-             2、session cluster:    注：session集群，不同节点之间可以通过session复制的方式来同步session    
-             3、session server      注:  session服务器，专门建立一个服务器来保存session   
-                                         session server上装一个memcache或者redis           
-                                         它们是用key-value技术实现的
+             2、session cluster     注：session集群，不同节点之间可以通过session复制的方式来同步session，tomcat的集群Delta管理器实现    
+             3、session server      注:  session服务器，专门建立一个服务器来保存session，session server上装一个memcache或者redis，它们是用key-value技术实现的
 
 ########tomcat的负载均衡实现方式，
   1、 nginx做反向代理   nginx+tomcat
@@ -677,7 +675,7 @@ ProxyPreserveHost Off
 <Proxy *>
         Require all granted
 </Proxy>
-        ProxyPass / http://172.16.100.1:8080/
+        ProxyPass / http://172.16.100.1:8080/  #代理的URI必须和后端的URI保持一致
         ProxyPassReverse / http://172.16.100.1:8080/
 <Location />
         Require all granted
@@ -690,6 +688,7 @@ ProxyPreserveHost Off
  proxy_ajp_module (shared)
  proxy_balancer_module (shared)
  slotmem_shm_module (shared)
+#注：由于balancer需要slotmem_shm_module模块，所以需要开启来才可运行
 [root@saltsrv extra]# vim /etc/httpd/httpd.conf #如下配置是基于ajp协议的
 --------------
 <IfModule proxy_balancer_module>
@@ -697,6 +696,7 @@ ProxyPreserveHost Off
         <Proxy balancer://mybalancer>
             BalancerMember ajp://192.168.1.233:8009/ loadfactor=80 route=tomcatA
             BalancerMember ajp://192.168.1.239:8009/ loadfactor=20 route=tomcatB
+			ProxySet lbmethod=byrequests
         </Proxy>
 
         ProxyRequests off
@@ -710,18 +710,50 @@ ProxyPreserveHost Off
         <Proxy balancer://mybalancer>
             BalancerMember http://192.168.1.233:8080/ loadfactor=80 route=tomcatA
             BalancerMember http://192.168.1.239:8080/ loadfactor=20 route=tomcatB
+			ProxySet lbmethod=byrequests
         </Proxy>
 
         ProxyRequests off
-        ProxyPass / balancer://mybalancer/ stickySession=JSESSIONID nofailover=Off
+        ProxyPass / balancer://mybalancer/   stickySession=JSESSIONID nofailover=Off
         ProxyPassReverse / balancer://mybalancer/
     </IfModule>
 </IfModule>
 --------------
-#注：stickySession 表示启用粘性会话。Nofailover用于配置故障转移的。loadfactor=20表示负载优先级，route=tomcatB指定tomcat的routeID
-#注：由于balancer需要slotmem_shm_module模块，所以需要开启来才可运行
+#注：如果proxy指定是以banlancer://开头，即用于负载均衡集群时，其还可以接受一些特殊的参数,用ProxySet进行配置，如下所示：
+1. stickySession：调度器的名称，跟所web程序语言不同其值也不同，一般为JSESSIONID或PHPSESSIONID，用于绑定用户session的。
+2. Nofailover：为On时表示配置故障时用户的session将损坏，Off为不损坏，因为后端不支持session复制时应配置为On。
+3. loadfactor=20表示权重值，
+4. lbmethod：是实现负载均衡的调度方法，默认是byrequests,即基于权重将统计请求个数进行调度，bytraffic则执行基于权重的流量计数调度，bybusyness通过考量每个后端服务器的当前负载进行调度。
+5. maxattempts:放弃请求之前，实现故障转移的次数，默认为1，其最大值不应该大于总的节点数。
+6. ProxyPassReverse：用于让apache调整http重定向响应报文中的Location、Content-Location及URI标签所对应的URL，在反向代理环境中必须使用此指令避免重定向报文绕过proxy服务器。
+7. route=tomcatB指定tomcat的routeID
+8. min：连接池的最小容量，此值与实际连接个数无头，仅表示连接池最小要初始化的空间大小
+9. max：连接的最大容量
+10. retry:当apache将请求发送到后端服务器得到错误响应时等待多长时间以后再重试，单位是秒钟。
+------------------
+在httpd.conf的全局配置中配置banlancer:
+ProxyRequests Off
+<Proxy balancer://mybalancer>
+      BalancerMember http://192.168.1.233:8080/ loadfactor=1 route=tomcatA
+      BalancerMember http://192.168.1.239:8080/ loadfactor=1 route=tomcatB
+	  ProxySet lbmethod=byrequests   #定义负载均衡方法
+</Proxy>
+在虚拟主机中配置proxyPass:(或在中心主机中配置proxyPass)
+<VirtualHost *:80>
+	ServerAdmin admin@magedu.com
+	ServerName www.magedu.com
+	ProxyPass / balancer://mybalancer/   stickySession=JSESSIONID nofailover=Off
+	ProxyPassReverse / balancer://mybalancer/
+<Location /balancer-manager>
+	SetHandler balancer-manager
+	ProxyPass !  #表示这个路径不向后代理，可在状态URI上查看节点住处
+	Require all granted
+</Location>
+------------------
+http://www.magedu.com/balancer-manager访问状态信息
+#注：tomcat的session可以保存在文件或者jdbc连接的数据库当中
 
-#配置tomcatl连接器mod_jk，需要单独下载tomcat-connector
+###配置tomcatl连接器mod_jk，需要单独下载tomcat-connector
 wget http://mirror.bit.edu.cn/apache/tomcat/tomcat-connectors/jk/tomcat-connectors-1.2.46-src.tar.gz
 tar xf tomcat-connectors-1.2.46-src.tar.gz
 cd tomcat-connectors-1.2.46-src/nativel
@@ -769,7 +801,7 @@ JKWorkersFile /etc/httpd/extra/workers.properties
 JKLogFile logs/mod_jd.log
 JKLogLevel debug 
 JKMount /* tomcatGroup  #反向代理至tomcat组
-JKMount /status/ statA
+JKMount /status/ statA   #可使用/status/URI进行访问状态信息
 [root@saltsrv ~]# cat /etc/httpd/extra/workers.properties    
 worker.list=tomcatGroup,statA  #设定tomcatGroup集群组，statA为这个集群组的状态名
 worker.tomcatA.port=8009
@@ -783,11 +815,137 @@ worker.tomcatB.lbfactor=1
 worker.statA.type=status  #定义statA为状态
 worker.tomcatGroup.type=lb  #设定这个集群组的类型为lb
 worker.tomcatGroup.balance_workers=tomcatA,tomcatB  #定义负载均衡工作的主机为tomcatA,tomcatB
-workstick.tomcatGroup.sticky_session=0 #这是为不启用会话保持功能sticky_session
+worker.tomcatGroup.sticky_session=0 #这是为不启用会话保持功能sticky_session
 #在负载均衡模式中，专用的属性还有：
 ◇balance_workers：用于负载均衡模式中的各worker的名称列表，需要注意的是，出现在此处的worker名称一定不能在任何worker.list属性列表中定义过，并且worker.list属性中定义的worker名字必须包含负载均衡worker。具体示例请参见后文中的定义。
 ◇ method：可以设定为R、T或B；默认为R，即根据请求的个数进行调度；T表示根据已经发送给worker的实际流量大小进行调度；B表示根据实际负载情况进行调度。
 ◇sticky_session：在将某请求调度至某worker后，源于此址的所有后续请求都将直接调度至此worker，实现将用户session与某worker绑定。默认为值为1，即启用此功能。如果后端的各worker之间支持session复制，则可以将此属性值设为0。
+
+#基于tomcat自带的会话共享（实操不生效）
+#一定要在web站点目录上的WEB-INF/web.xml中添加<distributable/>才可以实现session共享的
+
+<Cluster className="org.apache.catalina.ha.tcp.SimpleTcpCluster"
+                   channelSendOptions="8">
+     <Manager className="org.apache.catalina.ha.session.DeltaManager"
+                    expireSessionsOnShutdown="false"
+                    notifyListenersOnReplication="true"/>
+       <Channel className="org.apache.catalina.tribes.group.GroupChannel">
+          <Membership className="org.apache.catalina.tribes.membership.McastService"
+                   address="228.50.10.1"   bind="172.16.100.1"   port="45564"
+                   frequency="500"  dropTime="3000"/>
+             <Receiver className="org.apache.catalina.tribes.transport.nio.NioReceiver"
+                                address="172.16.100.1"   port="4000"  autoBind="100"
+                                selectorTimeout="5000"   maxThreads="6"/>
+             <Sender className="org.apache.catalina.tribes.transport.ReplicationTransmitter">
+                <Transport className="org.apache.catalina.tribes.transport.nio.PooledParallelSender"/>
+             </Sender>
+       <Interceptor className="org.apache.catalina.tribes.group.interceptors.TcpFailureDetector"/>
+       <Interceptor className="org.apache.catalina.tribes.group.interceptors.MessageDispatch15Interceptor"/>
+     </Channel>
+     <Valve className="org.apache.catalina.ha.tcp.ReplicationValve"
+                        filter=".*\.gif;.*\.js;.*\.jpg;.*\.htm;.*\.html;.*\.txt;"/>
+     <Valve className="org.apache.catalina.ha.session.JvmRouteBinderValve"/>
+     <Deployer className="org.apache.catalina.ha.deploy.FarmWarDeployer"
+                     tempDir="/tmp/war-temp/" deployDir="/tmp/war-deploy/"
+                    watchDir="/tmp/war-listen/"  watchEnabled="false"/>
+      <ClusterListener className="org.apache.catalina.ha.session.JvmRouteSessionIDBinderListener"/>
+      <ClusterListener className="org.apache.catalina.ha.session.ClusterSessionListener"/>
+</Cluster>
+#注：以上内容定义在Engine容器中，则表示对所有主机均启动用集群功能。如果定义在某Host中，则表示仅对此主机启用集群功能。
+
+[root@lamp-zabbix WEB-INF]# vim /usr/local/tomcat/webapps/ROOT/WEB-INF/web.xml 
+<distributable/> #在<web-app>标签中添加这行
+[root@lnmp WEB-INF]#  vim /usr/local/tomcat/webapps/ROOT/WEB-INF/web.xml 
+<distributable/> #在<web-app>标签中添加这行
+注：所有启用集群功能的web应用程序，其web.xml中都须添加<distributable/>才能实现集群功能。如果某web应用程序没有自己的web.xml，也可以通过复制默认的web.xml至其WEB-INF目录中实现。
+#对tomcat NODE1进行集群配置，设定组播地址，绑定的本地节点地址，和接收组播信息的本地信息地址
+#224.0.2.0～238.255.255.255为用户可用的组播地址（临时组地址），全网范围内有效；
+[root@lnmp tomcat]# vim /usr/local/tomcat/conf/server.xml 
+<Cluster className="org.apache.catalina.ha.tcp.SimpleTcpCluster"
+                 channelSendOptions="6">
+
+          <Manager className="org.apache.catalina.ha.session.BackupManager"
+                   expireSessionsOnShutdown="false"
+                   notifyListenersOnReplication="true"
+                   mapSendOptions="6"/>
+
+
+          <Channel className="org.apache.catalina.tribes.group.GroupChannel">
+            <Membership className="org.apache.catalina.tribes.membership.McastService"
+                        address="228.0.0.4"
+                        port="45564"
+                        frequency="500"
+                        dropTime="3000"/>
+            <Receiver className="org.apache.catalina.tribes.transport.nio.NioReceiver"
+                      address="192.168.1.233"
+                      port="5000"
+                      selectorTimeout="100"
+                      maxThreads="6"/>
+
+            <Sender className="org.apache.catalina.tribes.transport.ReplicationTransmitter">
+              <Transport className="org.apache.catalina.tribes.transport.nio.PooledParallelSender"/>
+            </Sender>
+            <Interceptor className="org.apache.catalina.tribes.group.interceptors.TcpFailureDetector"/>
+            <Interceptor className="org.apache.catalina.tribes.group.interceptors.MessageDispatch15Interceptor"/>
+            <Interceptor className="org.apache.catalina.tribes.group.interceptors.ThroughputInterceptor"/>
+          </Channel>
+
+          <Valve className="org.apache.catalina.ha.tcp.ReplicationValve"
+                 filter=".*\.gif;.*\.js;.*\.jpg;.*\.png;.*\.htm;.*\.html;.*\.css;.*\.txt;"/>
+
+          <Deployer className="org.apache.catalina.ha.deploy.FarmWarDeployer"
+                    tempDir="/tmp/war-temp/"
+                    deployDir="/tmp/war-deploy/"
+                    watchDir="/tmp/war-listen/"
+                    watchEnabled="false"/>
+
+          <ClusterListener className="org.apache.catalina.ha.session.ClusterSessionListener"/>
+        </Cluster>
+-------------------
+[root@lamp-zabbix conf]# vim /usr/local/tomcat/conf/server.xml
+<Cluster className="org.apache.catalina.ha.tcp.SimpleTcpCluster"
+                 channelSendOptions="6">
+
+          <Manager className="org.apache.catalina.ha.session.BackupManager"
+                   expireSessionsOnShutdown="false"
+                   notifyListenersOnReplication="true"
+                   mapSendOptions="6"/>
+
+
+          <Channel className="org.apache.catalina.tribes.group.GroupChannel">
+            <Membership className="org.apache.catalina.tribes.membership.McastService"
+                        address="228.0.0.4"
+                        port="45564"
+                        frequency="500"
+                        dropTime="3000"/>
+            <Receiver className="org.apache.catalina.tribes.transport.nio.NioReceiver"
+                      address="192.168.1.239"
+                      port="5000"
+                      selectorTimeout="100"
+                      maxThreads="6"/>
+
+            <Sender className="org.apache.catalina.tribes.transport.ReplicationTransmitter">
+              <Transport className="org.apache.catalina.tribes.transport.nio.PooledParallelSender"/>
+            </Sender>
+            <Interceptor className="org.apache.catalina.tribes.group.interceptors.TcpFailureDetector"/>
+            <Interceptor className="org.apache.catalina.tribes.group.interceptors.MessageDispatch15Interceptor"/>
+            <Interceptor className="org.apache.catalina.tribes.group.interceptors.ThroughputInterceptor"/>
+          </Channel>
+
+          <Valve className="org.apache.catalina.ha.tcp.ReplicationValve"
+                 filter=".*\.gif;.*\.js;.*\.jpg;.*\.png;.*\.htm;.*\.html;.*\.css;.*\.txt;"/>
+
+          <Deployer className="org.apache.catalina.ha.deploy.FarmWarDeployer"
+                    tempDir="/tmp/war-temp/"
+                    deployDir="/tmp/war-deploy/"
+                    watchDir="/tmp/war-listen/"
+                    watchEnabled="false"/>
+
+          <ClusterListener className="org.apache.catalina.ha.session.ClusterSessionListener"/>
+        </Cluster>
+
+
+
 
 
 
