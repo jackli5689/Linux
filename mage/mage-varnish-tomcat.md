@@ -944,7 +944,7 @@ worker.tomcatGroup.sticky_session=0 #这是为不启用会话保持功能sticky_
           <ClusterListener className="org.apache.catalina.ha.session.ClusterSessionListener"/>
         </Cluster>
 
-
+###注：当部署某些网站时可能启动服务报异常，试用参数JAVA_OPTS='-Xms512m -Xmx1024m -XX:MaxPermSize=512m'在catalina.sh中定义变量，应该会好点。
 
 
 
