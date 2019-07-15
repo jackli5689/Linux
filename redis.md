@@ -52,7 +52,7 @@ lrwxrwxrwx 1 root root      12 Jul 14 12:15 redis-sentinel -> redis-server
 #make install之后,得到如下几个文件
 redis-benchmark  性能测试工具
 redis-check-aof  日志文件检测工(比如断电造成日志损坏,可以检测并修复)
-redis-check-dump  快照文件检测工具,效果类上
+redis-check-dump  快照文件检测工具,效果如上
 redis-cli  客户端
 redis-server 服务端
 [root@lnmp bin]# cp /usr/local/src/redis-5.0.5/redis.conf /usr/local/redis/ #复制配置文件
@@ -115,7 +115,7 @@ OK
 OK
 127.0.0.1:6379> set search www.so.com
 OK
-127.0.0.1:6379> rename site search #此只老的search将会被覆盖
+127.0.0.1:6379> rename site search #此前老的search将会被覆盖
 OK
 127.0.0.1:6379> keys *
 1) "search"
@@ -250,7 +250,7 @@ OK
 (integer) 20
 127.0.0.1:6379> incrbyfloat age 0.3 #自增加0.3
 "20.3"
-例：
+例：A和a的ASCII码二进制值
 A 01000001
 a 01100001
 127.0.0.1:6379> set char A
@@ -286,6 +286,7 @@ b:1011
 0010 xor  #表示多个key中对应位值不同时才显示为1
 bitop not j a #此时j的值跟a的值相反，为011011..，后面0的都为1
 #第四节：redis的list结构及命令详解
+#link(list)类型插入的数据顺序是你插入值的先后顺序
 #link链表结果：
 127.0.0.1:6379> lpush character a #left push到character值为a
 (integer) 1
@@ -362,15 +363,13 @@ OK
 LINSERT key BEFORE|AFTER pivot value
 127.0.0.1:6379> rpush int 1 3 5 8 9 
 (integer) 5
-127.0.0.1:6379> lrange int
-(error) ERR wrong number of arguments for 'lrange' command
 127.0.0.1:6379> lrange int 0 -1
 1) "1"
 2) "3"
 3) "5"
 4) "8"
 5) "9"
-127.0.0.1:6379> linsert int before 7 6
+127.0.0.1:6379> linsert int before 7 6 #link insert 在7前面插入6，由于link中无7值，所以不成功 
 (integer) -1
 127.0.0.1:6379> lrange int 0 -1
 1) "1"
@@ -378,7 +377,7 @@ LINSERT key BEFORE|AFTER pivot value
 3) "5"
 4) "8"
 5) "9"
-127.0.0.1:6379> linsert int before 8 6
+127.0.0.1:6379> linsert int before 8 6  #link insert 在8前面插入6，由于link中有值，所以成功 
 (integer) 6
 127.0.0.1:6379> lrange int 0 -1
 1) "1"
@@ -419,7 +418,7 @@ RPOPLPUSH source destination
 1) "job"
 2) "1"
 (24.10s)  #等到rpush值时花了多少时间
-127.0.0.1:6379> rpush job 1 #这个是push一个值
+127.0.0.1:6379> rpush job 1 #这个是另外一们终端push的一个值
 (integer) 1
 
 #第五节：位图法统计活跃用户
@@ -788,13 +787,13 @@ OK
 OK
 127.0.0.1:6379> set wang 700
 OK
-127.0.0.1:6379> multi
+127.0.0.1:6379> multi  #进入事务
 OK
-127.0.0.1:6379> decrby wang 100
+127.0.0.1:6379> decrby wang 100 #wang减100
 QUEUED
-127.0.0.1:6379> incrby zhao 100
+127.0.0.1:6379> incrby zhao 100 #zhao加100
 QUEUED
-127.0.0.1:6379> exec
+127.0.0.1:6379> exec #提交执行
 1) (integer) 600
 2) (integer) 400
 127.0.0.1:6379> mget wang zhao 
