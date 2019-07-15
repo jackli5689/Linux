@@ -1167,7 +1167,7 @@ SELECT Name,Age FROM (SELECT Name,Age FROM students) AS t WHERE t.Age >= 20; #�
 （SELECT Name,Age FROM students) UNION (SELECT Tname,Age FROM tutors); #联合查询
 #第八节：多表查询、子查询及视图
 SELECT Tname FROM tutors WHERE TID NOT IN (SELECT DISTINCT TID FROM courses); #从tutors表找出TID不在courses表上的老师名
-SELECT CID1 FROM students GROUP BY CID1 HAVING COUNT(CID11) >=2; #找出学习的课程大于等于2的CID1
+SELECT CID1 FROM students GROUP BY CID1 HAVING COUNT(CID1) >=2; #找出学习的课程大于等于2的CID1
 SELECT Cname FROM courses WHERE CID IN (SELECT CID1 FROM students GROUP BY CID1 HAVING COUNT(CID1) >=2); #对找出大于等于2的CID1进行显示课程名称
 SELECT Name,Cname,Tname FROM students,courses,tutors WHERE students.CID1=courses.CID AND courses.TID=tutors.TID; #从学生表，老师表，课程表中查询每个学生所学的课以及对应的老师
 
@@ -1888,7 +1888,7 @@ mysql> show engine innodb status; #这个地方是不一样操作。。。查看
 MVCC：REPEATABLE-READ(可重读)时，使用--single-transaction对innoDB可做热备份原因。
 #select INTO OUTFILE跟mysqldump也是裸备份
 #使用SELECT * INTO OUTFILE /tmp/test.txt FROM tb_name [WHERE clause];备份某些表
-#create table tb1 liki tutors; #先访造tutors生成一样的表结构
+#create table tb1 like tutors; #先访造tutors生成一样的表结构
 #使用LOAD DATA INFILE '/tmp/test.txt INTO TABLE tb_name;#然后恢复备份的某些表
 mysqlbinlog --start-position=605 /mydata/mysql-bin.000001 > /tmp/my.sql #对二进制日志文件进行位置选定导出为sql文件
 truncate table tutor; #清空表数据
@@ -1906,7 +1906,7 @@ LVM卷进行步骤：
 		mysql> FLUSH TABLES WITH READ LOCK;
 		mysql> FLUSH LOGS;
 	2. 在shell终端上，保存二进制日志文件信息
-		# mysql -u roo -p -e 'SHOW MASTER STATUS \G' >/backup/binlog-info-`date +%Y-%m-%d-%H:%M:%S`.txt
+		# mysql -u root -p -e 'SHOW MASTER STATUS \G' >/backup/binlog-info-`date +%Y-%m-%d-%H:%M:%S`.txt
 	3. 创建lvm快照
 		# lvcreate -L 50M -s -p r -n data-snap /dev/myvg/mylv
 	4. 释放锁
@@ -2229,7 +2229,7 @@ mysql> select * from stu;
 #第二节：MYSQL异步、半同步配置及其注意事项
 一个从只能属于一个主服务器，
 mysql5.5-：配置很简单
-mysql5.6+：配置较复制，引入gtid（全局事务号）机制，multi-thread repliction
+mysql5.6+：配置较复杂，引入gtid（全局事务号）机制，multi-thread repliction
 
 一：mysql master:
 1. 启用二进制日志：
@@ -2971,7 +2971,7 @@ mysql> show slave status\G;
              Slave_IO_Running: Connecting  #因为主服务器配置必须使用证书才可登录,这里未使用所以一直显示连接中状态
             Slave_SQL_Running: Yes
 
-mysql> change master to master_host='192.168.1.37',master_user='repluser',master_password='replpass',master_log_file='master-bin.000001',master_log_pos=367,master_ssl=1,master_ssl_cert='/mydata/data/ssl/mysql.crt',master_ssl_key='/mydata/data/ssl/mysql.key',master_ssl_ca='/mydata/data/ssl/cacert.pem';
+mysql> change master to master_host='192.168.1.37',master_user='repluser',master_password='replpass',master_log_file='master-bin.000001',master_log_pos=367,master_ssl=1,master_ssl_cert='/mydata/data/ssl/mysql.crt',master_ssl_key='/mydata/data/ssl/mysql.key',master_ssl_ca='/mydata/data/ssl/cacert.pem';  #使用主服务器的证书、密钥和ca证书
 mysql> start slave;
 mysql> show slave status\G;
 *************************** 1. row ***************************
@@ -3015,15 +3015,15 @@ Master_SSL_Verify_Server_Cert: No
                Last_SQL_Error: 
   Replicate_Ignore_Server_Ids: 
              Master_Server_Id: 20
-#注:从服务器上的ca证书,客户端证书和私钥必须和主服务器配置文件上的一模一样,也就是说主服务器需要同从服务器帐户进行ssl认证时,主服务器必须先设定好ca证书,客户端证书和私钥文件,否则报错.这边只做了单主ssl加密,另外单主跟这一样操作,这里不再列出.
+#注:从服务器上的ca证书,客户端证书和私钥必须和主服务器的证书和密钥,也就是说主服务器需要同从服务器帐户进行ssl认证时,主服务器必须先设定好ca证书,客户端证书和私钥文件发送给从，让从进行使用.这边只做了单主ssl加密,另外单主跟这一样操作,这里不再列出.
 
 #第三节：MYSQL5.6基于GTID及多线程的复制
 #数据库(MYSQL)复制过滤:
-主服务器:
-	binlog-do-db:仅将指定数据库的相关修改操作记入二进制日志
+主服务器上使用:
+	binlog-do-db:将指定数据库的相关修改操作记入二进制日志
 	binlog-ignore-db:将指定数据库的相关修改操作忽略不记入二进制日志	
 	注:不建议在主服务器修改,会导致二进制文件丢失,无法即时点还原
-从服务器:
+从服务器上使用:
 	replicate-do-db:只应用哪些数据库
 	replicate-ignore-db:只忽略哪些数据库
 	replicate-do-table:只应用哪些表
@@ -3256,7 +3256,7 @@ read-only=1
 | master-bin.000001 |      151 |              |                  |                   |
 +-------------------+----------+--------------+------------------+-------------------+
 13. mysql> show slave status;
-Empty set (0.00 sec)  #因为这个做未从节点，而别的节点未把此从节点当做主节点，所以为空
+Empty set (0.00 sec)  #因为这个做从节点，而别的节点未把此从节点当做主节点，所以为空
 #从节点加入主节点
 1. mysql> grant replication slave on *.* to repluser@'192.168.1.%' identified by 'replpass'; #主节点设置帐户
 2. mysql> change master to master_host='192.168.1.31',master_user='repluser',master_password='replpass',master_auto_position=1; #从节点加入主节点
@@ -3740,7 +3740,7 @@ preload_buffer_size:
 #INNODB配置选项：
 innodb_flush_log_size:定义innodb缓冲池大小，缓存池包括索引和数据，16G分10G也不过分
 innodb_flush_log_at_trx_commit:1表示事务一提交就flush,2表示提交时才flush,前提是关闭了自动提交功能
-innodb_file_per_size:每表一个表空间文件
+innodb_file_per_table:每表一个表空间文件
 #是否启用查询缓存：
 query_cache_size:查询缓存大小，默认是0禁用，只要大于0就启用
 query_cache_min_res_unit:设置查询缓存最小单位
