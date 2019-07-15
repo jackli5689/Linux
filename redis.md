@@ -1,4 +1,4 @@
-﻿#Redis
+#Redis
 
 redis官方网站：www.redis.io
 #redis是什么：
@@ -832,4 +832,132 @@ QUEUED
 #unwatch #取消watch
 
 #第十节：频道发布与消息订阅
+127.0.0.1:6379> subscribe news  #订阅news
+Reading messages... (press Ctrl-C to quit)
+1) "subscribe"
+2) "news"
+3) (integer) 1
+127.0.0.1:6379> publish news 'test' #发布news
+(integer) 1
+127.0.0.1:6379> subscribe news 
+Reading messages... (press Ctrl-C to quit)
+1) "subscribe"
+2) "news"
+3) (integer) 1
+1) "message"
+2) "news"
+3) "test"  #此时已经接收到消息了
+127.0.0.1:6379> psubscribe new*  #用通配符来匹配频道订阅
+Reading messages... (press Ctrl-C to quit)
+1) "psubscribe"
+2) "new*"
+3) (integer) 1
+1) "pmessage"
+2) "new*"
+127.0.0.1:6379> publish newstop 'psubscribe' #发布newstop频道
+(integer) 1
+127.0.0.1:6379> psubscribe new* 
+Reading messages... (press Ctrl-C to quit)
+1) "psubscribe"
+2) "new*"
+3) (integer) 1
+1) "pmessage"
+2) "new*"
+3) "newstop"
+4) "psubscribe"  #此时会自动接收到newstop的消息
+#注：消息和订阅用于在线群聊和聊天室接收消息，非常方便
+
+#第十一节：rdb快照持久化
+#就是在某个时间从内存快照一份到持久存储设备上保存,恢复时则从持久设备到内存中快速恢复.
+[root@lnmp redis]# egrep -v '#|^$' /usr/local/redis/redis.conf 
+save 900 1  #表示15分钟内有1次改变时才写入到持久设备
+save 300 10  #表示5分钟内有10次改变时才写入到持久设备
+save 60 10000  #表示1分钟内有10000次改变时才写入到持久设备
+stop-writes-on-bgsave-error yes #表示rdb导出时发生错误则停止客户端写入，否则数据会更加不一致
+rdbcompression yes  #rdb压缩
+rdbchecksum yes  #rdb从持久设备导入到内存时检查rdb的校验码是否和导出的校验码一致。
+dbfilename dump.rdb #导出rdb的名称
+dir ./ #rdb的放置路径
+#注：如果注释save保存的参数，则不导出保存rdb了
+[root@lnmp redis]# mkdir /var/rdb
+[root@lnmp redis]# vim redis.conf 
+save 900 1
+save 300 10
+save 60 3000 #更改为1分钟内更改了3000次则保存
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename dump.rdb
+dir /var/rdb/  #更改dump.rdb的路径
+[root@lnmp redis]# killall redis-server #停止redis
+[root@lnmp redis]# redis-server redis.conf  #重新加载配置文件并重启服务
+[root@lnmp redis]# ps aux | grep redis-server
+root      4800  0.0  0.0 153892  2284 ?        Ssl  22:05   0:00 redis-server 127.0.0.1:6379
+root      4886  0.0  0.0 112708   984 pts/3    S+   22:05   0:00 grep --color=auto redis-server
+127.0.0.1:6379> set test 123 #选设置一个string类型键
+OK
+127.0.0.1:6379> get test
+"123"
+[root@lnmp redis]# redis-benchmark 3000 #用redis-benchmark工具测试3000次操作
+====== 3000 ======
+  100000 requests completed in 1.05 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+
+99.98% <= 1 milliseconds
+100.00% <= 1 milliseconds
+94876.66 requests per second
+[root@lnmp redis]# ls /var/rdb/ #此时满足了redis配置文件中的每一分钟3000次操作将dump rdb存储
+dump.rdb
+127.0.0.1:6379> set jack 456 #此时再设置一个string类型键
+OK
+127.0.0.1:6379> get jack
+"456"
+[root@lnmp rdb]# killall redis-server #假设redis服务突然断电导出服务中断
+[root@lnmp rdb]# redis-server /usr/local/redis/redis.conf  #假如电恢复时服务重新上线
+127.0.0.1:6379> get jack #此时再获取时无值,表示这个没有达到导出rdb存储的要求条件
+#注:这时需要借助于aof日志持久化系统来修复这个问题,一般是由rdb跟aof结合使用
+
+#第十二节:aof日志持久化
+#aof参数文件注解:
+appendonly yes #是否打开 aof日志功能
+appendfsync always   # 每1个命令,都立即同步到aof. 安全,速度慢
+appendfsync everysec # 折衷方案,每秒写1次,建议这种方式
+appendfilename "appendonly.aof" #设定aof文件名,默认路径是在之前设置的路径dir /var/rdb/下
+appendfsync no      # 写入工作交给操作系统,由操作系统判断缓冲区大小,统一写入到aof. 同步频率低,速度快,
+no-appendfsync-on-rewrite  yes: # 正在导出rdb快照的过程中,要不要停止同步aof
+auto-aof-rewrite-percentage 100 #aof文件大小比起上次重写时的大小,增长率100%时,重写
+auto-aof-rewrite-min-size 64mb #aof文件,至少超过64M时,重写
+#[root@lnmp rdb]# egrep -v '#|^$' /usr/local/redis/redis.conf
+appendonly yes
+appendfsync everysec
+appendfilename "appendonly.aof"
+no-appendfsync-on-rewrite  yes
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 32mb
+#aof重写:把记录redis-cli中的每个命令记入到aof文件时的命令重写成一条命令.
+#注:现在我设置的是当appendonly.aof文件大于32M时就重写,这个场景会在用户一直接操作redis生成命令,aof会记录每条命令到aof日志当中,此aof日志文件会不断变大,当达到32M时就会重写,最后会变成几M大小不等,这个就是重写的效果
+bgrewriteaof  #在redis-cli中手动命令aof日志文件重写
+
+问: 2种是否可以同时用?
+答: 可以,而且推荐这么做
+问: 恢复时rdb和aof哪个恢复的快
+答: rdb快,因为其是数据的内存映射,直接载入到内存,而aof是命令,需要逐条执行
+问: 如果rdb文件,和aof文件都存在,优先用谁来恢复数据?
+答: aof
+注: 在dump rdb过程中,aof如果停止同步,会不会丢失?
+答: 不会,所有的操作缓存在内存的队列里, dump完成后,统一操作.
+注: aof重写是指什么?
+答: aof重写是指把内存中的数据,逆化成命令,写入到.aof日志里.
+以解决 aof日志过大的问题.
+
+
+
+
+
+
+
+
+
 
