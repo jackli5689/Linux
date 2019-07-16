@@ -952,12 +952,263 @@ bgrewriteaof  #在redis-cli中手动命令aof日志文件重写
 答: aof重写是指把内存中的数据,逆化成命令,写入到.aof日志里.
 以解决 aof日志过大的问题.
 
+#redis集群
+#主从复制架构1
+		从   	
+主
+		从
+#主从复制架构2
+主------从1------从2
+#注：架构2的会好，因为当主挂了，直接会把从1当成主，而从2不会变。而架构1主坏了，从redis之间还要进行协商选举，相对麻烦
+#主从复制原理：
+1）从服务器向主服务器发送 SYNC 命令。
+2）接到 SYNC 命令的主服务器会调用BGSAVE 命令，创建一个 RDB 文件，并使用缓冲区记录接下来执行的所有写命令。
+3）当主服务器执行完 BGSAVE 命令时，它会向从服务器发送 RDB 文件，而从服务器则会接收并载入这个文件。
+4）主服务器将缓冲区储存的所有写命令发送给从服务器执行。
+#SYNC与PSYNC
+1）在 Redis2.8版本之前，断线之后重连的从服务器总要执行一次完整重同步（fullresynchronization）操作。
+2）从 Redis2.8开始，Redis使用PSYNC命令代替SYNC命令。
+3）PSYNC比起SYNC的最大改进在于PSYNC实现了部分重同步（partial resync）特性：
+在主从服务器断线并且重新连接的时候，只要条件允许，PSYNC可以让主服务器只向从服务器同步断线期间缺失的数据，而不用重新向从服务器同步整个数据库。
+注：
+PSYNC这个特性需要主服务器为被发送的复制流创建一个内存缓冲区（in-memory backlog）， 并且主服务器和所有从服务器之间都记录一个复制偏移量（replication offset）和一个主服务器 ID（master run id），当出现网络连接断开时，从服务器会重新连接，并且向主服务器请求继续执行原来的复制进程：
+1）如果从服务器记录的主服务器ID和当前要连接的主服务器的ID相同，并且从服务器记录的偏移量所指定的数据仍然保存在主服务器的复制流缓冲区里面，那么主服务器会向从服务器发送断线时缺失的那部分数据，然后复制工作可以继续执行。
+2）否则的话，从服务器就要执行完整重同步操作。
+#PSYNC经常断线
+1）PSYNC只会将从服务器断线期间缺失的数据发送给从服务器。两个例子的情况是相同的，但SYNC 需要发送包含整个数据库的 RDB 文件，而PSYNC 只需要发送三个命令。
+2）如果主从服务器所处的网络环境并不那么好的话（经常断线），那么请尽量使用 Redis 2.8 或以上版本：通过使用 PSYNC 而不是 SYNC 来处理断线重连接，可以避免因为重复创建和传输 RDB文件而浪费大量的网络资源、计算资源和内存资源。
+#Redis是怎么保证数据安全呢
+1）从服务器以每秒一次的频率 PING 主服务器一次， 并报告复制流的处理情况。主服务器会记录各个从服务器最后一次向它发送 PING 的时间。用户可以通过配置， 指定网络延迟的最大值 min-slaves-max-lag ， 以及执行写操作所需的至少从服务器数量 min-slaves-to-write 。
+2）如果至少有 min-slaves-to-write 个从服务器， 并且这些服务器的延迟值都少于 min-slaves-max-lag 秒， 那么主服务器就会执行客户端请求的写操作。你可以将这个特性看作 CAP 理论中的 C 的条件放宽版本： 尽管不能保证写操作的持久性， 但起码丢失数据的窗口会被严格限制在指定的秒数中。
+3）另一方面， 如果条件达不到 min-slaves-to-write 和 min-slaves-max-lag 所指定的条件， 那么写操作就不会被执行， 主服务器会向请求执行写操作的客户端返回一个错误。
 
+#实例环境：
+角色	   				IP     端口
+主库（master）	192.168.1.233 6379
+从库（slave01）	192.168.1.233 6380
+主库（slave02）	192.168.1.233 6381
+#主redis：
+[root@lnmp redis]# egrep -v '#|^$' /usr/local/redis/redis.conf  #主redis关闭rdb快照持久功能但开启aof日志持久功能
+bind 127.0.0.1
+protected-mode no
+port 6379
+daemonize yes
+pidfile /var/run/redis_6379.pid
+loglevel notice
+logfile /usr/local/redis/redis.6379.log
+databases 16
+dbfilename dump.rdb
+dir /var/rdb/6379
+appendonly yes
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite yes
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 32mb
+#从1redis：
+[root@lnmp redis]# egrep -v '#|^$' /usr/local/redis/redis6380.conf #从1redis开启rdb快照持久功能但关闭aof日志持久功能
+bind 127.0.0.1
+protected-mode no
+port 6380
+daemonize yes
+pidfile /var/run/redis_6380.pid
+loglevel notice
+logfile /usr/local/redis/redis.6380.log
+databases 16
+save 900 1
+save 300 10
+save 60 3000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename dump.rdb
+dir /var/rdb/6380
+[root@lnmp redis]# mkdir  /var/rdb/6380 
+#从2redis：
+[root@lnmp redis]# egrep -v '#|^$' /usr/local/redis/redis6381.conf  #从1redis关闭rdb快照持久功能和关闭aof日志持久功能
+bind 127.0.0.1
+protected-mode no
+port 6381
+daemonize yes
+pidfile /var/run/redis_6381.pid
+loglevel notice
+logfile /usr/local/redis/redis.6381.log
+databases 16
+dbfilename dump.rdb
+dir /var/rdb/6381
+[root@lnmp redis]# mkdir /var/rdb/6381
+[root@lnmp redis]# redis-server redis.conf
+[root@lnmp redis]# redis-server redis6380.conf
+[root@lnmp redis]# redis-server redis6381.conf 
+[root@lnmp redis]# ps aux | grep redis
+root     10356  0.1  0.0 159520  3288 ?        Ssl  22:03   0:00 redis-server 127.0.0.1:6379
+root     11537  0.0  0.0 153888  2276 ?        Ssl  22:06   0:00 redis-server 127.0.0.1:6380
+root     12177  0.0  0.0 153888  2272 ?        Ssl  22:09   0:00 redis-server 127.0.0.1:6381
+root     12192  0.0  0.0 112708   976 pts/0    S+   22:09   0:00 grep --color=auto redis
+#开启主从
+#从1redis加入主redis
+[root@lnmp redis]# redis-cli -p 6380  #连接从1redis
+127.0.0.1:6380> SLAVEOF 127.0.0.1 6379  #设置成主redis的从
+OK
+127.0.0.1:6380> info replication #查看主从信息
+# Replication
+role:slave  			 #角色变成了从库
+master_host:127.0.0.1    #主库的ip
+master_port:6379         #主库的端口
+master_link_status:up
+master_last_io_seconds_ago:2
+master_sync_in_progress:0
+slave_repl_offset:14
+slave_priority:100
+slave_read_only:1
+connected_slaves:0
+master_replid:d4de459394e154cffab2bcac60ed4741854188d4
+master_replid2:0000000000000000000000000000000000000000
+master_repl_offset:14
+second_repl_offset:-1
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:1
+repl_backlog_histlen:14
+#从2redis加入主redis
+[root@lnmp ~]# redis-cli -p 6381   #连接从2redis
+127.0.0.1:6381> slaveof 127.0.0.1 6379    #设置成主redis的从
+OK
+127.0.0.1:6381> info replication   #查看主从信息
+# Replication
+role:slave
+master_host:127.0.0.1
+master_port:6379
+master_link_status:up
+master_last_io_seconds_ago:4
+master_sync_in_progress:0
+slave_repl_offset:168
+slave_priority:100
+slave_read_only:1
+connected_slaves:0
+master_replid:d4de459394e154cffab2bcac60ed4741854188d4
+master_replid2:0000000000000000000000000000000000000000
+master_repl_offset:168
+second_repl_offset:-1
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:169
+repl_backlog_histlen:0
+#在主redis上查看信息
+[root@lnmp ~]# redis-cli -p 6379
+127.0.0.1:6379> info replication
+# Replication
+role:master      #角色为主
+connected_slaves:2   #有两个从
+slave0:ip=127.0.0.1,port=6380,state=online,offset=280,lag=1  #从1redis的信息
+slave1:ip=127.0.0.1,port=6381,state=online,offset=280,lag=1  #从2redis的信息
+master_replid:d4de459394e154cffab2bcac60ed4741854188d4
+master_replid2:0000000000000000000000000000000000000000
+master_repl_offset:280
+second_repl_offset:-1
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:1
+repl_backlog_histlen:280
+#####主从切换
+[root@lnmp ~]# redis-cli -p 6379
+127.0.0.1:6379> shutdown   #关闭主库
+[root@lnmp ~]# redis-cli -p 6380  #登录从1redis
+127.0.0.1:6380> info replication
+# Replication
+role:slave
+master_host:127.0.0.1
+master_port:6379
+master_link_status:down   #主库状态已经down了
+master_last_io_seconds_ago:-1
+master_sync_in_progress:0
+slave_repl_offset:420
+master_link_down_since_seconds:15
+slave_priority:100
+slave_read_only:1
+connected_slaves:0
+master_replid:d4de459394e154cffab2bcac60ed4741854188d4
+master_replid2:0000000000000000000000000000000000000000
+master_repl_offset:420
+second_repl_offset:-1
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:1
+repl_backlog_histlen:420
+#取消6380的主从关系 
+127.0.0.1:6380> slaveof no one  #取消6380的主从关系 
+OK
+127.0.0.1:6380> info replication
+# Replication
+role:master   #此时角色为主
+connected_slaves:0
+master_replid:8dacbaaaa37c37a8384dd0045c28e7a9f4e79ce7
+master_replid2:d4de459394e154cffab2bcac60ed4741854188d4
+master_repl_offset:420
+second_repl_offset:421
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:1
+repl_backlog_histlen:420
+#将6381从库变成6380的从库
+127.0.0.1:6381> slaveof 127.0.0.1 6380
+OK
+127.0.0.1:6381> info replication
+# Replication
+role:slave          #角色还是slave
+master_host:127.0.0.1
+master_port:6380         #主库的端口已经变成了6380
+master_link_status:up
+master_last_io_seconds_ago:1
+master_sync_in_progress:0
+slave_repl_offset:420
+slave_priority:100
+slave_read_only:1
+connected_slaves:0
+master_replid:8dacbaaaa37c37a8384dd0045c28e7a9f4e79ce7
+master_replid2:d4de459394e154cffab2bcac60ed4741854188d4
+master_repl_offset:420
+second_repl_offset:421
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:169
+repl_backlog_histlen:252
+#注：slaveof 127.0.0.1 6379可以写入配置文件，可以解决一重启redis就需要再次重连的问题
+#注：主服务器设置密码：redis.conf配置文件中写入requirepass passwd参数即可
+#从服务器设置同步主服务器密码：redis.conf配置文件中写入masterauth passwd参数即可完成
+#auth passwd #redis-cli使用密码登录
 
-
-
-
-
-
-
+#第十四节：redis运维常用命令
+127.0.0.1:6379> time
+1) "1563288566"   #秒数
+2) "547230"   	  #微秒数
+127.0.0.1:6379> dbsize  #查看当前数据库下有几个key
+(integer) 2
+127.0.0.1:6379> bgrewriteaof  #手动执行重写aof
+Background append only file rewriting started
+[root@lnmp 6379]# ll
+-rw-r--r-- 1 root root 219 Jul 16 22:52 appendonly.aof
+[root@lnmp 6379]# ll
+-rw-r--r-- 1 root root 155 Jul 16 22:52 appendonly.aof
+[root@lnmp 6379]# ll
+-rw-r--r-- 1 root root 207 Jul 16 22:45 dump.rdb
+127.0.0.1:6379> save  #在当前进程手动执行rdb快照生成
+OK
+127.0.0.1:6379> lastsave
+(integer) 1563289039
+[root@lnmp 6379]# ll
+-rw-r--r-- 1 root root 239 Jul 16 22:57 dump.rdb
+127.0.0.1:6379> bgsave   #后台单起一个进程进行rdb快照生成
+Background saving started
+flushdb   #清空当前database数据库
+flushall   #清空所有database数据库
+info   #查看redis-server的信息
+info stat | replication  #info后面可以跟详细参数
+config get *  #获取所有参数，跟mysql的set变量差不多
+127.0.0.1:6379> config set slowlog-log-slower-than 100 #设置慢日志的时间
+127.0.0.1:6379> config get slowlog-log-slower-than
+1) "slowlog-log-slower-than"
+2) "100"
+127.0.0.1:6379> slowlog get  #获取慢日志
+shutdown [NOSAVE|SAVE] #关闭redis-server服务，后面可以设置参数是否保存后再关闭还是不保存后关闭
 
