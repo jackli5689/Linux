@@ -1,5 +1,5 @@
 #Redis
-
+#teacher:燕十八
 redis官方网站：www.redis.io
 #redis是什么：
 	1. NOSQL数据库，开源，BSD许可，高级的key-value存储系统
@@ -923,7 +923,7 @@ OK
 #aof参数文件注解:
 appendonly yes #是否打开 aof日志功能
 appendfsync always   # 每1个命令,都立即同步到aof. 安全,速度慢
-appendfsync everysec # 折衷方案,每秒写1次,建议这种方式
+appendfsync everysec # 折中方案,每秒写1次,建议这种方式
 appendfilename "appendonly.aof" #设定aof文件名,默认路径是在之前设置的路径dir /var/rdb/下
 appendfsync no      # 写入工作交给操作系统,由操作系统判断缓冲区大小,统一写入到aof. 同步频率低,速度快,
 no-appendfsync-on-rewrite  yes: # 正在导出rdb快照的过程中,要不要停止同步aof
@@ -1173,7 +1173,7 @@ repl_backlog_active:1
 repl_backlog_size:1048576
 repl_backlog_first_byte_offset:169
 repl_backlog_histlen:252
-#注：slaveof 127.0.0.1 6379可以写入配置文件，可以解决一重启redis就需要再次重连的问题
+#注：slaveof 127.0.0.1 6379或者replicaof 127.0.0.1 6379可以写入配置文件，可以解决一重启redis就需要再次重连的问题
 #注：主服务器设置密码：redis.conf配置文件中写入requirepass passwd参数即可
 #从服务器设置同步主服务器密码：redis.conf配置文件中写入masterauth passwd参数即可完成
 #auth passwd #redis-cli使用密码登录
@@ -1211,4 +1211,129 @@ config get *  #获取所有参数，跟mysql的set变量差不多
 2) "100"
 127.0.0.1:6379> slowlog get  #获取慢日志
 shutdown [NOSAVE|SAVE] #关闭redis-server服务，后面可以设置参数是否保存后再关闭还是不保存后关闭
+
+#第十五节：aof恢复与rdb服务器迁移
+#假如在redis上误操作flushall后该怎么操作：
+[root@lnmp redis]# redis-server redis6379.conf  #开启redis-server服务
+[root@lnmp ~]# redis-cli
+127.0.0.1:6379> set name jack  #假如设置两个值
+OK
+127.0.0.1:6379> set www www.mumuso.com
+OK
+127.0.0.1:6379> flushall  #误操作flushall该如何找回数据
+OK
+127.0.0.1:6379> shutdown nosave  #赶紧关闭redis-server服务，参数nosave表示并不把这条命令保存至aof
+not connected> 
+[root@lnmp 6379]# ls
+appendonly.aof
+[root@lnmp 6379]# vim appendonly.aof #编辑aof文件并删除flushall段参数，此做法必须在未执行rewrite aof时才有用，否则神仙也找不回来数据了
+*2
+$6
+SELECT
+$1
+0
+*3
+$3
+set
+$4
+name
+$4
+jack
+*3
+$3
+set
+$3
+www
+$14
+www.mumuso.com  #删除后面的flushall段并保存退出
+[root@lnmp ~]# redis-cli
+127.0.0.1:6379> get name  #此时都还有，因为redis-server恢复时会先读取aof日志文件
+"jack"
+127.0.0.1:6379> get www
+"www.mumuso.com"
+
+#rdb服务器间迁移：
+[root@lnmp 6379]# cp dump.rdb ../6381/  #复制rdb到另外一个redisServer上，名称为dump.rdb
+[root@lnmp ~]# redis-server /usr/local/redis/redis6381.conf #让另外一台redisServer载入rdb，事前必须先在服务器设置好dir目录，此目录包含rdb和aof文件 
+[root@lnmp ~]# redis-cli -p 6381  #连接另外一个redisServer
+127.0.0.1:6381> keys *   #已经恢复
+1) "name"
+2) "www"
+[root@lnmp 6379]# redis-check-rdb /var/rdb/6381/dump.rdb  #redis-check-rdb检查rdb的完整性
+[offset 0] Checking RDB file /var/rdb/6381/dump.rdb
+[offset 26] AUX FIELD redis-ver = '5.0.5'
+[offset 40] AUX FIELD redis-bits = '64'
+[offset 52] AUX FIELD ctime = '1563368768'
+[offset 67] AUX FIELD used-mem = '1922936'
+[offset 85] AUX FIELD repl-stream-db = '0'
+[offset 135] AUX FIELD repl-id = '737bdbc0a114041705ecfc48a00669a76dbccaf0'
+[offset 150] AUX FIELD repl-offset = '0'
+[offset 166] AUX FIELD aof-preamble = '0'
+[offset 168] Selecting DB ID 0
+[offset 211] Checksum OK
+[offset 211] \o/ RDB looks OK! \o/
+[info] 2 keys read
+[info] 0 expires
+[info] 0 already expired
+[root@lnmp 6379]# redis-check-aof appendonly.aof  #redis-check-aof表示检查aof文件的完整性
+AOF analyzed: size=99, ok_up_to=99, diff=0
+AOF is valid
+注：config get和config set是在redis-cli命令行中进行设置和获取的
+
+#第十六节：sentinel(哨兵)运维监控
+#使用sentinel自动化故障转移redis主从架构
+[root@lnmp ~]# cp /usr/local/src/redis-5.0.5/sentinel.conf /usr/local/redis/ #复制sentinal配置文件到redis根目录下
+[root@lnmp ~]# egrep -v '#|^$' //usr/local/redis/sentinel.conf 
+port 26379    #sentinal的监听端口
+daemonize no   #是否为守护进程运行
+pidfile /var/run/redis-sentinel.pid   #pid目录
+logfile ""    #日志文件名称
+dir /tmp   #系统文件存储目录
+sentinel monitor mymaster 127.0.0.1 6379 2  #监控master的地址及端口，并指明当有多少个sentinel认为一个master失效时，master才算真正失效
+sentinel down-after-milliseconds mymaster 30000  #指定了需要多少失效时间，一个master才会被这个sentinel主观地认为是不可用的。单位是毫秒，默认为30秒
+sentinel parallel-syncs mymaster 1  #用来限制在一次故障转移之后，每次向新的主节点发起复制操作的从节点个数
+sentinel failover-timeout mymaster 180000     
+1. 同一个sentinel对同一个master两次failover之间的间隔时间。   
+2. 当一个slave从一个错误的master那里同步数据开始计算时间。直到slave被纠正为向正确的master那里同步数据时。    
+3.当想要取消一个正在进行的failover所需要的时间。    
+4.当进行failover时，配置所有slaves指向新的master所需的最大时间。不过，即使过了这个超时，slaves依然会被正确配置为指向master，但是就不按parallel-syncs所配置的规则来了。
+sentinel deny-scripts-reconfig yes #是否拒绝使用触发脚本
+#实例：
+[root@lnmp ~]# egrep -v '#|^$' //usr/local/redis/sentinel.conf #更改配置
+port 26379
+daemonize no
+pidfile /var/run/redis-sentinel.pid
+logfile "sentinel.log"
+dir /tmp
+sentinel monitor mymaster 127.0.0.1 6379 1
+sentinel down-after-milliseconds mymaster 30000
+sentinel parallel-syncs mymaster 1
+sentinel failover-timeout mymaster 180000
+sentinel deny-scripts-reconfig yes
+[root@lnmp ~]# redis-server /usr/local/redis/sentinel.conf --sentinel #启动sentinel服务
+[root@lnmp 6379]# redis-cli #模拟master服务停止
+#sentinel会显示切换主成功，并重新把slave指向新主，这个新主是由sentinel随机选举的，如果想指定哪台slave被提升为主，可在对应的slave服务器上更改rdeis.conf配置文件：replica-priority 50
+31017:X 17 Jul 2019 22:39:28.840 # +switch-master mymaster 127.0.0.1 6379 127.0.0.1 6380
+31017:X 17 Jul 2019 22:39:28.840 * +slave slave 127.0.0.1:6381 127.0.0.1 6381 @ mymaster 127.0.0.1 6380
+31017:X 17 Jul 2019 22:39:28.840 * +slave slave 127.0.0.1:6379 127.0.0.1 6379 @ mymaster 127.0.0.1 6380
+31017:X 17 Jul 2019 22:39:58.903 # +sdown slave 127.0.0.1:6379 127.0.0.1 6379 @ mymaster 127.0.0.1 6380
+
+127.0.0.1:6379> SHUTDOWN  #模拟master服务down
+[root@lnmp ~]# redis-cli -p 6380
+127.0.0.1:6380> info replication
+# Replication
+role:master
+connected_slaves:1
+slave0:ip=127.0.0.1,port=6381,state=online,offset=3462,lag=0
+[root@lnmp ~]# redis-cli -p 6381
+127.0.0.1:6381> info replication
+# Replication
+role:slave
+master_host:127.0.0.1
+master_port:6380
+
+
+
+
+
 
