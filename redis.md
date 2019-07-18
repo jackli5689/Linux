@@ -1332,6 +1332,56 @@ role:slave
 master_host:127.0.0.1
 master_port:6380
 
+#第十七节：key设计技巧
+1: 把表名转换为key前缀 如, tag:
+2: 第2段放置用于区分区key的字段--对应mysql中的主键的列名,如userid
+3: 第3段放置主键值,如2,3,4...., a , b ,c
+4: 第4段,写要存储的列名
+例如表：
+userid		username	passworde		email
+9			Lisi		1111111			lisi@163.com
+#redis设计时：
+set  user:userid:9:username lisi
+set  user:userid:9:password 111111
+set  user:userid:9:email   lisi@163.com
+查询时：
+keys user:userid:9*
+#注意:
+在关系型数据中,除主键外,还有可能其他列也步骤查询,
+如上表中, username 也是极频繁查询的,往往这种列也是加了索引的.
+
+转换到k-v数据中,则也要相应的生成一条按照该列为username的key-value
+Set  user:username:lisi:uid  9  
+
+这样,我们可以根据username:lisi:uid ,查出userid=9, 
+再查user:9:password/email ...
+完成了根据用户名来查询用户信息
+
+#第十八节：php-redis扩展编译
+作用：使php可以结合redis工作
+#安装redis扩展
+1: 到pecl.php.net  搜索redis
+2: 下载stable版(稳定版)扩展，http://pecl.php.net/package/redis/5.0.1
+3: 解压,
+4: 执行/php/path/bin/phpize (作用是检测PHP的内核版本,并为扩展生成相应的编译配置)
+5: configure --with-php-config=/php/path/bin/php-config
+6: make && make install
+
+#引入编译出的redis.so插件
+1: 编辑php.ini
+2: 添加redis扩展路径，extension=/usr/local/php-fpm/lib/php/extensions/no-debug-non-zts-20190606/redis.so
+
+#redis插件的使用
+vim redis.php
+// get instance
+$redis = new Redis();
+// connect to redis server
+$redis->open('localhost',6380);
+$redis->set('user:userid:9:username','wangwu');
+var_dump($redis->get('user:userid:9:username'));
+
+#第十九节：微博项目实战
+
 
 
 
