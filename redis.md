@@ -1,4 +1,5 @@
-#Redis
+﻿#Redis
+<pre>
 #teacher:燕十八
 redis官方网站：www.redis.io
 #redis是什么：
@@ -273,7 +274,7 @@ OK
 (integer) 0
 127.0.0.1:6379> set char A
 OK
-127.0.0.1:6379> bitop or test char lower #char和lower两个key交集后生成的值为char 
+127.0.0.1:6379> bitop or test char lower #char和lower两个key交集后生成的值为test 
 (integer) 1
 127.0.0.1:6379> get test #交集的结果为小写a
 "a"
@@ -614,11 +615,6 @@ RPOPLPUSH source destination
 2) "3"
 3) "bob"
 4) "30"
-127.0.0.1:6379> zrange class 0 -1 withscores
-1) "sanmao"
-2) "3"
-3) "bob"
-4) "30"
 127.0.0.1:6379> zadd class 10 candy 20 jack
 (integer) 2
 127.0.0.1:6379> zrange class 0 -1 withscores
@@ -847,7 +843,7 @@ Reading messages... (press Ctrl-C to quit)
 1) "message"
 2) "news"
 3) "test"  #此时已经接收到消息了
-127.0.0.1:6379> psubscribe new*  #用通配符来匹配频道订阅
+127.0.0.1:6379> psubscribe new*  #用通配符来匹配频道订阅，阅给定模式相匹配的所有频道
 Reading messages... (press Ctrl-C to quit)
 1) "psubscribe"
 2) "new*"
@@ -922,11 +918,11 @@ OK
 #第十二节:aof日志持久化
 #aof参数文件注解:
 appendonly yes #是否打开 aof日志功能
-appendfsync always   # 每1个命令,都立即同步到aof. 安全,速度慢
-appendfsync everysec # 折中方案,每秒写1次,建议这种方式
+appendfsync always   #同步持久化，每次发生数据变更会被立即记录到磁盘，性能差但数据完整性比较好
+appendfsync everysec #折中方案,异步操作，每秒记录，如果一秒钟内宕机，有数据丢失 
 appendfilename "appendonly.aof" #设定aof文件名,默认路径是在之前设置的路径dir /var/rdb/下
-appendfsync no      # 写入工作交给操作系统,由操作系统判断缓冲区大小,统一写入到aof. 同步频率低,速度快,
-no-appendfsync-on-rewrite  yes: # 正在导出rdb快照的过程中,要不要停止同步aof
+appendfsync no      #将缓存回写的策略交给系统，linux 默认是30秒将缓冲区的数据回写硬盘的 
+no-appendfsync-on-rewrite  yes: #表示是否在手动重写aof操作时不同步自动aof写入，为yes,则其他线程的数据放内存里,合并写入(速度快,容易丢失的多)，为no安全，只是io会上升，但数据不易丢失
 auto-aof-rewrite-percentage 100 #aof文件大小比起上次重写时的大小,增长率100%时,重写
 auto-aof-rewrite-min-size 64mb #aof文件,至少超过64M时,重写
 #[root@lnmp rdb]# egrep -v '#|^$' /usr/local/redis/redis.conf
@@ -946,8 +942,8 @@ bgrewriteaof  #在redis-cli中手动命令aof日志文件重写
 答: rdb快,因为其是数据的内存映射,直接载入到内存,而aof是命令,需要逐条执行
 问: 如果rdb文件,和aof文件都存在,优先用谁来恢复数据?
 答: aof
-注: 在dump rdb过程中,aof如果停止同步,会不会丢失?
-答: 不会,所有的操作缓存在内存的队列里, dump完成后,统一操作.
+注: 在aof手动重写过程中,aof如果停止同步,会不会丢失?
+答: redis服务down掉后会丢失,因为aof缓存在内存的队列里,down掉后会丢失
 注: aof重写是指什么?
 答: aof重写是指把内存中的数据,逆化成命令,写入到.aof日志里.
 以解决 aof日志过大的问题.
@@ -966,7 +962,7 @@ bgrewriteaof  #在redis-cli中手动命令aof日志文件重写
 3）当主服务器执行完 BGSAVE 命令时，它会向从服务器发送 RDB 文件，而从服务器则会接收并载入这个文件。
 4）主服务器将缓冲区储存的所有写命令发送给从服务器执行。
 #SYNC与PSYNC
-1）在 Redis2.8版本之前，断线之后重连的从服务器总要执行一次完整重同步（fullresynchronization）操作。
+1）在 Redis2.8版本之前，断线之后重连的从服务器总要执行一次完整重同步（full resynchronization）操作。
 2）从 Redis2.8开始，Redis使用PSYNC命令代替SYNC命令。
 3）PSYNC比起SYNC的最大改进在于PSYNC实现了部分重同步（partial resync）特性：
 在主从服务器断线并且重新连接的时候，只要条件允许，PSYNC可以让主服务器只向从服务器同步断线期间缺失的数据，而不用重新向从服务器同步整个数据库。
@@ -977,6 +973,27 @@ PSYNC这个特性需要主服务器为被发送的复制流创建一个内存缓
 #PSYNC经常断线
 1）PSYNC只会将从服务器断线期间缺失的数据发送给从服务器。两个例子的情况是相同的，但SYNC 需要发送包含整个数据库的 RDB 文件，而PSYNC 只需要发送三个命令。
 2）如果主从服务器所处的网络环境并不那么好的话（经常断线），那么请尽量使用 Redis 2.8 或以上版本：通过使用 PSYNC 而不是 SYNC 来处理断线重连接，可以避免因为重复创建和传输 RDB文件而浪费大量的网络资源、计算资源和内存资源。
+#psync如何开启的
+#注：psync功能是主从复制时自动开启的，2.8之前自动开启的是sync，后面都是开启的psync
+1. offset（复制偏移量）：
+可以使用info replication查看，以在slave查看为例：
+slave_repl_offset:8646507
+master_repl_offset:8646507
+2. replication backlog buffer（复制积压缓冲区）：
+复制积压缓冲区是一个固定长度的FIFO队列，大小由配置参数repl-backlog-size指定，默认大小1MB。需要注意的是该缓冲区由master维护并且有且只有一个，所有slave共享此缓冲区，其作用在于备份最近主库发送给从库的数据。在主从命令传播阶段，主节点除了将写命令发送给从节点外，还会发送一份到复制积压缓冲区，作为写命令的备份。除了存储最近的写命令，复制积压缓冲区中还存储了每个字节相应的复制偏移量，由于复制积压缓冲区固定大小先进先出的队列，所以它总是保存的是最近redis执行的命令。
+3. run_id(服务器运行的唯一ID)
+每个redis实例在启动时候，都会随机生成一个长度为40的唯一字符串来标识当前运行的redis节点，查看此id可通过命令info server查看
+127.0.0.1:6380> info server
+run_id:7851f595b61548aa8ac902eb4d286ddbd3354dda
+当主从复制在初次复制时，主节点将自己的runid发送给从节点，从节点将这个runid保存起来,当断线重连时，从节点会将这个runid发送给主节点。主节点根据runid判断能否进行部分复制：如果从节点保存的runid与主节点现在的runid相同，说明主从节点之前同步过，主节点会更具offset偏移量之后的数据判断是否执行部分复制，如果offset偏移量之后的数据仍然都在复制积压缓冲区里，则执行部分复制，否则执行全量复制；如果从节点保存的runid与主节点现在的runid不同，说明从节点在断线前同步的redis节点并不是当前的主节点，只能进行全量复制;
+#psync2
+redis4.0新版本除了增加混合持久化，还优化了psync并实现即使redis实例重启的情况下也能实现部分同步，psync2在psync1基础上新增两个复制id：
+1. master_replid: 复制replid1，一个长度为41个字节(40个随机串+’0’)的字符串，每个redis实例都有，和runid没有直接关联，但和runid生成规则相同。当实例变为从实例后，自己的replid1会被主实例的replid1覆盖。
+master_replid2：复制replid2,默认初始化为全0，用于存储上次主实例的replid1。
+127.0.0.1:6381> info replication
+master_replid:5159bcb349104f9e1191fa74d18847a3b707025a
+master_replid2:5c1e6cd47e4910a74618d8ddc8239fc8eee7a374
+
 #Redis是怎么保证数据安全呢
 1）从服务器以每秒一次的频率 PING 主服务器一次， 并报告复制流的处理情况。主服务器会记录各个从服务器最后一次向它发送 PING 的时间。用户可以通过配置， 指定网络延迟的最大值 min-slaves-max-lag ， 以及执行写操作所需的至少从服务器数量 min-slaves-to-write 。
 2）如果至少有 min-slaves-to-write 个从服务器， 并且这些服务器的延迟值都少于 min-slaves-max-lag 秒， 那么主服务器就会执行客户端请求的写操作。你可以将这个特性看作 CAP 理论中的 C 的条件放宽版本： 尽管不能保证写操作的持久性， 但起码丢失数据的窗口会被严格限制在指定的秒数中。
@@ -1198,8 +1215,7 @@ OK
 (integer) 1563289039
 [root@lnmp 6379]# ll
 -rw-r--r-- 1 root root 239 Jul 16 22:57 dump.rdb
-127.0.0.1:6379> bgsave   #后台单起一个进程进行rdb快照生成
-Background saving started
+127.0.0.1:6379> bgsave   #后台单起一个进程进行rdb快照生成，Background saving started
 flushdb   #清空当前database数据库
 flushall   #清空所有database数据库
 info   #查看redis-server的信息
@@ -1210,7 +1226,7 @@ config get *  #获取所有参数，跟mysql的set变量差不多
 1) "slowlog-log-slower-than"
 2) "100"
 127.0.0.1:6379> slowlog get  #获取慢日志
-shutdown [NOSAVE|SAVE] #关闭redis-server服务，后面可以设置参数是否保存后再关闭还是不保存后关闭
+shutdown [NOSAVE|SAVE] #关闭redis-server服务，SHUTDOWN SAVE能够在即使没有配置持久化的情况下强制数据库存储，SHUTDOWN NOSAVE 能够在配置一个或者多个持久化策略的情况下阻止数据库存储.
 
 #第十五节：aof恢复与rdb服务器迁移
 #假如在redis上误操作flushall后该怎么操作：
@@ -1283,14 +1299,14 @@ AOF is valid
 #第十六节：sentinel(哨兵)运维监控
 #使用sentinel自动化故障转移redis主从架构
 [root@lnmp ~]# cp /usr/local/src/redis-5.0.5/sentinel.conf /usr/local/redis/ #复制sentinal配置文件到redis根目录下
-[root@lnmp ~]# egrep -v '#|^$' //usr/local/redis/sentinel.conf 
+[root@lnmp ~]# egrep -v '#|^$' /usr/local/redis/sentinel.conf 
 port 26379    #sentinal的监听端口
 daemonize no   #是否为守护进程运行
 pidfile /var/run/redis-sentinel.pid   #pid目录
 logfile ""    #日志文件名称
 dir /tmp   #系统文件存储目录
 sentinel monitor mymaster 127.0.0.1 6379 2  #监控master的地址及端口，并指明当有多少个sentinel认为一个master失效时，master才算真正失效
-sentinel down-after-milliseconds mymaster 30000  #指定了需要多少失效时间，一个master才会被这个sentinel主观地认为是不可用的。单位是毫秒，默认为30秒
+sentinel down-after-milliseconds mymaster 30000  #指定了需要多少失效时间后，一个master才会被这个sentinel主观地认为是不可用的。单位是毫秒，默认为30秒
 sentinel parallel-syncs mymaster 1  #用来限制在一次故障转移之后，每次向新的主节点发起复制操作的从节点个数
 sentinel failover-timeout mymaster 180000     
 1. 同一个sentinel对同一个master两次failover之间的间隔时间。   
@@ -1338,21 +1354,25 @@ master_port:6380
 3: 第3段放置主键值,如2,3,4...., a , b ,c
 4: 第4段,写要存储的列名
 例如表：
-userid		username	passworde		email
-9			Lisi		1111111			lisi@163.com
+userid	username  passworde	email
+9		Lisi	  1111111	lisi@163.com
 #redis设计时：
 set  user:userid:9:username lisi
 set  user:userid:9:password 111111
 set  user:userid:9:email   lisi@163.com
 查询时：
-keys user:userid:9*
+127.0.0.1:6381> keys user:userid:9*
+1) "user:userid:9:password"
+2) "user:userid:9:email"
+3) "user:userid:9:username"
 #注意:
 在关系型数据中,除主键外,还有可能其他列也步骤查询,
-如上表中, username 也是极频繁查询的,往往这种列也是加了索引的.
-
+如上表中, username 也是极频繁查询的,往往这种列也是加了索引的
 转换到k-v数据中,则也要相应的生成一条按照该列为username的key-value
-Set  user:username:lisi:uid  9  
-
+127.0.0.1:6381> set user:username:lisi:userid 9
+OK
+127.0.0.1:6381> get user:username:lisi:userid
+"9"
 这样,我们可以根据username:lisi:uid ,查出userid=9, 
 再查user:9:password/email ...
 完成了根据用户名来查询用户信息
@@ -1366,11 +1386,9 @@ Set  user:username:lisi:uid  9
 4: 执行/php/path/bin/phpize (作用是检测PHP的内核版本,并为扩展生成相应的编译配置)
 5: configure --with-php-config=/php/path/bin/php-config
 6: make && make install
-
 #引入编译出的redis.so插件
 1: 编辑php.ini
 2: 添加redis扩展路径，extension=/usr/local/php-fpm/lib/php/extensions/no-debug-non-zts-20190606/redis.so
-
 #redis插件的使用
 vim redis.php
 // get instance
@@ -1384,6 +1402,6 @@ var_dump($redis->get('user:userid:9:username'));
 
 
 
-
+</pre>
 
 
