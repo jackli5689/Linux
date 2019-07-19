@@ -245,7 +245,120 @@ TRUNCATE TABLE --清空表，删除表数据并清空自增长值且从头开始
 在脚本中的事情必须发生在另外一件事情之前或者是分开发生的时候
 #GO用在批处理的每一个步骤之后，不可以多个步骤使用一个GO。
 
+##########sqlserver函数
+函数帮助和其他帮助都可以通过F1的索引
+###字符串函数
+函数：chaindex(),len(),left(),right(),replace(),stuff()
+select CHARINDEX('mi','www.mi.com') --从www.mi.com中截取mi的索引开始位置
+select CHARINDEX('mi','www.mi.com'，10) --并给定起始位置
+--将函数放在查询语句中进行使用
+select charindex('@',Email) FROM UserInfo where username='jack' --查询jack用户的emial列中@的索引值
+select len(Email) FROM UserInfo where username='jack' --查询jack用户的emial列中的值的长度
+select left(Email,charindex('@','Email') FROM UserInfo where username='jack' --截取jack用户的emial列中以'@'符号左边的数，right()函数也一样
+select REPLACE('我是中国人','中国人','湖北人') from UserInfo where username='jack' --替换我是中国人为我是湖北人，这个是字符串替换作用
+select STUFF('ABCDEF',2,3,'ZZZ') --结果是'AZZZEF'，使用是从索引2开始删除3位，并用ZZZ替换
+###日期函数
+函数：getdate(),dateadd(),datediff()
+select getdate() --获取当前系统时间
+SELECT DATEADD(MM,1,GETDATE())  --在当前时间的月份加1，可以为正负数、如果是小数则会取整省略分数后的数
+select datediff(YY,'2008-8-8',GETDATE()) --日期比较，这里以YY年来比较
+###数学函数和系统函数
+函数：rand(),ceiling(),floor(),abs(),convert()
+SELECT RAND(100)   --指定了种子数(100)，则每次返回值都相同
+SELECT RAND()  --未指定种子数()，则每次返回值都不相同
+select CONVERT(int,'10')+CONVERT(int,'15')  --类型转换
 
+#############查询
+#模糊查询
+_,%,[],[^]
+#查询中使用聚合函数
+sum(),avg(),min(),max(),count()
+#分组查询
+group by,having,order by ----排序永远是在最后的
+例：select..from..where...group by...having...order by...
+#内连接查询
+内连接：根据表中共同的列来进行匹配,可以使用where和inner join来使用，但where最多只能两张表
+SELECT 
+    productCode, 
+    productName, 
+    textDescription
+FROM
+    products t1
+        INNER JOIN
+    productlines t2 ON t1.productline = t2.productline
+		INNER JOIN 
+	money t3 ON t2.moneyid=t3.moneyid
+#联合查询
+UNION ALL --联合查询方法和mysql一样，UNION ALL表示不去重显示，默认UNION是去重显示的
+select userid,username into newtable from userinfo  --联合查询插入到临时表时必须在第一个from前插入into
+union
+select userid,payway,userage from orderinfo
+注：联合查询的多表类型必须保持一致，否则不会成功
+#联合查询与连接查询的区别
 
+#EXISTS子查询
+只注重子查询是否有返回行，如果查有返回行返回结果为值，否则为假
+IF EXISTS (SELECT commodityid FROM order where amount >3)
+	BEGEIN
+		UPDATE order SET money=money*0.8 
+		WHERE commodityid IN (SELECT commodityid FROM order where amount >3)
+	END
+--通常会使用NOT EXISTS对子查询的结果进行取反
+
+#ALL,ANY和SOME子查询
+ALL:所有
+ANY:部分
+SOME:与ANY等同，使用ANY的地址都可以使用SOME替换
+--ALL
+SELECT * FROM table2 WHERE n>ALL(SELECT n FROM table1)
+--返回结果为4，--table2 n为（1，2，3，4），table1 n为（2，3）
+--ANY
+SELECT * FROM table2 WHERE n>ANY(SELECT n FROM table1)
+--返回结果为3,4，--table2 n为（1，2，3，4），table1 n为（2，3）
+--SOME
+SELECT * FROM table2 WHERE n>SOME(SELECT n FROM table1)
+--返回结果为3,4，--table2 n为（1，2，3，4），table1 n为（2，3）
+
+SELECT * FROM table2 WHERE n=ANY(SELECT n FROM table1)  --加上下面这条结果都一样
+SELECT * FROM table2 WHERE n IN (SELECT n FROM table1)
+SELECT * FROM table2 WHERE n <> ANY(SELECT n FROM table1) --加上下面这条结果不一样
+SELECT * FROM table2 WHERE n NOT IN (SELECT n FROM table1)
+注：n=ANY与n IN相同的， n <> ANY和n NOT IN是不相同的
+
+#######T-SQL程序
+###变量
+#局部变量
+@VAR
+----------
+DECLARE @UserID varchar(10),@pwd varchar(20)
+--变量赋值
+--SET
+SET @UserID='zhangzhang'
+--SELECT
+SELECT @pwd=UserPwd FROM Userinfo where UserID=@UserID
+PRINT @UserID
+PRINT @pwd
+GO
+----------
+SELECT @UserID='zhangzhang',@pwd=UserPwd
+SELECT @province=useraddress FROM Userinfo --useraddress为返回多个值
+SELECT @province --显示值
+----注：GO之前的变量局部变量，在GO之后是不能使用的。另外SET是不允许同时为多个变量赋值，而SELECT却可以。SELECT可以接收多个值，而且SET不可以接收多个值。SET可以接收NULL值，SELECT无法接收NULL值，所以将会输出之前的旧值，不会输出NULL值。
+#全局变量
+@@VAR
+@@IDENTITY --返回最后插入语句的标识值的系统函数，必须有标识列，否则不会返回标识值的。
+@@ERROR --返回执行的上一个Transact-SQL语句的错误号。如果前一个 Transact-SQL 语句执行没有错误，则返回 0。
+SELECT @@ERROR  --SELECT输出的时候以表格结果输出的
+PRINT @@ERROR  --PRINT输出的时候以文本结果输出的
+SELECT @@ERROR AS 错误号  --对结果全名别名
+
+###数据类型转换
+隐式转换：类型相兼容自动转换
+显示转换：可以使用CONVERT函数或CAST函数
+#CONVERT与CAST函数转换：
+PRINT '错误号' + convert(varchar(10),@@ERROR)
+PRINT '错误号' + CAST(@@ERROR AS varchar(5))
+相同点：都能够将某数据类型转换为另一种数据类型
+异同点：CONVERT有三个参数，但CONVERT函数转换有优势，转换类型很多,SELECT CONVERT(VARCHAR(10),GETDATE(),111)
 
 </pre>
