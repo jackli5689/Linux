@@ -27,6 +27,11 @@ restricted_user #表示只允许数据库管理员登录
 新建多文件组的数据库：
 先创建数据库--文件组--添加文件组FG--常规--设置数据库名称--添加--选择FG文件组
 
+#sqlserver系统视图
+sysdatabases,sysobjects,sysindexes
+#sqlserver存储过程
+sp_databases,sp_renamedb,sp_help,sp_columns
+
 #使用SQL语句创建数据库
 #创建数据库时设置主文件组、日志文件
 USE master
@@ -318,7 +323,7 @@ SELECT * FROM table2 WHERE n>ANY(SELECT n FROM table1)
 --SOME
 SELECT * FROM table2 WHERE n>SOME(SELECT n FROM table1)
 --返回结果为3,4，--table2 n为（1，2，3，4），table1 n为（2，3）
-
+注：ANY跟SOME一样
 SELECT * FROM table2 WHERE n=ANY(SELECT n FROM table1)  --加上下面这条结果都一样
 SELECT * FROM table2 WHERE n IN (SELECT n FROM table1)
 SELECT * FROM table2 WHERE n <> ANY(SELECT n FROM table1) --加上下面这条结果不一样
@@ -346,7 +351,7 @@ SELECT @province --显示值
 ----注：GO之前的变量局部变量，在GO之后是不能使用的。另外SET是不允许同时为多个变量赋值，而SELECT却可以。SELECT可以接收多个值，而且SET不可以接收多个值。SET可以接收NULL值，SELECT无法接收NULL值，所以将会输出之前的旧值，不会输出NULL值。
 #全局变量
 @@VAR
-@@IDENTITY --返回最后插入语句的标识值的系统函数，必须有标识列，否则不会返回标识值的。
+@@IDENTITY --返回最后插入语句的标识值的系统函数，必须有标识列(唯一id)，否则不会返回标识值的。
 @@ERROR --返回执行的上一个Transact-SQL语句的错误号。如果前一个 Transact-SQL 语句执行没有错误，则返回 0。
 SELECT @@ERROR  --SELECT输出的时候以表格结果输出的
 PRINT @@ERROR  --PRINT输出的时候以文本结果输出的
@@ -360,5 +365,318 @@ PRINT '错误号' + convert(varchar(10),@@ERROR)
 PRINT '错误号' + CAST(@@ERROR AS varchar(5))
 相同点：都能够将某数据类型转换为另一种数据类型
 异同点：CONVERT有三个参数，但CONVERT函数转换有优势，转换类型很多,SELECT CONVERT(VARCHAR(10),GETDATE(),111)
+
+######流程控制语句
+顺序结构：BEGIN......END
+分支结构：IF.....ELSE或CASE....END
+循环结构：WHILE
+#顺序结构：
+BEGIN
+	......
+END
+#分支结构IF...ELSE
+IF
+	BEGIN
+		......
+	END
+[ELSE
+	BEGIN
+		......
+	END]
+GO
+例：
+DECLARE @x int,@y int
+SELECT @x=5,@y=10
+IF(@x>=@y)
+	BEGIN
+		PRINT '@x大于等于@y'  --如果超过一条语句则需要使用BEGIN...END
+		PRINT ' ' 
+	END
+ELSE
+	PRINT '@x小于@y' 
+	PRINT '程序结束了'   --这条语句不属于IF..ELSE结构语句后的代码，所以不加BEGIN...END也会执行，建议加上BEGIN..END
+GO
+#分支结构CASE....END
+CASE
+	WHEN....THEN....
+	WHEN....THEN....
+	[ELSE]
+END
+GO
+例：
+DECLARE @score int
+SET @socre=90
+SELECT 成绩=CASE
+	WHEN @score>=90 THEN 'A'
+	WHEN @score >=80 AND @score <90 THEN 'B'
+	WHEN @score BETWEEN 70 AND 79 THEN 'C'
+	ELSE 'D'
+END
+GO
+#SQL语句中使用CASE..END
+SELECT 用户编号=UserID,会员等级=
+CASE
+	WHEN COUNT(*)=1 THEN '普通会员'  --因为GROUP BY分类UserID汇总并只显示UserID,所以COUNT(*)表示的是UserID的下标值[表示同一个UserID分类汇总的次数]这个字段，否则多个字段显示则这里是不能使用*的
+	WHEN COUNT(*) BETWEEN 2 AND 5 THEN '白金会员'
+	WHEN COUNT(*) BETWEEN 6 AND 10 THEN 'VIP会员'
+	ELSE 'VIP白金会员'
+END
+FROM OrderInfo
+GROUP BY UserID
+GO
+#循环结构WHILE
+DECLARE @i int,@sum int  --求1到10之间数累加之和
+SELECT @i=1,@sum=0
+WHERE(@i<=10)
+	BEGEIN
+		SET @sum=@sum+@i
+		SET @i=@i+1
+	END
+PRINT '1到10之间的累加和是：'+CONVERT(varchar(3),@sum)
+GO
+#CONTINUE,BREAK,RETURN
+CONTINUE:继续回到上一个条件处开始执行，CONTINUE后面语句将不在执行
+BREAK:退出当前所在的整个父条件结构体而去执行父结构体外的语句
+RETURN:退出当前批处理程序，去执行当前批处理程序后的语句
+#CONTINUE:  --求1到10之间偶数之和
+DECLARE @sum int,@i int
+SELECT @sum=0,@i=1
+WHILE(@i<=10)
+	BEGIN
+		IF(@i%2=0)
+			BEGIN
+				SET @sum=@sum+@i
+				SET @i=@i+1
+			END
+		ELSE
+			BEGIN
+				SET @i=@i+1
+				CONTINUE	
+			END
+	END
+PRINT '1到10之间的偶数和为：'+CONVERT(varchar(3),@sum)
+GO
+###双重循环
+------九九乘法表-------------
+--诀窍在于行数和个数相乘
+DECLARE @x int,@y int,@str varchar(100)
+SELECT @x=1,@y=1,@str=''
+WHILE(@x<=9)
+	BEGIN
+		WHILE(@y<=@x)
+			BEGIN
+				SET @str=@str+CONVERT(varchar(2),@x)+'*'+CONVERT(varchar(2),@y)+'='+CONVERT(varchar(2),@x*@y)+'  '
+				SET @y=@y+1
+			END
+		PRINT @str
+		PRINT ''
+		SET @str=''
+		SET @x=@x+1
+		SET @y=1
+	END
+GO
+
+
+######SQLServer事务
+开始事务：BEGIN TRANSACTION
+提交事务：COMMIT TRANSACTION
+回滚或撤销事务：ROLLBACK TRANSACTION
+SET NOCOUNT ON --不开启计行数功能，表示不显示受影响的行数
+#事务例子：
+USE bank
+GO
+BEGIN TRANSACTION --开始事务
+DECLARE @error
+SET @error=0
+UPDATE banktab SET money=money-300 WHERE name='bob'
+SET @error=@error+@@ERROR  --用自身的变量error+加上上条语句的错误返回代码值，如果无错，全局变量ERROR的值也为0
+UPDATE banktab SET money=money+300 WHERE name='jack'
+SET @error=@error+@@ERROR
+IF(@error>0)
+	BEGIN
+		PRINT '交易失败，回滚事务！'
+		ROLLBACK TRAN   --TRANSACTION可以简写成TRAN
+	END
+ELSE
+	BEGIN
+		PRINT '交易成功，提交事务！'
+		COMMIT TRANSACTION   --提交事务
+	ENG
+GO
+##嵌套事务及事务分类
+全局变量@@TRANSCOUNT:
+	返回当前连接的活动事务数
+显式事务：
+	用BEGIN TRANSACTION明确指定事务的开始，是最常用的事务类型
+隐性事务：
+	通过设置SET IMPLICIT_TRANSACTIONS ON语句，将隐性事务模式设置为打开，
+	其后的T-SQL语句自动启动一个新事务
+	提交或回滚一个事务后，下一个T-SQL语句又将启动一个新事务
+自动提交事务：
+	SQLServer的默认模式
+	每条单独的T-SQL语句视为一个事务
+例：
+BEGIN TRAN ----@@TRANSCOUNT+1
+	BEGIN TRAN ----@@TRANSCOUNT又+1
+	COMMIT TRAN ----@@TRANSCOUNT-1
+COMMIT TRAN  ----@@TRANSCOUNT又-1
+#注：当在嵌套事务中使用ROLLBACK TRAN是，则TRANSCOUNT变量直接变成0，也就是说这样会直接取消父事务，使嵌套事务和父事务都会取消
+如何开启显式事务：
+	SET IMPLICIT_TRANSACTIONS OFF --关闭隐式事务
+如何开启隐式事务：(默认是隐式事务)
+	SET IMPLICIT_TRANSACTIONS ON  --开启隐式事务，开启隐式事务后必须手动执行COMMIT TRAN提交事务，如果不手动执行COMMIT TRAN则在下一个语句中(语句为改变数据库的语句)开启新的一个事务
+如何开启自动提交事务：
+	当设置IMPLICIT_TRANSACTIONS OFF时，就恢复成了自动提交事务模式，自动提交事务不需要使用BEGIN TRAN和COMMIT TRAN，当语句没有问题时自动会开启和提交事务
+
+###事务的相关问题
+SQLServer跟MYSQL事务原理一样。
+
+#####视图
+视图的注意事项：
+	1. 新建视图时不能使用ORDER BY语句，除非用TOP限定行数。否则新建视图将不成功
+	2. 新建视图时不能使用INTO插入到别的新表中，不能使用临时表的
+	3. 新建视图时是不允许使用表变量的。
+#临时表：
+	1. 存储在tempdb数据库
+	2. 本地临时表为‘#’开头，全局临时表以‘##’开关
+	3. 断开连接时临时表就被删除
+#表变量
+	1. 表变量实际是变量一种形式
+	2. 以@开头
+	3. 存在内存中
+DECLARE @table TABLE
+(
+	ID int,
+	name varchar(20)
+)
+
+####索引
+索引分类：
+	1. 聚集索引：目录和内容是一起的，每个表只能有一个聚集索引。
+	2. 非聚集索引：从目录找位置，从位置找内容，目录和内容是分开的，每个表可以有249个非聚集索引
+
+SELECT * FROM sysindexs WHERE name='index_name' --搜索索引
+#T-SQL语句创建索引：
+IF EXISTS(SELECT * FROM sysindexes WHERE name='IX_UserInfo_UseAddress' )
+DROP INDEX UserInfo.IX_UserInfo_UseAddress
+GO
+CREATE NONCLUSTERED INDEX IX_UserInfo_UseAddress--nonclustered index为表示非聚集索引
+ON UserInfo(UserAddress)  --ON表名（列名）
+WITH FILLFACTOR=30  --表示填充因子为30%
+GO
+#使用索引
+SELECT * FROM UserInfo
+WITH(INDEX=IX_UserInfo_UseAddress)  --使用指定索引进行查询，默认可以不指，sqlserver会默认去使用
+WHERE UserAddress LIKE '%河北%'  
+#查看索引
+	1. 使用SSMS查看索引
+	2. EXEC sp_helpindex table_name
+	3. 使用视图查看索引：
+		1. USE current_db
+		2. SELECT * FROM sysindexes WHERE name='index_name'
+
+########SQLSERVER存储过程
+#存储过程的分类：
+1. 系统存储过程：用来管理SQL SERVER和显示有关数据库和用户信息的存储过程，以sp_开头，存放在master数据库中。
+2. 扩展存储过程：使用其他编程语言创建外部存储过程，并将这个存储过程在SL SERVER中作为存储过程来使用。以xp_开关的。
+3. 自定义存储过程：用户在SQL SERVER中通过采用SQL语句创建存储过程，通常以usp_开头。
+#存储过程的调用：
+1. EXECUTE procedure_name [arg1] [arg2] ...
+2. EXEC procedure_name [arg1] [arg2] ...
+#系统存储过程 
+USE master 
+GO
+EXEC sp_databases   --执行系统存储过程进行查看数据库
+EXEC sp_renamedb 'test', 'mytest'  --执行系统存储过程进行重命名系统数据库
+exec sp_help bumen  --执行系统存储过程进行查看帮助
+exec sp_columns bumen  --执行系统存储过程进行查看表列信息
+#扩展存储过程  --扩展存储过程2008以后可能会被废除，尽量不要使用扩展存储过程
+USE master 
+GO
+EXEC sp_configure 'show advanced option',1  --启用xp_cmdshell功能
+GO
+RECONFIGURE --重新配置
+GO
+EXEC sp_configure 'xp_cmdshell',1 --打开xp_cmdshell
+GO
+RECONFIGURE
+GO
+--使用xp_cmdshell在D盘创建myfile文件夹
+EXEC xp_cmdshell 'mkdir e:\myfile',no_output  --no_output表示不输出返回信息
+GO  
+#自定义存储过程
+#创建存储过程
+CREATE PROC[EDURE] procedure_name
+AS 
+	SQL statement
+GO
+#调用存储过程
+EXEC procedure_name
+GO
+
+####创建带参数的存储过程
+CREATE PROC[EDURE] procedure_name
+	@startDate datetime,   --第一个参数没有默认值必须填入参数
+	@endDate datetime=null,  --第二个参数有默认值可以不填入参数
+	@userId varchar(20)=null --第三个参数有默认值可以不填入参数
+AS 
+	SQL statement
+GO
+#调用带参数的存储过程
+EXEC procedure_name '2019-06-01'
+或者
+EXEC procedure_name '2019-06-01','2019-07-01',1 --隐式调用对参数顺序有要求
+或者 
+EXEC procedure_name @startDate='2019-06-01',@userId=default,@endDate='2019-07-01' --显式调用对参数顺序无要求，但变量名称(名称必须是存储过程的变量名)和值必须写，默认值可以使用default
+或者
+DECLARE @arg1 datetime,@arg2 datetime,@arg3 varchar(20)
+SELECT @arg1='2019-06-01',@arg2='2019-07-01',@arg3=1
+EXEC procedure_name @arg1,@arg2,@arg3 --用声明变量来调用
+
+
+###创建带输入输出参数的存储过程
+CREATE PROC[EDURE] procedure_name
+	@startDate datetime,   
+	@endDate datetime=null,  
+	@userId varchar(20)=null 
+AS 
+	DECLARE @test int
+	SQL statement
+	SET @test=@@IDENTITY  --在存储过程在设置变量@test，用于在调用存储过程时输出
+GO
+#调用带输入输出参数的存储过程
+EXEC procedure_name '2019-06-01','2019-07-01',1 output --output为输出参数信息
+PRINT '测试值为：'+CONVERT(VARCHAR(5),@test)
+
+###创建带返回值的存储过程
+CREATE PROC[EDURE] procedure_name
+	@startDate datetime,   
+	@endDate datetime=null,  
+	@userId varchar(20)=null 
+AS 
+	INSERT INTO table1 VAULES (@startDate,@endDate,@userId)
+	IF @@ERROR>0
+		RETURN -1
+	ELSE
+		RETURN @@IDENTITY
+GO
+#调用带返回值的存储过程
+DECLARE @result int
+EXEC @result=procedure_name '2019-06-01','2019-07-01',1 
+IF @result=-1
+	PRINT '插入失败!'
+ELSE 
+	PRINT '插入成功!'
+GO
+
+########创建和使用存储过程的注意事项
+创建存储过程：
+	1. 在有默认值的参数变量写在声明变量最后
+	2. 在结束存储过程创建时必须写GO结束
+调用存储过程：
+	1. 调用参数使用隐式存储调用时参数必须与定义存储过程参数位置相同
+	2. 如果使用显示存储调用，则可以不按顺序写，但变量名必须和参数变量名一样
+	3. 如果调用存储过程是批处理中的第一个语句，则可以省略EXEC不写
+
 
 </pre>
