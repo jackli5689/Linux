@@ -16,7 +16,104 @@ sudo ssserver -p 443 -k password -m rc4-md5 --user nobody -d start
 sudo ssserver -d stop
 检查日志：
 sudo less /var/log/shadowsocks.log
+##########ssserver以配置文件方式运行
+###不分密码端口不在乎流量
+[root@lnmp ~]# cat /etc/shadowsocks.json
+{
+    "server": "0.0.0.0",
+    "server_port": 1024,
+    "local_address": "127.0.0.1",
+    "local_port": 1080,
+    "password": "pass123",
+    "timeout": 300,
+    "method": "aes-256-cfb"
+}
+###分密码端口不在乎流量
+[root@lnmp ~]# cat /etc/shadowsocks.json
+{
+    "server": "0.0.0.0",
+    "port_password": {
+        "8381": "foobar1",
+        "8382": "foobar2",
+        "8383": "foobar3",
+        "8384": "foobar4"
+    },
+    "timeout": 300,
+    "method": "aes-256-cfb"
+}
+###分密码端口在乎流量
+git clone https://github.com/Flyzy2005/ss-bash.git #克隆脚本
+git clone https://github.com/Flyzy2005/ss-bash.git #添加需要限制的用户
+#自定义配置ss-bash/ssmlt.template #默认不用更改
+"server": "0.0.0.0",
+"timeout": 300,
+"method": "aes-256-cfb",
+#自定义配置ss-bash/sslib.sh：
+INTERVEL=600  #检查间隔时间
+SSSERVER=/usr/bin/ssserver #ssserver的执行文件路径 
+ss-bash/ssadmin.sh start   #事先必须关闭ssserver服务，用这个服务直接启动
+ss-bash/ssadmin.sh help
+###分密码分端口，并且希望更精确的了解各个ss用户的流浪使用情况 ----这个未成功配置
+#1.准备环境：
+[root@lnmp ~]# yum update -y  
+[root@lnmp ~]# yum install -y git screen wget 
+[root@lnmp ~]# yum install -y npm nodejs #安装环境
+#2.安装 shadowsocks-libev:
+https://raw.githubusercontent.com/teddysun/shadowsocks_install/master/shadowsocks-libev.sh
+[root@lnmp ~]# chmod +x shadowsocks-libev.sh
+[root@lnmp ~]# ./shadowsocks-libev.sh 
+Congratulations, Shadowsocks-libev server install completed!
+Your Server IP        :  180.168.251.178 
+Your Server Port      :  10000 
+Your Password         :  test 
+Your Encryption Method:  aes-256-cfb 
+#3.安装shadowsocks-manager：
+[root@lnmp ~]# git clone https://github.com/shadowsocks/shadowsocks-manager.git
+[root@lnmp ~]# cd shadowsocks-manager/
+[root@lnmp shadowsocks-manager]# npm install
+[root@lnmp shadowsocks-manager]# npm build
+[root@lnmp shadowsocks-manager]# npm i
+[root@lnmp bin]# vim /etc/profile.d/shadowsocks-manager.sh
+#!/bin/bash
+export PATH=$PATH:/root/shadowsocks-manager/bin
+[root@lnmp bin]# . /etc/profile.d/shadowsocks-manager.sh
+#4.配置并运行：
+#使用 screen 来实现守护进程
+[root@lnmp shadowsocks-manager]# screen -S ss-manager
+[root@lnmp bin]# ss-manager -m aes-256-cfb -u --manager-address 127.0.0.1:4500
+[root@lnmp bin]# netstat -tunlp
+udp        0      0 127.0.0.1:4500          0.0.0.0:*                           27916/ss-manager  #确保启动
+#在 ~/.ssmgr 下新建 default.yml：
+[root@lnmp ~]# vim .ssmgr/default.yml
+type: s
+shadowsocks:
+  address: 127.0.0.1:4500
+manager:
+  address: 0.0.0.0:7500
+  password: '12345678'
+db: 'ss.sqlite'
 
+
+
+
+#注：限制用户某个端口的连接数，可用iptables规则：iptables -I INPUT 9 -d 192.168.1.19 -p tcp --dport 21 -m connlimit ! --connlimit-above 2 -j ACCEPT #限定ftp最大连接数为2，超过则不予连接
+#参数注解：
+Name	说明
+server	服务器地址，填ip或域名
+local_address	本地地址
+local_port	本地端口，一般1080，可任意
+server_port	服务器对外开的端口
+password	密码，可以每个服务器端口设置不同密码
+port_password	server_port + password ，服务器端口加密码的组合
+timeout	超时重连
+method	默认: “aes-256-cfb”，见 Encryption
+fast_open	开启或关闭 TCP_FASTOPEN, 填true / false，需要服务端支持
+####配置方式启动
+[root@lnmp ~]# ssserver -c /etc/shadowsocks.json -d start  #后台运行启动
+[root@lnmp ~]# ps aux | grep ssserver  #查看是否启动
+root      7656  0.0  0.2 207204 10344 ?        Ss   13:38   0:00 /usr/bin/python /usr/bin/ssserver -c /etc/shadowsocks.json -d start
+root      7666  0.0  0.0 112716  2236 pts/0    S+   13:38   0:00 grep --color=auto ssserve
+[root@lnmp ~]# /usr/bin/ssserver -c /etc/shadowsocks/shadowsocks.json -d start #进行开机启动
 =======
 #配置BBR加速：
 TCP BBR是谷歌出品的TCP拥塞控制算法。BBR目的是要尽量跑满带宽，并且尽量不要有排队的情况。BBR可以起到单边加速TCP连接的效果。
@@ -59,7 +156,6 @@ net.ipv4.tcp_available_congestion_control = reno cubic bbr
 [root@myshadowsocks ~]# lsmod | grep bbr
 tcp_bbr                20480  30
 输出内容如上，则表示bbr已经成功开启。
-
 </pre>
 
 #Linux for Shadowsocks客户端
