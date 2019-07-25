@@ -1,4 +1,4 @@
-﻿#shadowsocks
+#shadowsocks
 <pre>
 =======
 #安装shadowsocks:
@@ -17,7 +17,7 @@ sudo ssserver -d stop
 检查日志：
 sudo less /var/log/shadowsocks.log
 ##########ssserver以配置文件方式运行
-###不分密码端口不在乎流量
+###1. 不分密码端口不在乎流量
 [root@lnmp ~]# cat /etc/shadowsocks.json
 {
     "server": "0.0.0.0",
@@ -28,7 +28,7 @@ sudo less /var/log/shadowsocks.log
     "timeout": 300,
     "method": "aes-256-cfb"
 }
-###分密码端口不在乎流量
+###2. 分密码端口不在乎流量
 [root@lnmp ~]# cat /etc/shadowsocks.json
 {
     "server": "0.0.0.0",
@@ -41,9 +41,9 @@ sudo less /var/log/shadowsocks.log
     "timeout": 300,
     "method": "aes-256-cfb"
 }
-###分密码端口在乎流量
+###3. 分密码端口在乎流量
 git clone https://github.com/Flyzy2005/ss-bash.git #克隆脚本
-git clone https://github.com/Flyzy2005/ss-bash.git #添加需要限制的用户
+./ssadmin.sh add 8388 123456 100G #添加需要限制的用户,8388为端口，123456为密码
 #自定义配置ss-bash/ssmlt.template #默认不用更改
 "server": "0.0.0.0",
 "timeout": 300,
@@ -53,7 +53,7 @@ INTERVEL=600  #检查间隔时间
 SSSERVER=/usr/bin/ssserver #ssserver的执行文件路径 
 ss-bash/ssadmin.sh start   #事先必须关闭ssserver服务，用这个服务直接启动
 ss-bash/ssadmin.sh help
-###分密码分端口，并且希望更精确的了解各个ss用户的流浪使用情况 ----这个未成功配置
+###4. 分密码分端口，并且希望更精确的了解各个ss用户的流浪使用情况 ----这个未成功配置
 #1.准备环境：
 [root@lnmp ~]# yum update -y  
 [root@lnmp ~]# yum install -y git screen wget 
@@ -113,7 +113,9 @@ fast_open	开启或关闭 TCP_FASTOPEN, 填true / false，需要服务端支持
 [root@lnmp ~]# ps aux | grep ssserver  #查看是否启动
 root      7656  0.0  0.2 207204 10344 ?        Ss   13:38   0:00 /usr/bin/python /usr/bin/ssserver -c /etc/shadowsocks.json -d start
 root      7666  0.0  0.0 112716  2236 pts/0    S+   13:38   0:00 grep --color=auto ssserve
-[root@lnmp ~]# /usr/bin/ssserver -c /etc/shadowsocks/shadowsocks.json -d start #进行开机启动
+[root@lnmp ~]# echo "/usr/bin/ssserver -c /etc/shadowsocks/shadowsocks.json -d start" >> /etc/rc.local #进行开机启动
+
+
 =======
 #配置BBR加速：
 TCP BBR是谷歌出品的TCP拥塞控制算法。BBR目的是要尽量跑满带宽，并且尽量不要有排队的情况。BBR可以起到单边加速TCP连接的效果。
