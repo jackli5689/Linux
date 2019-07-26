@@ -17,7 +17,7 @@ sudo ssserver -d stop
 检查日志：
 sudo less /var/log/shadowsocks.log
 ##########ssserver以配置文件方式运行
-###不分密码端口不在乎流量
+###1. 不分密码端口不在乎流量
 [root@lnmp ~]# cat /etc/shadowsocks.json
 {
     "server": "0.0.0.0",
@@ -28,7 +28,7 @@ sudo less /var/log/shadowsocks.log
     "timeout": 300,
     "method": "aes-256-cfb"
 }
-###分密码端口不在乎流量
+###2. 分密码端口不在乎流量
 [root@lnmp ~]# cat /etc/shadowsocks.json
 {
     "server": "0.0.0.0",
@@ -41,7 +41,7 @@ sudo less /var/log/shadowsocks.log
     "timeout": 300,
     "method": "aes-256-cfb"
 }
-###分密码端口在乎流量
+###3. 分密码端口在乎流量
 git clone https://github.com/Flyzy2005/ss-bash.git #克隆脚本
 git clone https://github.com/Flyzy2005/ss-bash.git #添加需要限制的用户
 #自定义配置ss-bash/ssmlt.template #默认不用更改
@@ -53,45 +53,142 @@ INTERVEL=600  #检查间隔时间
 SSSERVER=/usr/bin/ssserver #ssserver的执行文件路径 
 ss-bash/ssadmin.sh start   #事先必须关闭ssserver服务，用这个服务直接启动
 ss-bash/ssadmin.sh help
-###分密码分端口，并且希望更精确的了解各个ss用户的流浪使用情况 ----这个未成功配置
+###4. 分密码分端口，并且希望更精确的了解各个ss用户的流浪使用情况 ------shadowsocks-manager部署
+#参考链接：https://shadowsocks.github.io/shadowsocks-manager/#/home
+#设置ubuntu18.04 apt源：vim /etc/apt/sources.list
+root@ubuntu:/docker/ss-mgr/supervisor/conf.d# cat /etc/apt/sources.list
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-updates main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-backports main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-security main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ bionic main restricted universe multiverse 
+#用镜像文件搭建源
+root@ubuntu:/down# cat /etc/apt/sources.list
+deb file:///mnt/ bionic main restricted
+# cat /etc/apt/sources.list
+deb http://192.168.1.237/ bionic main restricted  #这个是用ningx搭建的
+
 #1.准备环境：
-[root@lnmp ~]# yum update -y  
-[root@lnmp ~]# yum install -y git screen wget 
-[root@lnmp ~]# yum install -y npm nodejs #安装环境
-#2.安装 shadowsocks-libev:
-https://raw.githubusercontent.com/teddysun/shadowsocks_install/master/shadowsocks-libev.sh
-[root@lnmp ~]# chmod +x shadowsocks-libev.sh
-[root@lnmp ~]# ./shadowsocks-libev.sh 
-Congratulations, Shadowsocks-libev server install completed!
-Your Server IP        :  180.168.251.178 
-Your Server Port      :  10000 
-Your Password         :  test 
-Your Encryption Method:  aes-256-cfb 
+[root@lnmp ~]# apt-get update  
+[root@lnmp ~]# curl -sL https://deb.nodesource.com/setup_10.x | bash -
+[root@lnmp ~]# apt-get  install -y nodejs #安装环境Node.js 10.*
+#2. 安装redis并设置密码：
+apt-get install redis-server -y
+vim /etc/redis/redis.conf
+	supervised yes
+	requirepass redis  #设置密码
+127.0.0.1:6379> auth redis #测试是否设置成功
 #3.安装shadowsocks-manager：
-[root@lnmp ~]# git clone https://github.com/shadowsocks/shadowsocks-manager.git
-[root@lnmp ~]# cd shadowsocks-manager/
-[root@lnmp shadowsocks-manager]# npm install
-[root@lnmp shadowsocks-manager]# npm build
-[root@lnmp shadowsocks-manager]# npm i
-[root@lnmp bin]# vim /etc/profile.d/shadowsocks-manager.sh
-#!/bin/bash
-export PATH=$PATH:/root/shadowsocks-manager/bin
-[root@lnmp bin]# . /etc/profile.d/shadowsocks-manager.sh
-#4.配置并运行：
-#使用 screen 来实现守护进程
-[root@lnmp shadowsocks-manager]# screen -S ss-manager
-[root@lnmp bin]# ss-manager -m aes-256-cfb -u --manager-address 127.0.0.1:4500
-[root@lnmp bin]# netstat -tunlp
-udp        0      0 127.0.0.1:4500          0.0.0.0:*                           27916/ss-manager  #确保启动
-#在 ~/.ssmgr 下新建 default.yml：
-[root@lnmp ~]# vim .ssmgr/default.yml
+npm i -g shadowsocks-manager --unsafe-perm #使用root用户安装，非root用户去掉--unsafe-perm参数
+root@ubuntu:~/.ssmgr# ssmgr  #运行ssmgr服务，会打开6002端口
+#4. 配置首个节点
+1. 创建配置文件
+root@ubuntu:~/.ssmgr# cat ss.yml 
 type: s
 shadowsocks:
-  address: 127.0.0.1:4500
+  address: 127.0.0.1:6001   #shadowsocks打开的端口，需要用这个端口去跟ss-mgr6002端口进行连接
 manager:
-  address: 0.0.0.0:7500
-  password: '12345678'
-db: 'ss.sqlite'
+  address: 0.0.0.0:6002
+  password: '123456'  #这个是连接的密钥
+db: 'db.sqlite'
+2. 运行 shadowsocks
+ssserver -m aes-256-cfb -p 12345 -k abcedf --manager-address 127.0.0.1:6001  #会报openssl的错，此时需要编辑：vim /usr/local/lib/python2.7/dist-packages/shadowsocks/crypto/openssl.py文件，将所有EVP_CIPHER_CTX_cleanup替换成EVP_CIPHER_CTX_reset
+:.,$s/EVP_CIPHER_CTX_cleanup/EVP_CIPHER_CTX_reset/g #vim中直接搜索更改
+3. ssserver -m aes-256-cfb -p 12345 -k abcedf --manager-address 127.0.0.1:6001 #再次运行不报错了，12345是shadowsocks服务端口，abcdef是密钥
+4. 调用刚刚的配置文件~/.ssmgr/ss.yml运行ssmgr:
+ssmgr -c ~/.ssmgr/ss.yml
+#5. 配置并运行Web界面
+1. root@ubuntu:~/.ssmgr# cat webgui.yml #plugins中格式一定要正确
+type: m
+manager:
+  address: 127.0.0.1:6002
+  password: '123456'  #这个是连接的密钥
+plugins:
+  flowSaver:
+    use: true
+  user:
+    use: true
+  account:
+    use: true
+  email:
+    use: true
+    type: 'smtp'
+    username: 'username'
+    password: 'password'
+    host: 'smtp.your-email.com'
+  webgui:
+    use: true
+    host: '0.0.0.0'
+    port: '80'
+    site: 'http://ubuntu.jack.com'
+  # admin_username: 'youremail@address.com'
+  # admin_password: '35710935109364'
+  # icon: 'icon.png'
+  # skin: 'default'
+  # googleAnalytics: 'UA-xxxxxxxx-x'
+  # gcmSenderId: '476902381496'
+  # gcmAPIKey: 'AAAAGzddLRc:XXXXXXXXXXXXXX'
+  # google_login_client_id: '724695589056-p78tu8738t4fjel56yhe34qq34gjufsi.apps.googleusercontent.com'
+  # google_login_client_secret: 'TjUd36YnQ-YUI2uUtQa_43Tl'
+  # facebook_login_client_id: '9825686749820123'
+  # facebook_login_client_secret: 'a46c6bb6f8281c23d2b74b43008c9c46'
+  # github_login_client_id: '7c45c34c1de3ef937d37'
+  # github_login_client_secret: 'd2768efe5258cfb9ce4da11ed7ddc334bc65756b'
+  # twitter_login_consumer_key: 'tKPH3RViDT68PtHBMHYJuQ'
+  # twitter_login_consumer_secret: 'wYCtWdUSEfm8H3ES0r5rgHKeqGvYGiFDrGj4THiq3T6'
+db: 'webgui.sqlite'
+redis:
+  host: '127.0.0.1'
+  port: 6379
+  password: 'redis'
+  db: 0
+#site 字段填写网站的实际访问地址
+#email 部分用于给注册用户发送验证邮件，请填写正确的参数并选用支持 smtp 的 vps
+2. 调用此配置文件运行：
+root@ubuntu:~/.ssmgr# ssmgr -c ~/.ssmgr/webgui.yml
+3. 访问http://ubuntu.jack.com
+#成功运行后，如果有配置admin_username和admin_password字段，则会自动创建管理员账号，否则首个注册用户为管理员
+###配置更多的节点
+1. 仿照上文的步骤，创建配置文件，运行shadowsocks和ssmgr
+2. 在管理界面的“服务器”页面，点击右下角“+”按钮，填上对应的地址、端口、密码、加密方式
+
+
+###docker安装ss-manager
+下载安装Docker:
+1. sudo apt update
+2. $ sudo apt install apt-transport-https ca-certificates curl software-properties-common
+3. 添加ubuntu源
+16.04 ：deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable
+18.04 ：deb [arch=amd64] https://download.docker.com/linux/ubuntu bionic stable  或者 deb https://mirrors.aliyun.com/ubuntu/ bionic main restricted universe multiverse
+4. 添加密钥：curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add 
+5. 安装docker-ce：apt install docker.io docker-compose
+#启动和配置容器
+docker run --rm -it --name shadowsocks-manager -p 4002:4002 chxj1992/shadowsocks-manager-docker:0.1.0 #主要目的是以此为蓝本进行修改
+root@ubuntu:/docker/ss-mgr# docker cp shadowsocks-manager:/entry.sh /docker/ss-mgr/ #复制启动执行的脚本和其他配置文件
+root@ubuntu:/docker/ss-mgr# docker cp shadowsocks-manager:/etc/supervisor /docker/ss-mgr/
+root@ubuntu:/docker/ss-mgr# docker cp shadowsocks-manager:/etc/shadowsocks  /docker/ss-mgr/config               
+root@ubuntu:/docker/ss-mgr# docker cp shadowsocks-manager:/root/.ssmgr    /docker/ss-mgr/data                   
+root@ubuntu:/docker/ss-mgr# docker cp shadowsocks-manager:/var/www/shadowsocks-manager    /docker/ss-mgr/code  
+root@ubuntu:/docker/ss-mgr# cat /docker/docker-compose.yml #查看docker-compose.yml编排配置
+version: '2'
+services:
+  shadowsocks-manager:
+    image: chxj1992/shadowsocks-manager-docker:0.1.0
+    container_name: shadowsocks-manager
+    ports:
+      - "8388:8388" 
+      - "4001:4001"
+      - "4002:4002"
+      - "9001:9001"
+    volumes: 
+      - /docker/ss-mgr/supervisor:/etc/supervisor   
+      - /docker/ss-mgr/config:/etc/shadowsocks     
+      - /docker/ss-mgr/data:/root/.ssmgr          
+      - /docker/ss-mgr/code:/var/www/shadowsocks-manager    
+    restart: always 
+
+
+
 
 
 
@@ -158,7 +255,7 @@ tcp_bbr                20480  30
 输出内容如上，则表示bbr已经成功开启。
 </pre>
 
-#Linux for Shadowsocks客户端
+####Linux for Shadowsocks客户端
 <pre>
 yum install epel-release -y
 yum install python-pip
@@ -193,7 +290,7 @@ systemctl stop shadowsocks.service
   "origin": "66.42.64.231, 66.42.64.231"
 }
 
-#安装配置Privoxy
+####安装配置Privoxy
 Shadowsocks是一个 socket5 服务，我们需要使用 Privoxy 把流量转到 http／https 上。
 下载privoxy:wget http://download-ib01.fedoraproject.org/pub/epel/7/x86_64/Packages/p/privoxy-3.0.26-1.el7.x86_64.rpm
 安装privoxy：rpm -ivh privoxy-3.0.26-1.el7.x86_64.rpm
@@ -208,8 +305,7 @@ export https_proxy="https://127.0.0.1:8118"
 
 测试是否可用：curl www.google.com
 
-
-#Centos利用Shadowsocks搭建privoxy代理服务器
+####Centos利用Shadowsocks搭建privoxy代理服务器
 yum install python-pip
 pip install shadowsocks #安装shadowsocks客户端
 [root@salt-server ~]# cat /etc/shadowsocks/shadowsocks.json 
