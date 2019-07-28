@@ -1,4 +1,4 @@
-﻿#Redis
+#Redis
 <pre>
 #teacher:燕十八
 redis官方网站：www.redis.io
@@ -53,7 +53,8 @@ lrwxrwxrwx 1 root root      12 Jul 14 12:15 redis-sentinel -> redis-server
 #make install之后,得到如下几个文件
 redis-benchmark  性能测试工具
 redis-check-aof  日志文件检测工(比如断电造成日志损坏,可以检测并修复)
-redis-check-dump  快照文件检测工具,效果如上
+redis-check-rdb  快照文件检测工具,效果如上
+redis-redis-sentinel 哨兵，用于redis主从复制的  
 redis-cli  客户端
 redis-server 服务端
 [root@lnmp bin]# cp /usr/local/src/redis-5.0.5/redis.conf /usr/local/redis/ #复制配置文件
@@ -1399,7 +1400,43 @@ $redis->set('user:userid:9:username','wangwu');
 var_dump($redis->get('user:userid:9:username'));
 
 #第十九节：微博项目实战
+#注册用户设计
+set user:userid:1:username zhangsan
+set user:userid:1:password 666666
+set user:username:zhangsan:userid 1
+#sort的用法，比较常用，可用于排序、将排序所得值代入匹配参数中遍历某些范围数值
+127.0.0.1:6379> set user:userid:1:username zs
+OK
+127.0.0.1:6379> set user:userid:2:username ls
+OK
+127.0.0.1:6379> set user:userid:3:username ww
+OK
+127.0.0.1:6379> lpush num 1
+(integer) 1
+127.0.0.1:6379> lpush num 2
+(integer) 2
+127.0.0.1:6379> lpush num 3
+(integer) 3
+127.0.0.1:6379> sort num desc
+1) "3"
+2) "2"
+3) "1"
+127.0.0.1:6379> sort num desc get user:userid:*:username
+1) "ww"
+2) "ls"
+3) "zs"
 
+#用到redis类型
+string
+list(用得多)
+set
+sorted set
+hash
+#注意在php上使用redis的语法和细节，一般就出错在细节
+
+#先规划，然后按照规划大纲进行步骤实施，方可实现功能，再是不断的优化，遇到困难要不断的攻破，不要退缩，肯定能实现成功。
+
+#重点：热数据写入redis,冷数据写入mysql,冷数据写入时得批量定时写入mysql，否则mysql顶不住 。
 
 
 </pre>
