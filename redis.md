@@ -8,7 +8,7 @@ redis官方网站：www.redis.io
 
 redis和memcached相比的独特之处：
 	1. redis可以用来做存储(storage)，而memcached是用来做缓存(cache),这个特点主要因为其有“持久化”功能
-	2. redis存储的数据有“结构”，对于memcached来说，存储的数据只有一种类型--“字符串”，而redis则可以存储字符串，链表，哈希结构集合，有序集合。
+	2. redis存储的数据有“结构”，对于memcached来说，存储的数据只有一种类型--“字符串”，而redis则可以存储字符串，链表，哈希，集合，有序集合。
 #注：如果redis只做缓存的话，那么就跟memcached一样。
 
 #redis下载安装：
@@ -26,7 +26,7 @@ You need tcl 8.5 or newer in order to run the Redis test #报错，需要安装t
 make[1]: *** [test] Error 1
 make[1]: Leaving directory `/usr/local/src/redis-5.0.5/src'
 make: *** [test] Error 2
-[root@lnmp redis-5.0.5]# yum install tcl -y
+[root@lnmp redis-5.0.5]# yum install tcl -y #安装后，再次执行make test还是会报错，但是这次报的是redis监听端口的错误，这个可以忽略，直接安装即可
 [root@lnmp redis-5.0.5]# make PREFIX=/usr/local/redis install #安装并指定redis路径
 cd src && make install
 make[1]: Entering directory `/usr/local/src/redis-5.0.5/src'
@@ -54,7 +54,7 @@ lrwxrwxrwx 1 root root      12 Jul 14 12:15 redis-sentinel -> redis-server
 redis-benchmark  性能测试工具
 redis-check-aof  日志文件检测工(比如断电造成日志损坏,可以检测并修复)
 redis-check-rdb  快照文件检测工具,效果如上
-redis-redis-sentinel 哨兵，用于redis主从复制的  
+redis-sentinel 哨兵，用于redis主从复制的，其实就是redis-server 
 redis-cli  客户端
 redis-server 服务端
 [root@lnmp bin]# cp /usr/local/src/redis-5.0.5/redis.conf /usr/local/redis/ #复制配置文件
@@ -236,8 +236,6 @@ OK
 "sleep"
 127.0.0.1:6379> get status
 "wakeup"
-127.0.0.1:6379> getset status working
-"wakeup"
 127.0.0.1:6379> set age 25
 OK
 127.0.0.1:6379> get age
@@ -287,6 +285,7 @@ b:1011
 1011 or  #表示多个key中对应位值都为1或者有1时才显示为1
 0010 xor  #表示多个key中对应位值不同时才显示为1
 bitop not j a #此时j的值跟a的值相反，为011011..，后面0的都为1
+
 #第四节：redis的list结构及命令详解
 #link(list)类型插入的数据顺序是你插入值的先后顺序
 #link链表结果：
@@ -358,10 +357,22 @@ OK
 127.0.0.1:6379> lrange char 0 -1
 1) "d"
 2) "e"
+127.0.0.1:6379> lrange test 0 -1
+1) "f"
+2) "e"
+3) "d"
+4) "c"
+5) "b"
+6) "a"
+127.0.0.1:6379> ltrim test 5 4  #当使用ltrim时，stop值小于start值时，会清空链表
+OK
+127.0.0.1:6379> lrange test 0 -1
+(empty list or set)
 127.0.0.1:6379> lindex char 1 #link index 显示索引的值
 "e"
 127.0.0.1:6379> llen char  #link length显示key的长度
 (integer) 2
+
 LINSERT key BEFORE|AFTER pivot value
 127.0.0.1:6379> rpush int 1 3 5 8 9 
 (integer) 5
@@ -415,8 +426,7 @@ RPOPLPUSH source destination
 3) "b"
 4) "4"
 5) "d"
-
-127.0.0.1:6379> brpop job 50 #brpop一直等待在50秒时间内，直到key中有值时才rpop并结束，否则等待计时器的到来，时间为0,则一直等待
+127.0.0.1:6379> brpop job 50 #block rpop一直等待在50秒时间内，直到key中有值时才rpop并结束，否则等待计时器结束的到来
 1) "job"
 2) "1"
 (24.10s)  #等到rpush值时花了多少时间
@@ -497,7 +507,7 @@ RPOPLPUSH source destination
 127.0.0.1:6379> smembers gender
 1) "male"
 2) "female"
-127.0.0.1:6379> smembers gender
+127.0.0.1:6379> smembers gender #又插入了一些数据
 1) "male"
 2) "f"
 3) "a"
@@ -546,7 +556,6 @@ RPOPLPUSH source destination
 1) "a"
 2) "A"
 3) "B"
-
 127.0.0.1:6379> sadd bob a b c 
 (integer) 3
 127.0.0.1:6379> sadd jack b c d 
@@ -627,7 +636,7 @@ RPOPLPUSH source destination
 6) "20"
 7) "bob"
 8) "30"
-127.0.0.1:6379> zremrangebyrank class 0 1  #删除0到1的成员
+127.0.0.1:6379> zremrangebyrank class 0 1  #能过升序来删除0到1范围的成员
 (integer) 2
 127.0.0.1:6379> zrange class 0 -1 withscores
 1) "jack"
@@ -800,7 +809,7 @@ QUEUED
 OK
 127.0.0.1:6379> decrby wang 100
 QUEUED
-127.0.0.1:6379> sadd wang test123 #这个语法没问题，但是对于键wang来说不是同一个的的，所以后面不能执行成功这条语句，但前面执行成功了
+127.0.0.1:6379> sadd wang test123 #这个语法没问题，但是对于键wang来说不是同一个类型的，所以后面不能执行成功这条语句，但前面执行成功了
 QUEUED
 127.0.0.1:6379> exec
 1) (integer) 500
@@ -944,7 +953,7 @@ bgrewriteaof  #在redis-cli中手动命令aof日志文件重写
 问: 如果rdb文件,和aof文件都存在,优先用谁来恢复数据?
 答: aof
 注: 在aof手动重写过程中,aof如果停止同步,会不会丢失?
-答: redis服务down掉后会丢失,因为aof缓存在内存的队列里,down掉后会丢失
+答: 如果redis服务down掉后则会丢失,因为aof缓存在内存的队列里
 注: aof重写是指什么?
 答: aof重写是指把内存中的数据,逆化成命令,写入到.aof日志里.
 以解决 aof日志过大的问题.
@@ -986,7 +995,7 @@ master_repl_offset:8646507
 每个redis实例在启动时候，都会随机生成一个长度为40的唯一字符串来标识当前运行的redis节点，查看此id可通过命令info server查看
 127.0.0.1:6380> info server
 run_id:7851f595b61548aa8ac902eb4d286ddbd3354dda
-当主从复制在初次复制时，主节点将自己的runid发送给从节点，从节点将这个runid保存起来,当断线重连时，从节点会将这个runid发送给主节点。主节点根据runid判断能否进行部分复制：如果从节点保存的runid与主节点现在的runid相同，说明主从节点之前同步过，主节点会更具offset偏移量之后的数据判断是否执行部分复制，如果offset偏移量之后的数据仍然都在复制积压缓冲区里，则执行部分复制，否则执行全量复制；如果从节点保存的runid与主节点现在的runid不同，说明从节点在断线前同步的redis节点并不是当前的主节点，只能进行全量复制;
+当主从复制在初次复制时，主节点将自己的runid发送给从节点，从节点将这个runid保存起来,当断线重连时，从节点会将这个runid发送给主节点。主节点根据runid判断能否进行部分复制：如果从节点保存的runid与主节点现在的runid相同，说明主从节点之前同步过，主节点会更新offset偏移量之后的数据判断是否执行部分复制，如果offset偏移量之后的数据仍然都在复制积压缓冲区里，则执行部分复制，否则执行全量复制；如果从节点保存的runid与主节点现在的runid不同，说明从节点在断线前同步的redis节点并不是当前的主节点，只能进行全量复制;
 #psync2
 redis4.0新版本除了增加混合持久化，还优化了psync并实现即使redis实例重启的情况下也能实现部分同步，psync2在psync1基础上新增两个复制id：
 1. master_replid: 复制replid1，一个长度为41个字节(40个随机串+’0’)的字符串，每个redis实例都有，和runid没有直接关联，但和runid生成规则相同。当实例变为从实例后，自己的replid1会被主实例的replid1覆盖。
@@ -1207,8 +1216,6 @@ Background append only file rewriting started
 [root@lnmp 6379]# ll
 -rw-r--r-- 1 root root 219 Jul 16 22:52 appendonly.aof
 [root@lnmp 6379]# ll
--rw-r--r-- 1 root root 155 Jul 16 22:52 appendonly.aof
-[root@lnmp 6379]# ll
 -rw-r--r-- 1 root root 207 Jul 16 22:45 dump.rdb
 127.0.0.1:6379> save  #在当前进程手动执行rdb快照生成
 OK
@@ -1220,13 +1227,14 @@ OK
 flushdb   #清空当前database数据库
 flushall   #清空所有database数据库
 info   #查看redis-server的信息
-info stat | replication  #info后面可以跟详细参数
-config get *  #获取所有参数，跟mysql的set变量差不多
+info stats | replication  #info后面可以跟详细参数
+config get *  #获取所有参数，跟mysql的set变量差不多,可临时设置配置文件中的参数
 127.0.0.1:6379> config set slowlog-log-slower-than 100 #设置慢日志的时间
 127.0.0.1:6379> config get slowlog-log-slower-than
 1) "slowlog-log-slower-than"
 2) "100"
 127.0.0.1:6379> slowlog get  #获取慢日志
+注：config get和config set是在redis-cli命令行中进行设置和获取的
 shutdown [NOSAVE|SAVE] #关闭redis-server服务，SHUTDOWN SAVE能够在即使没有配置持久化的情况下强制数据库存储，SHUTDOWN NOSAVE 能够在配置一个或者多个持久化策略的情况下阻止数据库存储.
 
 #第十五节：aof恢复与rdb服务器迁移
@@ -1268,7 +1276,6 @@ www.mumuso.com  #删除后面的flushall段并保存退出
 "jack"
 127.0.0.1:6379> get www
 "www.mumuso.com"
-
 #rdb服务器间迁移：
 [root@lnmp 6379]# cp dump.rdb ../6381/  #复制rdb到另外一个redisServer上，名称为dump.rdb
 [root@lnmp ~]# redis-server /usr/local/redis/redis6381.conf #让另外一台redisServer载入rdb，事前必须先在服务器设置好dir目录，此目录包含rdb和aof文件 
@@ -1295,7 +1302,6 @@ www.mumuso.com  #删除后面的flushall段并保存退出
 [root@lnmp 6379]# redis-check-aof appendonly.aof  #redis-check-aof表示检查aof文件的完整性
 AOF analyzed: size=99, ok_up_to=99, diff=0
 AOF is valid
-注：config get和config set是在redis-cli命令行中进行设置和获取的
 
 #第十六节：sentinel(哨兵)运维监控
 #使用sentinel自动化故障转移redis主从架构
@@ -1306,7 +1312,7 @@ daemonize no   #是否为守护进程运行
 pidfile /var/run/redis-sentinel.pid   #pid目录
 logfile ""    #日志文件名称
 dir /tmp   #系统文件存储目录
-sentinel monitor mymaster 127.0.0.1 6379 2  #监控master的地址及端口，并指明当有多少个sentinel认为一个master失效时，master才算真正失效
+sentinel monitor mymaster 127.0.0.1 6379 2  #监控master的地址及端口，并指明当有多少个sentinel认为一个master失效时，master才算真正失效，mymaster是master的别名
 sentinel down-after-milliseconds mymaster 30000  #指定了需要多少失效时间后，一个master才会被这个sentinel主观地认为是不可用的。单位是毫秒，默认为30秒
 sentinel parallel-syncs mymaster 1  #用来限制在一次故障转移之后，每次向新的主节点发起复制操作的从节点个数
 sentinel failover-timeout mymaster 180000     
@@ -1316,7 +1322,7 @@ sentinel failover-timeout mymaster 180000
 4.当进行failover时，配置所有slaves指向新的master所需的最大时间。不过，即使过了这个超时，slaves依然会被正确配置为指向master，但是就不按parallel-syncs所配置的规则来了。
 sentinel deny-scripts-reconfig yes #是否拒绝使用触发脚本
 #实例：
-[root@lnmp ~]# egrep -v '#|^$' //usr/local/redis/sentinel.conf #更改配置
+[root@lnmp ~]# egrep -v '#|^$' /usr/local/redis/sentinel.conf #更改配置
 port 26379
 daemonize no
 pidfile /var/run/redis-sentinel.pid
@@ -1329,7 +1335,7 @@ sentinel failover-timeout mymaster 180000
 sentinel deny-scripts-reconfig yes
 [root@lnmp ~]# redis-server /usr/local/redis/sentinel.conf --sentinel #启动sentinel服务
 [root@lnmp 6379]# redis-cli #模拟master服务停止
-#sentinel会显示切换主成功，并重新把slave指向新主，这个新主是由sentinel随机选举的，如果想指定哪台slave被提升为主，可在对应的slave服务器上更改rdeis.conf配置文件：replica-priority 50
+#sentinel会显示切换主成功，并重新把slave指向新主6380上，这个新主是由sentinel随机选举的，如果想指定哪台slave被提升为主，可在对应的slave服务器上更改rdeis.conf配置文件优先级：replica-priority 50，优先级值越小表示越优先被选举为主redis
 31017:X 17 Jul 2019 22:39:28.840 # +switch-master mymaster 127.0.0.1 6379 127.0.0.1 6380
 31017:X 17 Jul 2019 22:39:28.840 * +slave slave 127.0.0.1:6381 127.0.0.1 6381 @ mymaster 127.0.0.1 6380
 31017:X 17 Jul 2019 22:39:28.840 * +slave slave 127.0.0.1:6379 127.0.0.1 6379 @ mymaster 127.0.0.1 6380
