@@ -169,9 +169,9 @@ GO  --进行批处理
 	自动收缩
 	手动收缩
 自动收缩操作：
-	右键数据库属性---常规---可以查看大小和可用空间---自动收缩选择为true（以后每半个小时会检查）
+	右键数据库属性---常规---可以查看大小和可用空间---选项---自动收缩选择为true（以后每半个小时会检查）
 手动收缩操作：
-	右键数据库任务---收缩---数据库或者文件---进行收缩
+	右键数据库任务---收缩---文件---进行收缩
 
 ######数据库的备份与还原
 sqlserver提供四种数据库备份方式：
@@ -329,6 +329,163 @@ SELECT * FROM table2 WHERE n IN (SELECT n FROM table1)
 SELECT * FROM table2 WHERE n <> ANY(SELECT n FROM table1) --加上下面这条结果不一样
 SELECT * FROM table2 WHERE n NOT IN (SELECT n FROM table1)
 注：n=ANY与n IN相同的， n <> ANY和n NOT IN是不相同的
+
+##查询示例集：
+--[1]查询全部的行和列,*代表所有的行和列
+SELECT * FROM UserInfo
+--[2]查询部分行和列，部分行使用WEHRE来限制，部分列使用列名来限制
+SELECT UserId ,PayWay,PayMoney FROM OrderInfo 
+WHERE PayWay='网上银行'  --“=”的作用是比较运算符，将左右两边的值进行相比
+--同理，查询一下付款的方式不是“网上银行”的订单信息
+SELECT UserId,PayWay,PayMoney FROM OrderInfo 
+WHERE PayWay<>'网上银行'  --不等于也可以使用"!="非SQL92标准
+--[3]在查询的结查集中使得别名
+ --（1）使用AS关键字来改变结果集中的别名
+ SELECT UserId AS 用户名 ,PayWay AS 付款方式,PayMoney AS 付款金额
+  FROM OrderInfo 
+WHERE PayWay='网上银行' 
+--（2）使用“=”赋值运算符来改变结果集中的别名，赋值的顺序是从右向左赋值
+SELECT 用户名=UserId ,付款方式=PayWay,付款金额=PayMoney FROM OrderInfo 
+WHERE PayWay='网上银行' 
+--（3）使用“空格”来改变结果集中列的别名
+SELECT UserId 用户名 ,PayWay 付款方式,PayMoney 付款金额
+ FROM OrderInfo 
+WHERE PayWay='网上银行' 
+--[4]查询NULL值
+SELECT * FROM UserInfo WHERE Email IS NULL
+--如果原来有数据，而后又被删除，那么使用IS NULL能否查询到？查不到
+SELECT * FROM UserInfo WHERE Email IS NULL OR Email=''
+--IS NULL与''的区别
+--IS NULL:从未录入过数据，没有地址
+--''：录入过数据，而后被删除，是有地址
+
+--[1]在查询中使用常量列
+SELECT UserId 用户号,PayWay 付款方式,PayMoney 付款金额,
+'天猫' AS 购物网站 FROM OrderInfo
+--[2]查询返回限制的行数，使用TOP关键字
+  --(1)返回限定的个数
+  SELECT TOP 5 UserName AS 用户名,UserAddress AS 地址
+   FROM UserInfo WHERE Gender=1
+  --(2)返回限定百份比 20% PERCENT
+    SELECT TOP 20 PERCENT UserName AS 用户名,UserAddress AS 地址
+   FROM UserInfo WHERE Gender=1
+   -- 数据库中用户表中女生的用户有几条？X*20%=2   X=？X*0.2=2  X*2=20  X=10
+   SELECT * FROM UserInfo WHERE Gender=1   --6*0.2  =1.2条
+   --使用百份比的形式能够得到大概的数据而非精确的数据
+   --[3]在查询的结查集中进行排序，关键字是ORDER BY 升序为ASC,降序为DESC
+   --将订单表中付款金额由高到低的顺序显示
+   SELECT UserId,PayWay,PayMoney FROM OrderInfo
+   ORDER BY PayMoney DESC
+   --如何按照多列进行排序
+   --按购买数量降序，按付款金额升序，
+   SELECT UserId,PayWay,Amount,PayMoney FROM OrderInfo
+   ORDER BY Amount DESC,PayMoney ASC
+
+SELECT UserName,UserAddress,Phone FROM UserInfo WHERE UserName LIKE '李%'
+SELECT * FROM OrderInfo WHERE Amount BETWEEN 2 AND 10
+SELECT * FROM OrderInfo WHERE Amount BETWEEN 10 AND 2
+ --相当于
+SELECT * FROM OrderInfo WHERE Amount>=10 AND Amount<=2
+SELECT * FROM OrderInfo WHERE PayWay IN
+ ('网上银行','邮局汇款')
+SELECT * FROM OrderInfo WHERE PayWay ='网上银行'  OR 
+ PayWay='邮局汇款'
+
+SELECT COUNT(*) FROM UserInfo WHERE Gender=0--男性用户
+SELECT COUNT(*) FROM UserInfo WHERE Gender=1--女性用户
+--（2）使用分组来完成
+SELECT COUNT(*) AS 总人数,Gender AS 性别 FROM UserInfo
+GROUP BY Gender
+SELECT CommodityId AS 商品编号,SUM(Amount) AS 销售总量
+   FROM OrderInfo
+  GROUP BY CommodityId
+  ORDER BY SUM(Amount) DESC
+SELECT SUM(Amount) AS 销售总量,CommodityId AS 商品编号
+  FROM OrderInfo
+  WHERE OrderTime BETWEEN '2013-1-1' AND '2014-11-30'
+  GROUP BY CommodityId
+  HAVING SUM(Amount)>10
+  ORDER BY SUM(Amount) DESC
+
+--1、先将两表中的数据相乘
+--2、通过WHERE条件选 出重叠的部分
+--改进版，三表连接查询
+SELECT O.OrderId,U.UserName,O.Amount,C.CommodityName
+ FROM OrderInfo AS O,UserInfo AS U,
+CommodityInfo AS C
+WHERE O.UserId=U.UserId AND C.CommodityId=O.CommodityId
+
+--[2]使用INNER JOIN..ON
+SELECT OrderId,UserName,O.Amount,CommodityName
+ FROM UserInfo AS U
+INNER JOIN OrderInfo AS O ON U.UserId=O.UserId
+INNER JOIN CommodityInfo AS C ON O.CommodityId=C.CommodityId
+WHERE U.UserName='赵可以'
+
+--如何来分左表还是右表
+--LEFT JOIN左外连接以  LEFT 左边的表为主表
+--RIGHT JOIN右外连接以RIGHT 右边的表为主表
+左外连与右外连接相互转换
+--左外连接
+SELECT S.SortName AS 类别名称,Amount AS 库存量
+ FROM CommoditySort AS S 
+LEFT JOIN CommodityInfo AS C
+ON S.SortId=C.SortId
+--相当于
+--右外连接
+SELECT S.SortName AS 类别名称,Amount AS 库存量
+ FROM CommodityInfo AS C
+RIGHT JOIN CommoditySort AS S
+ON C.SortId=S.SortId
+
+SELECT UserName AS 用户名,UserAddress AS 地址 FROM UserInfo WHERE UserId=
+(
+	SELECT UserId FROM OrderInfo WHERE CommodityId=
+	(
+		SELECT CommodityId FROM CommodityInfo 
+		WHERE CommodityName='苹果Iphone6'
+	)
+)
+
+SELECT UserId,UserName,UserAddress FROM UserInfo
+UNION
+SELECT UserId,PayWay, CONVERT(varchar(10),OrderTime) FROM OrderInfo
+SELECT * FROM UserInfo WHERE UserId NOT IN
+(
+	SELECT DISTINCT UserId FROM OrderInfo 
+)
+--购买超过3个的用户的付款金额打8折
+IF EXISTS(SELECT * FROM OrderInfo WHERE CommodityId IN
+(
+	SELECT CommodityId FROM CommodityInfo WHERE SortId=
+	(
+		SELECT SortId FROM CommoditySort WHERE SortName='手机数码'
+	)
+)AND Amount>3)
+	BEGIN
+		--对付款金额打8折
+		UPDATE OrderInfo SET PayMoney=PayMoney*0.8
+		WHERE CommodityId IN
+		(
+			SELECT CommodityId FROM OrderInfo WHERE CommodityId IN
+			(
+				SELECT CommodityId FROM CommodityInfo WHERE SortId=
+				(
+					SELECT SortId FROM CommoditySort WHERE SortName='手机数码'
+				)
+			)AND Amount>3
+		)
+	END
+	--通常会使用NOT EXISTS对子查询的结果进行取反
+	--EXISTS:子查询查到记录，结果为真，否则结果为假
+	--NOT EXISTS:子查询查不到结果，返回为真，子查询查到结查，返回为假 
+
+SELECT S.SortName AS  类别名称,cnt AS 库存量 FROM CommoditySort AS S
+INNER JOIN (SELECT SortId,SUM(Amount) AS cnt FROM CommodityInfo
+GROUP BY SortId
+HAVING SUM(Amount)>10000) AS T
+ON S.SortId=T.SortId)
+
 
 #######T-SQL程序
 ###变量
