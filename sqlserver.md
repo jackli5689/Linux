@@ -28,9 +28,15 @@ restricted_user #表示只允许数据库管理员登录
 先创建数据库--文件组--添加文件组FG--常规--设置数据库名称--添加--选择FG文件组
 
 #sqlserver系统视图
-sysdatabases,sysobjects,sysindexes
+sysdatabases,sysobjects,sysindexes,sys.objects
 #sqlserver存储过程
 sp_databases,sp_renamedb,sp_help,sp_columns
+#查询存储过程或自定义函数的内容
+exec sp_helptext sp_databases
+#查询表:
+select * from sys.objects where type='U'
+#查询存储过程
+select * from sys.objects where type='P'
 
 #使用SQL语句创建数据库
 #创建数据库时设置主文件组、日志文件
@@ -253,7 +259,7 @@ TRUNCATE TABLE --清空表，删除表数据并清空自增长值且从头开始
 ##########sqlserver函数
 函数帮助和其他帮助都可以通过F1的索引
 ###字符串函数
-函数：chaindex(),len(),left(),right(),replace(),stuff()
+函数：charindex(),len(),left(),right(),replace(),stuff()
 select CHARINDEX('mi','www.mi.com') --从www.mi.com中截取mi的索引开始位置
 select CHARINDEX('mi','www.mi.com'，10) --并给定起始位置
 --将函数放在查询语句中进行使用
@@ -521,7 +527,7 @@ SELECT @@ERROR AS 错误号  --对结果全名别名
 PRINT '错误号' + convert(varchar(10),@@ERROR)
 PRINT '错误号' + CAST(@@ERROR AS varchar(5))
 相同点：都能够将某数据类型转换为另一种数据类型
-异同点：CONVERT有三个参数，但CONVERT函数转换有优势，转换类型很多,SELECT CONVERT(VARCHAR(10),GETDATE(),111)
+异同点：CONVERT有三个参数，但CONVERT函数转换有优势，转换类型很多,SELECT CONVERT(VARCHAR(10),GETDATE(),111),111为style，可以设置date或time类型的数据，其他类型为0
 
 ######流程控制语句
 顺序结构：BEGIN......END
@@ -677,7 +683,7 @@ BEGIN TRAN ----@@TRANSCOUNT+1
 	BEGIN TRAN ----@@TRANSCOUNT又+1
 	COMMIT TRAN ----@@TRANSCOUNT-1
 COMMIT TRAN  ----@@TRANSCOUNT又-1
-#注：当在嵌套事务中使用ROLLBACK TRAN是，则TRANSCOUNT变量直接变成0，也就是说这样会直接取消父事务，使嵌套事务和父事务都会取消
+#注：当在嵌套事务中使用ROLLBACK TRAN时，则TRANSCOUNT变量直接变成0，也就是说这样会直接取消父事务，使嵌套事务和父事务都会取消
 如何开启显式事务：
 	SET IMPLICIT_TRANSACTIONS OFF --关闭隐式事务
 如何开启隐式事务：(默认是隐式事务)
@@ -811,6 +817,7 @@ CREATE PROC[EDURE] procedure_name
 	@endDate datetime=null,  
 	@userId varchar(20)=null 
 AS 
+	SELECT @startDate='2019-06-01',@endDate='2019-07-01',@userId=1
 	INSERT INTO table1 VAULES (@startDate,@endDate,@userId)
 	IF @@ERROR>0
 		RETURN -1
