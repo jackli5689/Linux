@@ -518,7 +518,7 @@ SELECT @province --显示值
 @@ERROR --返回执行的上一个Transact-SQL语句的错误号。如果前一个 Transact-SQL 语句执行没有错误，则返回 0。
 SELECT @@ERROR  --SELECT输出的时候以表格结果输出的
 PRINT @@ERROR  --PRINT输出的时候以文本结果输出的
-SELECT @@ERROR AS 错误号  --对结果全名别名
+SELECT @@ERROR AS 错误号  --对结果命名别名
 
 ###数据类型转换
 隐式转换：类型相兼容自动转换
