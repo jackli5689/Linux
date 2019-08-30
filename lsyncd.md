@@ -44,7 +44,7 @@ sync {
         verbose   = true,
        -- _extra = {"--bwlimit=2000"},  --是否限制和设置带宽大小
         },
-    ssh      = {
+    ssh      = {   --需要使用无密证书认证
         port  =  22
         }
     }
