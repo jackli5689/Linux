@@ -1192,13 +1192,161 @@ exception
 end;
 /
 
-#PLSQL存储过程概念
+#ORACLE存储过程概念
 为什么要用存储过程？
     （1）PLSQL每次执行都要整体运行一遍，才有结果
     （2）PLSQL不能将其封装起来，长期保存在oracle服务器中
     （3）PLSQL不能被其它应用程序调用，例如：Java
 存储过程与PLSQL是什么关系？
 
+#ORACLE存储过程
+
+创建无参存储过程hello，无返回值，语法：create or replace procedure 过程名 as PLSQL程序
+create or replace procedure hello
+as
+begin
+    dbms_output.put_line('hello');
+end;
+/
+
+删除存储过程hello，语法：drop procedure 过程名
+drop procedure hello
+调用存储过程方式一，exec 存储过程名
+exec hello;
+调用存储过程方式二，PLSQL程序
+begin
+    hello;
+end;
+/
+调用存储过程方式三，Java程序
+
+创建有参存储过程raiseSalary(编号)，为7369号员工涨10%的工资，演示in的用法，默认in，大小写不敏感
+create or replace procedure raiseSalary(pempno in number)
+as
+
+begin
+    update emp set sal=sal*1.1 where empno=pempno;
+end;
+/
+exec raiseSalary(7369);
+
+创建有参存储过程findEmpNameAndSalAndJob(编号)，查询7788号员工的的姓名，职位，月薪，返回多个值，演示out的用法
+--创建存储过程
+create or replace procedure findEmpNameAndSalAndJob(pempno in number,pename out varchar2,pjob out varchar2,psal out number)
+as
+begin
+    select ename,job,sal into pename,pjob,psal from emp where empno=pempno;
+end;
+/
+--PLSQL调用
+declare
+    pename emp.ename%type;
+    pjob emp.job%type;
+    psal emp.sal%type;
+begin
+    findEmpNameAndSalAndJob(7788,pename,pjob,psal);
+    dbms_output.put_line('姓名'||pename||' 职位'||pjob||' 工资'||psal);
+end;
+/
+
+什么情况下用exec调用，什么情况下用PLSQL调用存储过程？
+没有返回值时用exec,当有返回值时用PLSQL
+
+用存储过程，写一个计算个人所得税的功能
+create or replace procedure tax(sal in number,sum out number)
+as
+    int number;
+begin
+    int := sal - 3500;
+    if int<1500 then
+        sum := int*0.3-0;
+    elsif int<4500 then
+        sum := int*0.1-105;
+    elsif int<9000 then
+        sum := int*0.2-555;
+    elsif int<35000 then
+        sum := int*0.25-1005;
+    elsif int<55000 then 
+        sum := int*0.3-2755;
+    elsif int<80000 then
+        sum := int*0.35-5505;
+    else 
+        sum := int*0.45-13505;
+    end if;
+end;
+/
+
+--PLSQL调用 
+declare 
+    stax number;
+begin
+    tax(5000,stax);
+    dbms_output.put_line('交税'||stax);
+end;
+/
+
+#存储函数
+创建无参存储函数getName，有返回值，语法：create or replace function 函数名 return 返回类型 as PLSQL程序段
+create or replace function get_name return varchar2
+as
+begin
+    return 'hello world!';
+end;
+/
+
+删除存储函数getName，语法：drop function 函数名
+drop function get_name;
+
+调用存储函数方式一，PLSQL程序
+declare
+    fanhui varchar2(20);
+begin
+    fanhui := get_name(); 
+    dbms_output.put_line(fanhui);
+end;
+/
+
+调用存储函数方式二，Java程序
+
+创建有参存储函数findEmpIncome(编号)，查询7369号员工的年收入，演示in的用法，默认in
+create or replace function findEmpIncome(fempno in number) return number
+as
+    income number;
+begin
+    select sal*12+NVL(comm,0) into income from emp where empno=fempno;
+    return income;
+end;
+/
+
+--调用函数
+declare
+    income number;
+begin
+    income := findEmpIncome(7369);
+    dbms_output.put_line('年收入'||income);
+end;
+/
+
+创建有参存储函数findEmpNameAndJobAndSal(编号)，查询7788号员工的的姓名(return)，职位(out)，月薪(out)，返回多个值
+--定义函数
+create or replace function findEmpNameAndJobAndSal(fempno in number,fjob out varchar2,fsal out number) return varchar2
+as
+    fename emp.ename%type;
+begin
+    select ename,job,sal into fename,fjob,fsal from emp where empno=fempno;
+    return fename;
+end;
+/
+--调用函数
+declare
+    fjob emp.job%type;
+    fsal emp.sal%type;
+    fename emp.ename%type;
+begin
+    fename := findEmpNameAndJobAndSal(7788,fjob,fsal);
+    dbms_output.put_line(fename||'--'||fjob||'--'||fsal);
+end;
+/
 
 
 
