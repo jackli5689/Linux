@@ -902,5 +902,40 @@ group::r-x
 group:Info:rwx
 mask::rwx
 
+#find
+find $(pwd) -type -f   #查找文件
+find $(pwd) -ctime +3 -exec rm -rf {} \; #查找3天前的文件(以ctime时间来判断.当你编辑文件什么也不修改退出时，此时会改变atime(access time)时间，当你修改并保存退出时，此时会改变atime和mtime(modify time)时间。当你更改文件权限和移动复制时会改变ctime(change time)时间)，然后执行删除
+find $(pwd) -cmin -60  #以change time时间(minute单位)来查找60分钟内的文件,还有mmin,amin
+find $(pwd) -size +10k #查找大于10k的文件
+find . -name \*.cfg -print  #查找.cfg结尾的文件并打印出来
+find /sbin /usr/sbin -executable \! -readable -print  #搜索可执行但不可读的文件
+find ./ -perm 664  #查找权限正好是664的所有文件
+find ./ -perm -664 #查找权限最大是664的所有文件
+find ./ -perm +644 #查找权限最小是664的所有文件
+
+#nginx日志切割
+cat /shell/nginx_cut.sh
+#!/bin/bash
+date=$(date +%Y-%m-%y-%H:%M:%S)   
+logpath=/var/log/nginx
+bkpath=$logpath/backup_logs
+nginx_pid=/var/run/nginx/nginx.pid
+mkdir -p $bkpath
+mv $logpath/access.log $bkpath/access-$date.log 
+mv $logpath/error.log $bkpath/error-$date.log
+kill -USR1 $(cat $nginx_pid) 
+#clean old logs
+find $bkpath/ -ctime +90 -exec rm -f {} \;
+
+tail /etc/crontab
+0 2 * * * root /etc/init.d/nginx_cut.sh
+
+
+
+
+
+
+
+
 
 </pre>
