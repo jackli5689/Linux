@@ -916,7 +916,7 @@ find ./ -perm +644 #查找权限最小是664的所有文件
 #nginx日志切割
 cat /shell/nginx_cut.sh
 #!/bin/bash
-date=$(date +%Y-%m-%y-%H:%M:%S)   
+date=$(date +%Y-%m-%d-%H:%M:%S)   
 logpath=/var/log/nginx
 bkpath=$logpath/backup_logs
 nginx_pid=/var/run/nginx/nginx.pid
