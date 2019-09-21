@@ -902,6 +902,7 @@ group::r-x
 group:Info:rwx
 mask::rwx
 
+<<<<<<< Updated upstream
 #find
 find $(pwd) -type -f   #查找文件
 find $(pwd) -ctime +3 -exec rm -rf {} \; #查找3天前的文件(以ctime时间来判断.当你编辑文件什么也不修改退出时，此时会改变atime(access time)时间，当你修改并保存退出时，此时会改变atime和mtime(modify time)时间。当你更改文件权限和移动复制时会改变ctime(change time)时间)，然后执行删除
@@ -930,10 +931,128 @@ find $bkpath/ -ctime +90 -exec rm -f {} \;
 tail /etc/crontab
 0 2 * * * root /etc/init.d/nginx_cut.sh
 
+####日志切割
+#logrotate的执行是由crond服务来调用的，其脚本是/etc/cron.daily/logrotate
+[root@elk bin]# cat /etc/cron.daily/logrotate 
+#!/bin/sh
+/usr/sbin/logrotate -s /var/lib/logrotate/logrotate.status /etc/logrotate.conf
+EXITVALUE=$?
+if [ $EXITVALUE != 0 ]; then
+    /usr/bin/logger -t logrotate "ALERT exited abnormally with [$EXITVALUE]"
+fi
+exit 0
+/usr/sbin/logrotate工具调用了/var/lib/logrotate/logrotate.status和/etc/logrotate.conf两个文件。然后将执行的结果（就是那个$?，成功为0，不成功为非0）进行判断，非0时执行/usr/bin/logger命令。最后退出。
 
+#/etc/logrotate.conf是主配置文件
+[root@xuexi ~]# grep -vE "^$|^#" /etc/logrotate.conf
+weekly　　//每周一次rotate（翻译是旋转，其实就是切割）
+rotate 4　　//保留4份切割文件，多余删除，不计算新建日志文件
+create　　//结束后创建一个新的空白日志文件
+dateext　　//用日期作为切切割文件的后缀
+include /etc/logrotate.d　　//将/etc/logrotate.d目录下的文件都加载进来（全都执行）
+/var/log/wtmp {　　//仅针对/var/log/wtmp文件
+    monthly　　//每月执行一次
+    create 0664 root utmp　　//结束后创建新的空白日志，权限0664，所有者root，所属组utmp
+    minsize 1M　　//切割文件最少需要1M，否则不执行
+    rotate 1　　//保留1份，多余删除，不计算新建日志文件
+}
+/var/log/btmp {　　//仅针对/var/log/btmp
+    missingok　　//丢失不报错
+    monthly　　//每月执行一次
+    create 0600 root utmp　　//结束后创建新的空白日志，权限0600，所有者root，所属组utmp
+    rotate 1　　//保留1份，多余删除，不计算新建日志文件
+}
+#其余主要参数
+olddir directory                         转储后的日志文件放入指定的目录，必须和当前日志文件在同一个文件系统
+copytruncate                              用于还在打开中的日志文件，把当前日志备份并截断；是先拷贝再清空的方式，拷贝和清空之间有一个时间差，可能会丢失部分日志数据。
+sharedscripts                           运行postrotate脚本，作用是在所有日志都轮转后统一执行一次脚本。如果没有配置这个，那么每个日志轮转后都会执行一次脚本
+prerotate                                 在logrotate转储之前需要执行的指令，例如修改文件的属性等动作；必须独立成行
+postrotate                               在logrotate转储之后需要执行的指令，例如重新启动 (kill -HUP) 某个服务！必须独立成行
 
+#/var/lib/logrotate/logrotate.status中默认记录logrotate上次切割日志文件的时间
+[root@elk bin]# cat /var/lib/logrotate/logrotate.status 
+logrotate state -- version 2
+"/var/log/yum.log" 2019-8-8-1:0:0
+"/var/log/boot.log" 2019-8-11-3:7:1
+"/var/log/httpd/error_log" 2019-8-11-3:0:0
+"/var/log/chrony/*.log" 2019-8-8-1:0:0
+"/var/log/wtmp" 2019-8-8-1:0:0
+"/var/log/spooler" 2019-8-11-3:7:1
+"/var/log/btmp" 2019-8-8-1:0:0
+"/var/log/maillog" 2019-8-11-3:7:1
+"/var/log/iptraf-ng/*.log" 2019-8-8-1:0:0
+"/var/log/wpa_supplicant.log" 2019-8-8-1:0:0
+"/var/log/secure" 2019-8-11-3:7:1
+"/var/log/messages" 2019-8-11-3:7:1
+"/var/log/httpd/access_log" 2019-8-11-3:0:0
+"/var/account/pacct" 2019-8-8-1:0:0
+"/var/log/cron" 2019-8-11-3:7:1
+[root@elk bin]# vim /etc/logrotate.d/sshd #因为/etc/logrotate.d被include到/etc/logrotate.conf中，又/etc/logrotate.conf被include到/etc/cron.daily/logrotate中，所以每天会执行一边新建的文件，不过每天检查到我们这也不会每天进行切割，因为我们这里明确定义了每周进行切割一次
+/var/log/sshd-test.log{
+        missingok
+        weekly
+        create 0600 root root
+        dateext
+        rotate 3
+}
+[root@elk bin]# logrotate -vf /etc/logrotate.d/sshd  #手动强制进行日志切割
+logrotate命令格式：
+logrotate [OPTION...] <configfile>
+-d, --debug ：debug模式，测试配置文件是否有错误。
+-f, --force ：强制转储文件。
+-m, --mail=command ：压缩日志后，发送日志到指定邮箱。
+-s, --state=statefile ：使用指定的状态文件。
+-v, --verbose ：显示转储过程。
 
+[root@elk bin]# ls /var/log/
+     sshd-test.log
+     sshd-test.log-20190811
 
+切割nginx日志的配置	
+[root@master-server ~]# vim /etc/logrotate.d/nginx
+/usr/local/nginx/logs/*.log {
+daily
+rotate 7
+missingok
+notifempty
+dateext
+sharedscripts
+postrotate
+    if [ -f /usr/local/nginx/logs/nginx.pid ]; then
+        kill -USR1 `cat /usr/local/nginx/logs/nginx.pid`
+    fi
+endscript
+}
+##日志分割脚本
+[root@bastion-IDC ~# vim /usr/local/sbin/logrotate-nginx.sh
+-------------
+#!/bin/bash
+#创建转储日志压缩存放目录
+mkdir -p /data/nginx_logs/days
+#手工对nginx日志进行切割转换
+/usr/sbin/logrotate -vf /etc/logrotate.d/nginx
+#当前时间
+time=$(date -d "yesterday" +"%Y-%m-%d")
+#进入转储日志存放目录
+cd /data/nginx_logs/days
+#对目录中的转储日志文件的文件名进行统一转换
+for i in $(ls ./ | grep "^\(.*\)\.[[:digit:]]$")
+do
+mv ${i} ./$(echo ${i}|sed -n 's/^\(.*\)\.\([[:digit:]]\)$/\1/p')-$(echo $time)
+done
+#对转储的日志文件进行压缩存放，并删除原有转储的日志文件，只保存压缩后的日志文件。以节约存储空间
+for i in $(ls ./ | grep "^\(.*\)\-\([[:digit:]-]\+\)$")
+do
+tar jcvf ${i}.bz2 ./${i}
+rm -rf ./${i}
+done
+#只保留最近7天的压缩转储日志文件
+find /data/nginx_logs/days/* -name "*.bz2" -mtime 7 -type f -exec rm -rf {} \;
+-------------
+##crontab定时执行
+[root@bastion-IDC ~# crontab -e
+#logrotate
+0 0 * * * /bin/bash -x /usr/local/sbin/logrotate-nginx.sh > /dev/null 2>&1 
 
 
 
