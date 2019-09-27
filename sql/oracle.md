@@ -1318,7 +1318,7 @@ begin
 end;
 /
 
---调用函数
+--PLSQL调用函数
 declare
     income number;
 begin
@@ -1348,6 +1348,206 @@ begin
 end;
 /
 
+##过程函数和SQL适合什么场景
+声明：适合不是强行要你使用，只是优先考虑
+什么情况下【适合使用】存储过程？什么情况下【适合使用】存储函数？
+【适合使用】存储过程：无返回值或有多个返回值时，适合用函数 
+【适合使用】存储函数：有且只有一个返回值时，适合用函数
 
+什么情况【适合使用】过程函数，什么情况【适合使用】SQL？
+	【适合使用】过程函数：
+	    》需要长期保存在数据库中
+        》需要被多个用户重复调用
+        》业务逻辑相同，只是参数不一样
+	    》批操作大量数据，例如：批量插入很多数据
+	【适合使用】SQL：
+	    》凡是上述反面，都可使用SQL
+	    》对表，视图，序列，索引，等这些还是要用SQL 
+
+#触发器
+创建语句级触发器insertEmpTrigger，当对表【emp】进行增加【insert】操作前【before】，显示"hello world"
+create or replace trigger insertEmpTrigger
+before insert 
+on emp
+begin
+    dbms_output.put_line('Hello World!');
+end;
+/
+删除触发器insertEmpTrigger，语法：drop trigger 触发器名
+drop trigger insertEmpTrigger;
+使用insert语句插入一条记录，引起insertEmpTrigger触发器工作
+SQL> set serveroutput on
+SQL> insert into emp(empno,ename) values (101,'jack');
+Hello World!
+使用insert语句插入N条记录，引起insertEmpTrigger触发器工作
+begin
+    for i in 200..299
+       loop
+            insert into emp(empno,ename) values (i,'jack');
+       end loop ;
+end;
+/
+创建语句级触发器deleteEmpTrigger，当对表【emp】进行删除【delete】操作后【after】，显示"world hello"
+create or replace trigger deleteEmpTrigger
+after delete
+on emp
+begin
+    dbms_output.put_line('World! Hello');
+end;
+/
+使用delete语句删除一条记录，引起deleteEmpTrigger触发器工作
+SQL> delete from emp where empno=3;
+World! Hello
+使用delete语句删除N条记录，引起deleteEmpTrigger触发器工作
+begin
+    for i in 200..299
+        loop
+               delete from emp where empno=i;
+        end loop;
+end;
+/
+
+#星期一到星期五，且7-23点能向数据库emp表插入数据，否则使用函数抛出异常,
+语法：raise_application_error('-20000','例外原因')
+SQL> create or replace trigger securityTrigger
+  2  before insert
+  3  on emp
+  4  declare
+  5      week varchar2(10);
+  6      hour number(2);
+  7  begin
+  8      select to_char(sysdate,'day') into week from dual;
+  9      select to_char(sysdate,'hh24') into hour from dual;
+ 10      if week in ('星期六','星期日') or hour not between 7 and 23 then
+ 11          raise_application_error('-20000','非工作时间，不准插入数据！！！');
+ 12      end if;
+ 13  end;
+ 14  /
+
+触发器已创建
+
+SQL> insert into emp(empno,ename) values(100,'jack');
+insert into emp(empno,ename) values(100,'jack')
+            *
+第 1 行出现错误:
+ORA-20000: 非工作时间，不准插入数据！！！
+ORA-06512: 在 "SCOTT.SECURITYTRIGGER", line 8
+ORA-04088: 触发器 'SCOTT.SECURITYTRIGGER' 执行过程中出错
+
+#创建行级触发器checkSalaryTrigger，涨后工资这一列，确保大于涨前工资，语法：for each row/:new.sal/:old.sal
+create or replace trigger checkSalaryTrigger
+after update of sal  --更新emp表sal列以后
+on emp for each row  --针对每一行进行操作
+begin
+    if :new.sal <= :old.sal then
+        raise_application_error('-20200','工资不能降低！！！');
+    end if;
+end;
+/
+--抛异常后就等于语句没执行成功
+SQL> update emp set sal=800 where empno=7369;
+update emp set sal=800 where empno=7369
+       *
+第 1 行出现错误:
+ORA-20200: 工资不能降低！！！
+ORA-06512: 在 "SCOTT.CHECKSALARYTRIGGER", line 3
+ORA-04088: 触发器 'SCOTT.CHECKSALARYTRIGGER' 执行过程中出错
+
+SQL> create table xxx_emp as select * from emp; #复制表数据及表结构
+SQL> drop table emp purge;
+表已删除。
+SQL> show recyclebin;
+
+#疑问：
+删除触发器，表还在吗？
+删除触发器后，表本身不会受影响。
+将表丢到回收站，触发器还在吗？
+触发器还在。
+当闪回表后，触发器会在吗？
+触发器还在。
+彻底删除表，触发器会在吗？
+触发器将也被彻底删除，就算新的同名表存在也是不会继承触发器的。
+
+#Oracle优化
+为什么要Oracle优化：
+       随着实际项目的启动，Oracle经过一段时间的运行，最初的Oracle设置，会与实际Oracle运行性能会有一些差异，这时我们就需要做一个优化调整。
+
+下面列出一些oracleSQL优化方案：
+（01）选择最有效率的表名顺序（笔试常考） 
+      ORACLE的解析器按照从右到左的顺序处理FROM子句中的表名， 
+      FROM子句中写在最后的表将被最先处理，
+      在FROM子句中包含多个表的情况下,你必须选择记录条数最少的表放在最后，
+      如果有3个以上的表连接查询,那就需要选择那个被其他表所引用的表放在最后。
+      例如：查询员工的编号，姓名，工资，工资等级，部门名
+      select emp.empno,emp.ename,emp.sal,salgrade.grade,dept.dname
+      from salgrade,dept,emp
+      where (emp.deptno = dept.deptno) and (emp.sal between salgrade.losal and salgrade.hisal)  		
+      1)如果三个表是完全无关系的话，将记录和列名最少的表，写在最后，然后依次类推
+      2)如果三个表是有关系的话，将引用最多的表，放在最后，然后依次类推
+（02）WHERE子句中的连接顺序（笔试常考）  
+      ORACLE采用自右而左的顺序解析WHERE子句,根据这个原理,表之间的连接必须写在其他WHERE条件之左,
+      那些可以过滤掉最大数量记录的条件必须写在WHERE子句的之右。  
+      例如：查询员工的编号，姓名，工资，部门名  
+      select emp.empno,emp.ename,emp.sal,dept.dname
+      from emp,dept
+      where (emp.deptno = dept.deptno) and (emp.sal > 1500)   	
+（03）SELECT子句中避免使用*号
+      ORACLE在解析的过程中,会将*依次转换成所有的列名，这个工作是通过查询数据字典完成的，这意味着将耗费更多的时间
+      select empno,ename from emp;
+（04）使用DECODE函数来减少处理时间
+      使用DECODE函数可以避免重复扫描相同记录或重复连接相同的表
+（05）整合简单，无关联的数据库访问
+（06）用TRUNCATE替代DELETE   
+（07）尽量多使用COMMIT
+      因为COMMIT会释放回滚点
+（08）用WHERE子句替换HAVING子句
+      WHERE先执行，HAVING后执行     
+（09）多使用内部函数提高SQL效率     
+（10）使用表的别名
+      salgrade s    
+（11）使用列的别名
+      ename e
+（12）用索引提高效率
+      在查询中，善用索引     
+（13）字符串型，能用=号，不用like
+      因为=号表示精确比较，like表示模糊比较 
+（14）SQL语句用大写的
+      因为Oracle服务器总是先将小写字母转成大写后，才执行
+      在eclipse中，先写小写字母，再通过ctrl+shift+X转大写;ctrl+shift+Y转小写	
+（15）避免在索引列上使用NOT
+      因为Oracle服务器遇到NOT后，他就会停止目前的工作，转而执行全表扫描
+（16）避免在索引列上使用计算
+      WHERE子句中，如果索引列是函数的一部分，优化器将不使用索引而使用全表扫描，这样会变得变慢 
+      例如，SAL列上有索引，
+      低效：
+      SELECT EMPNO,ENAME
+      FROM EMP 
+      WHERE SAL*12 > 24000;
+      高效：
+      SELECT EMPNO,ENAME
+      FROM EMP
+      WHERE SAL > 24000/12;
+（17）用 >= 替代 >
+      低效：
+      SELECT * FROM EMP WHERE DEPTNO > 3   
+      首先定位到DEPTNO=3的记录并且扫描到第一个DEPT大于3的记录
+      高效：
+      SELECT * FROM EMP WHERE DEPTNO >= 4  
+      直接跳到第一个DEPT等于4的记录
+（18）用IN替代OR
+      select * from emp where sal = 1500 or sal = 3000 or sal = 800;
+      select * from emp where sal in (1500,3000,800);
+（19）总是使用索引的第一个列
+      如果索引是建立在多个列上，只有在它的第一个列被WHERE子句引用时，优化器才会选择使用该索引
+      当只引用索引的第二个列时，不引用索引的第一个列时，优化器使用了全表扫描而忽略了索引
+      create index emp_sal_job_idex
+      on emp(sal,job);
+      ----------------------------------
+      select *
+      from emp  
+      where job != 'SALES';	      
+（20）避免改变索引列的类型，显示比隐式更安全 
+      当字符和数值比较时，ORACLE会优先转换数值类型到字符类型 
+      select 123 || '123' from dual;
 
 </pre>

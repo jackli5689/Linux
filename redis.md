@@ -1,4 +1,4 @@
-#Redis
+﻿#Redis
 <pre>
 #teacher:燕十八
 redis官方网站：www.redis.io
@@ -998,7 +998,7 @@ run_id:7851f595b61548aa8ac902eb4d286ddbd3354dda
 当主从复制在初次复制时，主节点将自己的runid发送给从节点，从节点将这个runid保存起来,当断线重连时，从节点会将这个runid发送给主节点。主节点根据runid判断能否进行部分复制：如果从节点保存的runid与主节点现在的runid相同，说明主从节点之前同步过，主节点会更新offset偏移量之后的数据判断是否执行部分复制，如果offset偏移量之后的数据仍然都在复制积压缓冲区里，则执行部分复制，否则执行全量复制；如果从节点保存的runid与主节点现在的runid不同，说明从节点在断线前同步的redis节点并不是当前的主节点，只能进行全量复制;
 #psync2
 redis4.0新版本除了增加混合持久化，还优化了psync并实现即使redis实例重启的情况下也能实现部分同步，psync2在psync1基础上新增两个复制id：
-1. master_replid: 复制replid1，一个长度为41个字节(40个随机串+’0’)的字符串，每个redis实例都有，和runid没有直接关联，但和runid生成规则相同。当实例变为从实例后，自己的replid1会被主实例的replid1覆盖。
+1. master_replid: 复制replid1，一个长度为41个字节(40个随机串+’0’)的字符串，每个redis实例都有，和runid没有直接关联，但和runid生成规则相同。当实例变为从实例后，自己的replid1会被主实例的replid1覆盖。4
 master_replid2：复制replid2,默认初始化为全0，用于存储上次主实例的replid1。
 127.0.0.1:6381> info replication
 master_replid:5159bcb349104f9e1191fa74d18847a3b707025a
@@ -1305,6 +1305,7 @@ AOF is valid
 
 #第十六节：sentinel(哨兵)运维监控
 #使用sentinel自动化故障转移redis主从架构
+###注：sentinel哨兵必须跟redis-server在同一台服务器，因为新的主从架构redis是由哨兵来指挥部署完成的，它们之前是有关联性的，哨兵服务启动时是由redis-server命令启动，而redis服务也由这个命令启动，这正说明了他们之间是有关系性，否则无法使用
 [root@lnmp ~]# cp /usr/local/src/redis-5.0.5/sentinel.conf /usr/local/redis/ #复制sentinal配置文件到redis根目录下
 [root@lnmp ~]# egrep -v '#|^$' /usr/local/redis/sentinel.conf 
 port 26379    #sentinal的监听端口
@@ -1318,8 +1319,8 @@ sentinel parallel-syncs mymaster 1  #用来限制在一次故障转移之后，�
 sentinel failover-timeout mymaster 180000     
 1. 同一个sentinel对同一个master两次failover之间的间隔时间。   
 2. 当一个slave从一个错误的master那里同步数据开始计算时间。直到slave被纠正为向正确的master那里同步数据时。    
-3.当想要取消一个正在进行的failover所需要的时间。    
-4.当进行failover时，配置所有slaves指向新的master所需的最大时间。不过，即使过了这个超时，slaves依然会被正确配置为指向master，但是就不按parallel-syncs所配置的规则来了。
+3. 当想要取消一个正在进行的failover所需要的时间。    
+4. 当进行failover时，配置所有slaves指向新的master所需的最大时间。不过，即使过了这个超时，slaves依然会被正确配置为指向master，但是就不按parallel-syncs所配置的规则来了。
 sentinel deny-scripts-reconfig yes #是否拒绝使用触发脚本
 #实例：
 [root@lnmp ~]# egrep -v '#|^$' /usr/local/redis/sentinel.conf #更改配置
@@ -1335,13 +1336,12 @@ sentinel failover-timeout mymaster 180000
 sentinel deny-scripts-reconfig yes
 [root@lnmp ~]# redis-server /usr/local/redis/sentinel.conf --sentinel #启动sentinel服务
 [root@lnmp 6379]# redis-cli #模拟master服务停止
+127.0.0.1:6379> SHUTDOWN  #模拟master服务down
 #sentinel会显示切换主成功，并重新把slave指向新主6380上，这个新主是由sentinel随机选举的，如果想指定哪台slave被提升为主，可在对应的slave服务器上更改rdeis.conf配置文件优先级：replica-priority 50，优先级值越小表示越优先被选举为主redis
 31017:X 17 Jul 2019 22:39:28.840 # +switch-master mymaster 127.0.0.1 6379 127.0.0.1 6380
 31017:X 17 Jul 2019 22:39:28.840 * +slave slave 127.0.0.1:6381 127.0.0.1 6381 @ mymaster 127.0.0.1 6380
 31017:X 17 Jul 2019 22:39:28.840 * +slave slave 127.0.0.1:6379 127.0.0.1 6379 @ mymaster 127.0.0.1 6380
 31017:X 17 Jul 2019 22:39:58.903 # +sdown slave 127.0.0.1:6379 127.0.0.1 6379 @ mymaster 127.0.0.1 6380
-
-127.0.0.1:6379> SHUTDOWN  #模拟master服务down
 [root@lnmp ~]# redis-cli -p 6380
 127.0.0.1:6380> info replication
 # Replication
@@ -1444,6 +1444,555 @@ hash
 
 #重点：热数据写入redis,冷数据写入mysql,冷数据写入时得批量定时写入mysql，否则mysql顶不住 。
 
+
+###redis分布式集群
+redis slots槽：分布在主节点上，总共有16384个slot。
+注：1.此集群不支持mget，mset命令 2. 不支持事务 3. 不支持多数据库，只支持db0
+###集群部署
+1. 源码安装（上面有，这里就不再安装）
+2. 此集群最少6个节点，为做实验，这里用一台服务器运行6个实例
+	1. mkdir redis6379 && mkdir redis638{0，1，2，3,4} #新建6个实例配置目录
+	2. cp redis6379.conf redis6380/redis638{0,1,2,3,4}.conf #复制配置文件并修改相应配置
+	3. 配置文件如下：
+-----------
+bind 0.0.0.0
+protected-mode yes
+port 6379  #端口名跟实例名相对应
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+daemonize yes
+supervised no
+pidfile "/var/run/redis_6379.pid"  #文件名跟实例名相对应
+loglevel notice
+logfile ""
+databases 16
+always-show-logo yes
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename "dump6379.rdb"  #文件名跟实例名相对应
+dir "/usr/local/redis/master_slave"
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync no
+repl-diskless-sync-delay 5
+repl-disable-tcp-nodelay no
+replica-priority 100
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no
+appendonly yes
+appendfilename "appendonly6379.aof"  #文件名跟实例名相对应
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+lua-time-limit 5000
+slowlog-log-slower-than 10000
+slowlog-max-len 128
+latency-monitor-threshold 0
+notify-keyspace-events ""
+hash-max-ziplist-entries 512
+hash-max-ziplist-value 64
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+client-output-buffer-limit normal 0 0 0
+client-output-buffer-limit replica 256mb 64mb 60
+client-output-buffer-limit pubsub 32mb 8mb 60
+hz 10
+dynamic-hz yes
+aof-rewrite-incremental-fsync yes
+rdb-save-incremental-fsync yes
+#这下面3行每个实例都要配置一样，唯一不是集群配置文件名称不能一样
+cluster-enabled yes
+cluster-node-timeout 15000
+cluster-config-file "node-6379.conf"  #此文件自动生成不需要手动创建
+-----------
+#启动6个实例:
+redis-server redis6379/redis6379.conf 
+redis-server redis6380/redis6380.conf
+redis-server redis6381/redis6381.conf 
+redis-server redis6382/redis6382.conf
+redis-server redis6383/redis6383.conf 
+redis-server redis6384/redis6384.conf 
+[root@localhost master_slave]# netstat -tunlp | grep 63  #查看是否启用，因为为redis-cluster集群，所以每个实例有两个端口，分为客户端口和集群总线端口（节点之间用）
+tcp        0      0 0.0.0.0:6379            0.0.0.0:*               LISTEN      5316/redis-server 0 
+tcp        0      0 0.0.0.0:6380            0.0.0.0:*               LISTEN      6063/redis-server 0 
+tcp        0      0 0.0.0.0:6381            0.0.0.0:*               LISTEN      6068/redis-server 0 
+tcp        0      0 0.0.0.0:6382            0.0.0.0:*               LISTEN      6073/redis-server 0 
+tcp        0      0 0.0.0.0:6383            0.0.0.0:*               LISTEN      6078/redis-server 0 
+tcp        0      0 0.0.0.0:6384            0.0.0.0:*               LISTEN      6083/redis-server 0 
+tcp        0      0 0.0.0.0:16379           0.0.0.0:*               LISTEN      5316/redis-server 0 
+tcp        0      0 0.0.0.0:16380           0.0.0.0:*               LISTEN      6063/redis-server 0 
+tcp        0      0 0.0.0.0:16381           0.0.0.0:*               LISTEN      6068/redis-server 0 
+tcp        0      0 0.0.0.0:16382           0.0.0.0:*               LISTEN      6073/redis-server 0 
+tcp        0      0 0.0.0.0:16383           0.0.0.0:*               LISTEN      6078/redis-server 0 
+tcp        0      0 0.0.0.0:16384           0.0.0.0:*               LISTEN      6083/redis-server 0 
+#yum install ruby -y #安装redis-cluster依赖的ruby环境，因为作者是ruby语言写的
+[root@localhost master_slave]# redis-cli --cluster create 127.0.0.1:6379 127.0.0.1:6380 127.0.0.1:6381 127.0.0.1:6382 127.0.0.1:6383 127.0.0.1:6384 --cluster-replicas 1  #建立集群，redis-cli --custer help可获取集群命令帮助
+>>> Performing hash slots allocation on 6 nodes...
+Master[0] -> Slots 0 - 5460
+Master[1] -> Slots 5461 - 10922
+Master[2] -> Slots 10923 - 16383
+Adding replica 127.0.0.1:6383 to 127.0.0.1:6379
+Adding replica 127.0.0.1:6384 to 127.0.0.1:6380
+Adding replica 127.0.0.1:6382 to 127.0.0.1:6381
+>>> Trying to optimize slaves allocation for anti-affinity
+[WARNING] Some slaves are in the same host as their master
+M: bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a 127.0.0.1:6379
+   slots:[0-5460] (5461 slots) master
+M: d49674bacb676aa8506930dd48951432f529f084 127.0.0.1:6380
+   slots:[5461-10922] (5462 slots) master
+M: d6e4579a113d552dc0610e35ea025f413447401d 127.0.0.1:6381
+   slots:[10923-16383] (5461 slots) master
+S: 16af3d0ca0d386c8ec923a4c009b416480825ac4 127.0.0.1:6382
+   replicates d49674bacb676aa8506930dd48951432f529f084
+S: 9fdc0ccf2ab5427bba92f694efb43e718f8d2208 127.0.0.1:6383
+   replicates d6e4579a113d552dc0610e35ea025f413447401d
+S: b8bf29740eef431761a96b33cf1d77c24bc1577d 127.0.0.1:6384
+   replicates bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a
+Can I set the above configuration? (type 'yes' to accept): yes  #使用yes同意
+#注：如果不是所有master分配到slot，则执行redis-cli --cluster fix进行重新分配slot
+[root@localhost master_slave]# redis-cli --cluster check 127.0.0.1:6379  #执行此命令可以查看slot分配情况
+127.0.0.1:6379 (bc9b7cd5...) -> 0 keys | 5461 slots | 1 slaves.
+127.0.0.1:6381 (d6e4579a...) -> 0 keys | 5461 slots | 1 slaves.
+127.0.0.1:6380 (d49674ba...) -> 0 keys | 5462 slots | 1 slaves.
+[OK] 0 keys in 3 masters.
+0.00 keys per slot on average.
+>>> Performing Cluster Check (using node 127.0.0.1:6379)
+M: bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a 127.0.0.1:6379
+   slots:[0-5460] (5461 slots) master
+   1 additional replica(s)
+M: d6e4579a113d552dc0610e35ea025f413447401d 127.0.0.1:6381
+   slots:[10923-16383] (5461 slots) master
+   1 additional replica(s)
+M: d49674bacb676aa8506930dd48951432f529f084 127.0.0.1:6380
+   slots:[5461-10922] (5462 slots) master
+   1 additional replica(s)
+S: 16af3d0ca0d386c8ec923a4c009b416480825ac4 127.0.0.1:6382
+   slots: (0 slots) slave
+   replicates d6e4579a113d552dc0610e35ea025f413447401d
+S: b8bf29740eef431761a96b33cf1d77c24bc1577d 127.0.0.1:6384
+   slots: (0 slots) slave
+   replicates d49674bacb676aa8506930dd48951432f529f084
+S: 9fdc0ccf2ab5427bba92f694efb43e718f8d2208 127.0.0.1:6383
+   slots: (0 slots) slave
+   replicates bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+[root@localhost master_slave]# redis-cli --cluster info 127.0.0.1:6379  #查看集群的信息
+127.0.0.1:6379 (bc9b7cd5...) -> 0 keys | 5461 slots | 1 slaves.
+127.0.0.1:6381 (d6e4579a...) -> 0 keys | 5461 slots | 1 slaves.
+127.0.0.1:6380 (d49674ba...) -> 0 keys | 5462 slots | 1 slaves.
+[OK] 0 keys in 3 masters.
+0.00 keys per slot on average.
+[root@localhost master_slave]# redis-cli -c -p 127.0.0.1 -p 6381 #-c为进入集群模式，连接master 6381进行设置key看下
+127.0.0.1:6381> info replication
+# Replication
+role:master
+connected_slaves:1
+slave0:ip=127.0.0.1,port=6382,state=online,offset=1568,lag=0
+master_replid:fa48764ead6b1747f81a7ff0b67dcff56cafb24a
+master_replid2:0000000000000000000000000000000000000000
+master_repl_offset:1568
+second_repl_offset:-1
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:1
+repl_backlog_histlen:1568
+127.0.0.1:6381> keys *
+(empty list or set)
+127.0.0.1:6381> set jack 25
+-> Redirected to slot [7830] located at 127.0.0.1:6380
+OK
+[root@localhost ~]# redis-cli -c -h 127.0.0.1 -p 6384 #6384是6383的从，下面可以看到已经同步
+127.0.0.1:6384> keys *
+1) "jack"
+##添加一个新节点到已存储的集群中
+[root@localhost master_slave]# cp redis6380 redis6390 -a
+[root@localhost master_slave]# vim redis6390/redis6380.conf #如上一样修改相应配置保存
+[root@localhost master_slave]# mv redis6390/redis6380.conf  redis6390/redis6390.conf 
+[root@localhost master_slave]# redis-server redis6390/redis6390.conf  #启动实例
+[root@localhost master_slave]# netstat -tunlp | grep 6390
+tcp        0      0 0.0.0.0:6390            0.0.0.0:*               LISTEN      7591/redis-server 0 
+tcp        0      0 0.0.0.0:16390           0.0.0.0:*               LISTEN      7591/redis-server 0 
+[root@localhost master_slave]# redis-cli --cluster add-node 127.0.0.1:6390 127.0.0.1:6379 #增加了一个主节点，这里是将节点加入了集群中，但是并没有分配slot，所以这个节点并没有真正的开始分担集群工作。
+>>> Adding node 127.0.0.1:6390 to cluster 127.0.0.1:6379
+>>> Performing Cluster Check (using node 127.0.0.1:6379)
+M: bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a 127.0.0.1:6379
+   slots:[0-5460] (5461 slots) master
+   1 additional replica(s)
+M: d6e4579a113d552dc0610e35ea025f413447401d 127.0.0.1:6381
+   slots:[10923-16383] (5461 slots) master
+   1 additional replica(s)
+M: d49674bacb676aa8506930dd48951432f529f084 127.0.0.1:6380
+   slots:[5461-10922] (5462 slots) master
+   1 additional replica(s)
+S: 16af3d0ca0d386c8ec923a4c009b416480825ac4 127.0.0.1:6382
+   slots: (0 slots) slave
+   replicates d6e4579a113d552dc0610e35ea025f413447401d
+S: b8bf29740eef431761a96b33cf1d77c24bc1577d 127.0.0.1:6384
+   slots: (0 slots) slave
+   replicates d49674bacb676aa8506930dd48951432f529f084
+S: 9fdc0ccf2ab5427bba92f694efb43e718f8d2208 127.0.0.1:6383
+   slots: (0 slots) slave
+   replicates bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+>>> Send CLUSTER MEET to node 127.0.0.1:6390 to make it join the cluster.
+[OK] New node added correctly.
+[root@localhost master_slave]# redis-cli --cluster check 127.0.0.1:6380 #查看状态
+127.0.0.1:6380 (d49674ba...) -> 1 keys | 5462 slots | 1 slaves.
+127.0.0.1:6390 (4cf1707e...) -> 0 keys | 0 slots | 0 slaves. #新添加master无分片
+127.0.0.1:6379 (bc9b7cd5...) -> 0 keys | 5461 slots | 1 slaves.
+127.0.0.1:6381 (d6e4579a...) -> 0 keys | 5461 slots | 1 slaves.
+[OK] 1 keys in 4 masters.
+0.00 keys per slot on average.
+>>> Performing Cluster Check (using node 127.0.0.1:6380)
+M: d49674bacb676aa8506930dd48951432f529f084 127.0.0.1:6380
+   slots:[5461-10922] (5462 slots) master
+   1 additional replica(s)
+S: 9fdc0ccf2ab5427bba92f694efb43e718f8d2208 127.0.0.1:6383
+   slots: (0 slots) slave
+   replicates bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a
+S: 16af3d0ca0d386c8ec923a4c009b416480825ac4 127.0.0.1:6382
+   slots: (0 slots) slave
+   replicates d6e4579a113d552dc0610e35ea025f413447401d
+S: b8bf29740eef431761a96b33cf1d77c24bc1577d 127.0.0.1:6384
+   slots: (0 slots) slave
+   replicates d49674bacb676aa8506930dd48951432f529f084
+M: 4cf1707e6866b92fea47127b417ba7bdeff95177 127.0.0.1:6390
+   slots: (0 slots) master
+M: bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a 127.0.0.1:6379
+   slots:[0-5460] (5461 slots) master
+   1 additional replica(s)
+M: d6e4579a113d552dc0610e35ea025f413447401d 127.0.0.1:6381
+   slots:[10923-16383] (5461 slots) master
+   1 additional replica(s)
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+[root@localhost master_slave]# redis-cli --cluster reshard 127.0.0.1:6390 --cluster-from bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a,d6e4579a113d552dc0610e35ea025f413447401d,d49674bacb676aa8506930dd48951432f529f084 --cluster-to 4cf1707e6866b92fea47127b417ba7bdeff95177 --cluster-slots 1024 --cluster-yes  #分配slot给新的master,reshard命令后面是新master的ip:port,--cluster-from是从哪些主master分配过来（可以是一个），--cluster-to为新的master nodeID,--cluster-slots为分配slot的数量，--cluster-yes表示不回显是否确认信息
+[root@localhost master_slave]# redis-cli --cluster check 127.0.0.1:6380
+127.0.0.1:6380 (d49674ba...) -> 1 keys | 5120 slots | 1 slaves.
+127.0.0.1:6390 (4cf1707e...) -> 0 keys | 1024 slots | 0 slaves.
+127.0.0.1:6379 (bc9b7cd5...) -> 0 keys | 5120 slots | 1 slaves.
+127.0.0.1:6381 (d6e4579a...) -> 0 keys | 5120 slots | 1 slaves.
+[OK] 1 keys in 4 masters.
+0.00 keys per slot on average.
+>>> Performing Cluster Check (using node 127.0.0.1:6380)
+M: d49674bacb676aa8506930dd48951432f529f084 127.0.0.1:6380
+   slots:[5803-10922] (5120 slots) master
+   1 additional replica(s)
+S: 9fdc0ccf2ab5427bba92f694efb43e718f8d2208 127.0.0.1:6383
+   slots: (0 slots) slave
+   replicates bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a
+S: 16af3d0ca0d386c8ec923a4c009b416480825ac4 127.0.0.1:6382
+   slots: (0 slots) slave
+   replicates d6e4579a113d552dc0610e35ea025f413447401d
+S: b8bf29740eef431761a96b33cf1d77c24bc1577d 127.0.0.1:6384
+   slots: (0 slots) slave
+   replicates d49674bacb676aa8506930dd48951432f529f084
+M: 4cf1707e6866b92fea47127b417ba7bdeff95177 127.0.0.1:6390  #此时已经分配1024个slot
+   slots:[0-340],[5461-5802],[10923-11263] (1024 slots) master 
+M: bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a 127.0.0.1:6379
+   slots:[341-5460] (5120 slots) master
+   1 additional replica(s)
+M: d6e4579a113d552dc0610e35ea025f413447401d 127.0.0.1:6381
+   slots:[11264-16383] (5120 slots) master
+   1 additional replica(s)
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+#向127.0.0.1：6390添加一个slave
+[root@localhost master_slave]# cp redis6390 redis6391 -a
+[root@localhost master_slave]# vim redis6391/redis6390.conf #如上修改相应配置
+[root@localhost master_slave]# mv redis6391/redis6390.conf redis6391/redis6391.conf 
+[root@localhost master_slave]# redis-server redis6391/redis6391.conf #启动新实例
+[root@localhost master_slave]# netstat -tunlp| grep 6391 #检查是否启动
+tcp        0      0 0.0.0.0:16391           0.0.0.0:*               LISTEN      8996/redis-server 0 
+tcp        0      0 0.0.0.0:6391            0.0.0.0:*               LISTEN      8996/redis-server 0 
+[root@localhost master_slave]# redis-cli --cluster check 127.0.0.1:6379 #查看6390 master的nodeID
+127.0.0.1:6379 (bc9b7cd5...) -> 0 keys | 5120 slots | 1 slaves.
+127.0.0.1:6381 (d6e4579a...) -> 0 keys | 5120 slots | 1 slaves.
+127.0.0.1:6380 (d49674ba...) -> 1 keys | 5120 slots | 1 slaves.
+127.0.0.1:6390 (4cf1707e...) -> 0 keys | 1024 slots | 0 slaves.
+[OK] 1 keys in 4 masters.
+0.00 keys per slot on average.
+>>> Performing Cluster Check (using node 127.0.0.1:6379)
+M: bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a 127.0.0.1:6379
+   slots:[341-5460] (5120 slots) master
+   1 additional replica(s)
+M: d6e4579a113d552dc0610e35ea025f413447401d 127.0.0.1:6381
+   slots:[11264-16383] (5120 slots) master
+   1 additional replica(s)
+M: d49674bacb676aa8506930dd48951432f529f084 127.0.0.1:6380
+   slots:[5803-10922] (5120 slots) master
+   1 additional replica(s)
+S: 16af3d0ca0d386c8ec923a4c009b416480825ac4 127.0.0.1:6382
+   slots: (0 slots) slave
+   replicates d6e4579a113d552dc0610e35ea025f413447401d
+S: b8bf29740eef431761a96b33cf1d77c24bc1577d 127.0.0.1:6384
+   slots: (0 slots) slave
+   replicates d49674bacb676aa8506930dd48951432f529f084
+M: 4cf1707e6866b92fea47127b417ba7bdeff95177 127.0.0.1:6390
+   slots:[0-340],[5461-5802],[10923-11263] (1024 slots) master
+S: 9fdc0ccf2ab5427bba92f694efb43e718f8d2208 127.0.0.1:6383
+   slots: (0 slots) slave
+   replicates bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+[root@localhost master_slave]# redis-cli --cluster add-node --cluster-slave 127.0.0.1:6391 127.0.0.1:6390 --cluster-master-id 4cf1707e6866b92fea47127b417ba7bdeff95177  #向127.0.0.1：6390 master添加slave 127.0.0.1:6391,
+>>> Adding node 127.0.0.1:6391 to cluster 127.0.0.1:6390
+>>> Performing Cluster Check (using node 127.0.0.1:6390)
+M: 4cf1707e6866b92fea47127b417ba7bdeff95177 127.0.0.1:6390
+   slots:[0-340],[5461-5802],[10923-11263] (1024 slots) master
+S: 16af3d0ca0d386c8ec923a4c009b416480825ac4 127.0.0.1:6382
+   slots: (0 slots) slave
+   replicates d6e4579a113d552dc0610e35ea025f413447401d
+S: b8bf29740eef431761a96b33cf1d77c24bc1577d 127.0.0.1:6384
+   slots: (0 slots) slave
+   replicates d49674bacb676aa8506930dd48951432f529f084
+S: 9fdc0ccf2ab5427bba92f694efb43e718f8d2208 127.0.0.1:6383
+   slots: (0 slots) slave
+   replicates bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a
+M: d49674bacb676aa8506930dd48951432f529f084 127.0.0.1:6380
+   slots:[5803-10922] (5120 slots) master
+   1 additional replica(s)
+M: bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a 127.0.0.1:6379
+   slots:[341-5460] (5120 slots) master
+   1 additional replica(s)
+M: d6e4579a113d552dc0610e35ea025f413447401d 127.0.0.1:6381
+   slots:[11264-16383] (5120 slots) master
+   1 additional replica(s)
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+>>> Send CLUSTER MEET to node 127.0.0.1:6391 to make it join the cluster.
+Waiting for the cluster to join
+
+>>> Configure node as replica of 127.0.0.1:6390.
+[OK] New node added correctly.
+[root@localhost master_slave]# redis-cli --cluster info 127.0.0.1:6379 
+127.0.0.1:6379 (bc9b7cd5...) -> 0 keys | 5120 slots | 1 slaves.
+127.0.0.1:6381 (d6e4579a...) -> 0 keys | 5120 slots | 1 slaves.
+127.0.0.1:6380 (d49674ba...) -> 1 keys | 5120 slots | 1 slaves.
+127.0.0.1:6390 (4cf1707e...) -> 0 keys | 1024 slots | 1 slaves. #此时已经加入一个slave了
+[OK] 1 keys in 4 masters.
+0.00 keys per slot on average.
+
+[root@localhost master_slave]# redis-cli -c -h 127.0.0.1 -p 6390 #连接新master6390
+127.0.0.1:6390> keys *
+(empty list or set)
+127.0.0.1:6390> set cluster 6390 #增加一个key
+-> Redirected to slot [14041] located at 127.0.0.1:6381 #说明已经重定向这个key到6381master上了，因为这个key的hash/16384取模的值在14041，而14041本位在6381
+OK
+127.0.0.1:6381> keys * #此时系统已经把console重定向到6381,当你查看时已经有了，当我们写入redis时不考虑这个重定向问题，因为我们不常在这里操作，只要确保主从安全即可
+1) "cluster"
+127.0.0.1:6381> set slave 6391
+-> Redirected to slot [5907] located at 127.0.0.1:6380
+OK
+127.0.0.1:6380> keys *
+1) "slave"
+2) "jack"
+##删除一个master
+1. 先要转换slot，转移slot不影响集群对外工作
+2. [root@localhost master_slave]# redis-cli --cluster reshard 127.0.0.1:6381 --cluster-from d6e4579a113d552dc0610e35ea025f413447401d --cluster-to 4cf1707e6866b92fea47127b417ba7bdeff95177  --cluster-slots 5120 --cluster-yes
+#6381转移slot到6390，不光转换的是slot到6390，而且也把6381的slavel转移给6390了，这样6390就又多了个一slave
+[root@localhost master_slave]# redis-cli --cluster check 127.0.0.1:6379
+127.0.0.1:6379 (bc9b7cd5...) -> 0 keys | 5120 slots | 1 slaves.
+127.0.0.1:6381 (d6e4579a...) -> 0 keys | 0 slots | 0 slaves.
+127.0.0.1:6380 (d49674ba...) -> 2 keys | 5120 slots | 1 slaves.
+127.0.0.1:6390 (4cf1707e...) -> 1 keys | 6144 slots | 2 slaves. #多了个slave
+[OK] 3 keys in 4 masters.
+0.00 keys per slot on average.
+>>> Performing Cluster Check (using node 127.0.0.1:6379)
+M: bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a 127.0.0.1:6379
+   slots:[341-5460] (5120 slots) master
+   1 additional replica(s)
+S: bfd6f24af1570c641c42ab63f381aab3393f5aea 127.0.0.1:6391
+   slots: (0 slots) slave
+   replicates 4cf1707e6866b92fea47127b417ba7bdeff95177
+M: d6e4579a113d552dc0610e35ea025f413447401d 127.0.0.1:6381
+   slots: (0 slots) master  #此时无slot了，可以删除了
+M: d49674bacb676aa8506930dd48951432f529f084 127.0.0.1:6380
+   slots:[5803-10922] (5120 slots) master
+   1 additional replica(s)
+S: 16af3d0ca0d386c8ec923a4c009b416480825ac4 127.0.0.1:6382
+   slots: (0 slots) slave
+   replicates 4cf1707e6866b92fea47127b417ba7bdeff95177
+S: b8bf29740eef431761a96b33cf1d77c24bc1577d 127.0.0.1:6384
+   slots: (0 slots) slave
+   replicates d49674bacb676aa8506930dd48951432f529f084
+M: 4cf1707e6866b92fea47127b417ba7bdeff95177 127.0.0.1:6390
+   slots:[0-340],[5461-5802],[10923-16383] (6144 slots) master
+   2 additional replica(s)
+S: 9fdc0ccf2ab5427bba92f694efb43e718f8d2208 127.0.0.1:6383
+   slots: (0 slots) slave
+   replicates bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+
+[root@localhost master_slave]# redis-cli --cluster del-node 127.0.0.1:6381 d6e4579a113d552dc0610e35ea025f413447401d  #删除6380 master
+>>> Removing node d6e4579a113d552dc0610e35ea025f413447401d from cluster 127.0.0.1:6381
+>>> Sending CLUSTER FORGET messages to the cluster...
+>>> SHUTDOWN the node. #关闭节点成功
+[root@localhost master_slave]# redis-cli --cluster check 127.0.0.1:6379 #此时6380已经不在集群了。
+127.0.0.1:6379 (bc9b7cd5...) -> 0 keys | 5120 slots | 1 slaves.
+127.0.0.1:6380 (d49674ba...) -> 2 keys | 5120 slots | 1 slaves.
+127.0.0.1:6390 (4cf1707e...) -> 1 keys | 6144 slots | 2 slaves.
+[OK] 3 keys in 3 masters.
+0.00 keys per slot on average.
+>>> Performing Cluster Check (using node 127.0.0.1:6379)
+M: bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a 127.0.0.1:6379
+   slots:[341-5460] (5120 slots) master
+   1 additional replica(s)
+S: bfd6f24af1570c641c42ab63f381aab3393f5aea 127.0.0.1:6391
+   slots: (0 slots) slave
+   replicates 4cf1707e6866b92fea47127b417ba7bdeff95177
+M: d49674bacb676aa8506930dd48951432f529f084 127.0.0.1:6380
+   slots:[5803-10922] (5120 slots) master
+   1 additional replica(s)
+S: 16af3d0ca0d386c8ec923a4c009b416480825ac4 127.0.0.1:6382
+   slots: (0 slots) slave
+   replicates 4cf1707e6866b92fea47127b417ba7bdeff95177
+S: b8bf29740eef431761a96b33cf1d77c24bc1577d 127.0.0.1:6384
+   slots: (0 slots) slave
+   replicates d49674bacb676aa8506930dd48951432f529f084
+M: 4cf1707e6866b92fea47127b417ba7bdeff95177 127.0.0.1:6390
+   slots:[0-340],[5461-5802],[10923-16383] (6144 slots) master
+   2 additional replica(s)
+S: 9fdc0ccf2ab5427bba92f694efb43e718f8d2208 127.0.0.1:6383
+   slots: (0 slots) slave
+   replicates bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+#模拟master故障
+[root@localhost master_slave]# redis-cli -c -p 127.0.0.1 -p 6390 #6390有key，这里模拟6390 master故障
+127.0.0.1:6390> keys *
+1) "cluster"
+#从集群信息中可看出6391，6382是6390的slave，看slave是否自动升级为master
+[root@localhost master_slave]# netstat -tunlp | grep 63
+tcp        0      0 0.0.0.0:16391           0.0.0.0:*               LISTEN      8996/redis-server 0 
+tcp        0      0 0.0.0.0:6379            0.0.0.0:*               LISTEN      5316/redis-server 0 
+tcp        0      0 0.0.0.0:6380            0.0.0.0:*               LISTEN      6063/redis-server 0 
+tcp        0      0 0.0.0.0:6382            0.0.0.0:*               LISTEN      6073/redis-server 0 
+tcp        0      0 0.0.0.0:6383            0.0.0.0:*               LISTEN      6078/redis-server 0 
+tcp        0      0 0.0.0.0:6384            0.0.0.0:*               LISTEN      6083/redis-server 0 
+tcp        0      0 0.0.0.0:6390            0.0.0.0:*               LISTEN      7591/redis-server 0 
+tcp        0      0 0.0.0.0:6391            0.0.0.0:*               LISTEN      8996/redis-server 0 
+tcp        0      0 0.0.0.0:16379           0.0.0.0:*               LISTEN      5316/redis-server 0 
+tcp        0      0 0.0.0.0:16380           0.0.0.0:*               LISTEN      6063/redis-server 0 
+tcp        0      0 0.0.0.0:16382           0.0.0.0:*               LISTEN      6073/redis-server 0 
+tcp        0      0 0.0.0.0:16383           0.0.0.0:*               LISTEN      6078/redis-server 0 
+tcp        0      0 0.0.0.0:16384           0.0.0.0:*               LISTEN      6083/redis-server 0 
+tcp        0      0 0.0.0.0:16390           0.0.0.0:*               LISTEN      7591/redis-server 0 
+[root@localhost master_slave]# kill -9 7591 #模拟杀死6390 master
+[root@localhost master_slave]# redis-cli --cluster check 127.0.0.1:6379 #经过一段时间，6382和6391竞争赢了，从而成为新的master
+Could not connect to Redis at 127.0.0.1:6390: Connection refused
+127.0.0.1:6379 (bc9b7cd5...) -> 0 keys | 5120 slots | 1 slaves.
+127.0.0.1:6380 (d49674ba...) -> 2 keys | 5120 slots | 1 slaves.
+127.0.0.1:6382 (16af3d0c...) -> 1 keys | 6144 slots | 1 slaves.
+[OK] 3 keys in 3 masters.
+0.00 keys per slot on average.
+>>> Performing Cluster Check (using node 127.0.0.1:6379)
+M: bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a 127.0.0.1:6379
+   slots:[341-5460] (5120 slots) master
+   1 additional replica(s)
+S: bfd6f24af1570c641c42ab63f381aab3393f5aea 127.0.0.1:6391
+   slots: (0 slots) slave
+   replicates 16af3d0ca0d386c8ec923a4c009b416480825ac4
+M: d49674bacb676aa8506930dd48951432f529f084 127.0.0.1:6380
+   slots:[5803-10922] (5120 slots) master
+   1 additional replica(s)
+M: 16af3d0ca0d386c8ec923a4c009b416480825ac4 127.0.0.1:6382
+   slots:[0-340],[5461-5802],[10923-16383] (6144 slots) master
+   1 additional replica(s)
+S: b8bf29740eef431761a96b33cf1d77c24bc1577d 127.0.0.1:6384
+   slots: (0 slots) slave
+   replicates d49674bacb676aa8506930dd48951432f529f084
+S: 9fdc0ccf2ab5427bba92f694efb43e718f8d2208 127.0.0.1:6383
+   slots: (0 slots) slave
+   replicates bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+[root@localhost master_slave]# redis-cli -c -p 127.0.0.1 -p 6382 #连接6382，数据依然存在
+127.0.0.1:6382> keys *
+1) "cluster"
+#重新平衡slot
+[root@localhost master_slave]# redis-cli --cluster rebalance 127.0.0.1:6379  #重新平衡，节点ip:port为集群任意一个即可
+Could not connect to Redis at 127.0.0.1:6390: Connection refused
+>>> Performing Cluster Check (using node 127.0.0.1:6379)
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+>>> Rebalancing across 3 nodes. Total weight = 3.00
+Moving 342 slots from 127.0.0.1:6382 to 127.0.0.1:6379
+######################################################################################################################################################################################################################################################################################################################################################
+Moving 341 slots from 127.0.0.1:6382 to 127.0.0.1:6380
+#####################################################################################################################################################################################################################################################################################################################################################
+[root@localhost master_slave]# redis-cli --cluster check 127.0.0.1:6379 #可以看出已经平衡slot了
+Could not connect to Redis at 127.0.0.1:6390: Connection refused
+127.0.0.1:6379 (bc9b7cd5...) -> 0 keys | 5462 slots | 1 slaves.
+127.0.0.1:6380 (d49674ba...) -> 2 keys | 5461 slots | 1 slaves.
+127.0.0.1:6382 (16af3d0c...) -> 1 keys | 5461 slots | 1 slaves.
+[OK] 3 keys in 3 masters.
+0.00 keys per slot on average.
+>>> Performing Cluster Check (using node 127.0.0.1:6379)
+M: bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a 127.0.0.1:6379
+   slots:[0-5461] (5462 slots) master
+   1 additional replica(s)
+S: bfd6f24af1570c641c42ab63f381aab3393f5aea 127.0.0.1:6391
+   slots: (0 slots) slave
+   replicates 16af3d0ca0d386c8ec923a4c009b416480825ac4
+M: d49674bacb676aa8506930dd48951432f529f084 127.0.0.1:6380
+   slots:[5462-10922] (5461 slots) master
+   1 additional replica(s)
+M: 16af3d0ca0d386c8ec923a4c009b416480825ac4 127.0.0.1:6382
+   slots:[10923-16383] (5461 slots) master
+   1 additional replica(s)
+S: b8bf29740eef431761a96b33cf1d77c24bc1577d 127.0.0.1:6384
+   slots: (0 slots) slave
+   replicates d49674bacb676aa8506930dd48951432f529f084
+S: 9fdc0ccf2ab5427bba92f694efb43e718f8d2208 127.0.0.1:6383
+   slots: (0 slots) slave
+   replicates bc9b7cd5fc214334f0561e06705ef2ca37fd9c6a
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+
+#结论：当你向slave写数据时，redis会自动重定向到master，当你向slave读数据时，redis也自动重定向到master，这个说明slave现在没有存储数据，它们只是映射关系。始终存储在拥有slot的master上，不会存储在没有slot的slave上，slave也不会存储slot，只有当slave接管master时才会拥有slot
 
 </pre>
 
