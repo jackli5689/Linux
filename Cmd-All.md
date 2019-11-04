@@ -436,6 +436,15 @@ zhanwangjun         80         87         75     242.00
 zhanwangjun         80         87         75     242.00
   xuyuying         75         64         61     200.00
 
+[root@openssl openvpn]# awk '{count[$6]++}END{for (i in count){print i,count[i]}}' openvpn.log | grep jack | awk '{sum+=$2}END{print sum}'
+6225
+[root@autodep ~]# netstat -tan | awk '{count[$NF]++}END{for (i in count) {printf "%-20s%d\n",i,count[i]}}'
+LISTEN              16
+State               1
+ESTABLISHED         5
+established)        1
+注：awk后面可接着-F ':'进行设定换行符，可接着-v sum=0设定变量,'/^tcp/{print $1}'单引号内大括号外是为匹配模式，可以支持正则表达式，模糊匹配~，大括号内是执行的动作，一般为print和printf操作，在执行动作内可使用if(1<s){...}else{...}fi或for(i=1,i<=3,i++){}或for(i in array){}或while(){}。执行动作前后可使用BEGIN和END来执行一次操作，注意，是BEGIN只能执行一次，END也只能执行一次。
+
 #echo
 echo -e "next\n" #意思是在引号内容中""引用回车键
 
@@ -1053,6 +1062,13 @@ find /data/nginx_logs/days/* -name "*.bz2" -mtime 7 -type f -exec rm -rf {} \;
 [root@bastion-IDC ~# crontab -e
 #logrotate
 0 0 * * * /bin/bash -x /usr/local/sbin/logrotate-nginx.sh > /dev/null 2>&1 
+
+
+##tcpdump
+[root@autodep ~]# tcpdump -i eth0 ip host 192.168.1.254  #在eth0接口上，ip协议，抓取关于主机是192.168.1.254的包
+[root@autodep ~]# tcpdump -i eth0 ip host 192.168.1.234 and tcp port 22  #在eth0接口上，ip协议，抓取关于主机是192.168.1.254并且端口是22的
+[root@autodep ~]# tcpdump -i eth0 src 192.168.1.234 and dst 192.168.1.232
+[root@autodep ~]# tcpdump -i eth0 src 192.168.1.234 and dst ! 192.168.1.232
 
 
 
