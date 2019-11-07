@@ -769,6 +769,23 @@ EXEC xp_cmdshell 'mkdir e:\myfile',no_output  --no_output表示不输出返回�
 GO  
 #自定义存储过程
 #创建存储过程
+
+SET ANSI_NULLS ON  --SET ANSI_NULLS ON:表示对空值(null)对等于(=)或不等于(<>)进行判断时，遵从 SQL-92 规则，表示用=,<>进行比较时都为false,就是不允许进行比较
+GO
+SET QUOTED_IDENTIFIER ON  --SET QUOTED_IDENTIFIER ON:表示使用引用标识符，标识符可以用双引号分隔或者不加双引号分隔，但是，文字必须用单引号分隔。当为OFF时则表示用双引号分隔的都为值，跟ON正好相反
+GO
+
+select * from openrowset('SQLOLEDB','server_address'; 'sa';'password',database.dbo.table) --可以查询其它服务器表数据到当前结果集中
+
+ROW_NUMBER() OVER(ORDER BY SalesYTD DESC) --返回结果集分区内行的序列号，每个分区的第一行从 1 开始。ORDER BY 子句可确定在特定分区中为行分配唯一 ROW_NUMBER 的顺序。
+
+例：
+SELECT FirstName, LastName, ROW_NUMBER() OVER(ORDER BY SalesYTD DESC) AS 'Row Number', SalesYTD, PostalCode 
+FROM Sales.vSalesPerson
+WHERE TerritoryName IS NOT NULL AND SalesYTD <> 0;
+
+
+
 CREATE PROC[EDURE] procedure_name
 AS 
 	SQL statement
