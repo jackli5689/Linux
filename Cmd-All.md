@@ -1071,6 +1071,27 @@ find /data/nginx_logs/days/* -name "*.bz2" -mtime 7 -type f -exec rm -rf {} \;
 [root@autodep ~]# tcpdump -i eth0 src 192.168.1.234 and dst ! 192.168.1.232
 
 
+####Linux下用curl命令对API的使用
+测试get请求
+$ curl http://www.linuxidc.com/login.cgi?user=test001&password=123456
+测试post请求
+$ curl -d "user=nickwolfe&password=12345" http://www.linuxidc.com/login.cgi
+
+方式一：发送磁盘上面的JSON文件（推荐）
+curl -X POST -H 'content-type: application/json'  -d @/apps/myjsonfile.txt http://192.168.129.xx/AntiRushServer/api/ActivityAntiRush
+方式二：在命令行直接发送JSON结构数据
+curl -H 'content-type: application/json' -X POST -d '{"accountType":"4","channel":"1","channelId":"YW_MMY","uid":"13154897541","phoneNumber":"13154897541","loginSource":"3","loginType":"1","userIp":"192.168.2.3","postTime":"14633fffffffffff81286","userAgent":"Windows NT","imei":"352600051025733","macAddress":"40:92:d4:cb:46:43","serialNumber":"123"}' http://192.168.129.xx/AntiRushServer/api/ActivityAntiRush
+
+方式一：发送磁盘上面的xml文件（推荐）
+curl -X POST -H 'content-type: application/xml'  -d @/apps/myxmlfile.txt http://172.19.219.xx:8081/csp/faq/actDiaUserInfo.action
+方式二：在命令行直接发送xml结构数据
+echo '<?xml version="1.0" encoding="UTF-8"?><userinfoReq><subsNumber>13814528620</subsNumber><type>3</type></userinfoReq>'|curl -X POST -H'Content-type:text/xm' -d @- http://172.19.xx.xx:8081/csp/faq/actDiaUserInfo.action
+
+方式一：发送磁盘上面的请求报文文件（推荐）
+ curl -H 'Content-Type: text/xml;charset=UTF-8;SOAPAction:""' -d @/apps/mysoapfile.xml http://172.18.173.xx:8085/csp-magent-client/madapterservices/madapter/lmCountAccessor
+方式二：在命令行直接发送xml结构数据
+curl -H 'content-type: application/xml' -d '<?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ser="http://service.accessor.madapter.csp.huawei.com"><soapenv:Header /><soapenv:Body><ser:leaveMessageCount><ser:in0><![CDATA[20161011160516XdznbN]]></ser:in0><ser:in1><![CDATA[1600106496388382726]]></ser:in1><ser:in2><![CDATA[14]]></ser:in2><ser:in3><![CDATA[<extendParams><channelid>1600</channelid><servicetype></servicetype><appid></appid><usertype>10</usertype><userid>6496388382726</userid><msisdn>13814528620</msisdn><email></email><account></account><nickname></nickname><questionType></questionType></extendParams>]]></ser:in3></ser:leaveMessageCount></soapenv:Body></soapenv:Envelope>' http://172.18.173.xx:8085/csp-magent-client/madapterservices/madapter/lmCountAccessor
+
 
 
 </pre>
